@@ -25,6 +25,7 @@ def check_camera_connection(max_device_count=4, is_debug=False):
 
         cap = cv2.VideoCapture(device_no)
         ret, _ = cap.read()
+        cap.release()
         if ret:
             device_no_list.append(device_no)
             if is_debug:
@@ -39,8 +40,7 @@ def check_serial_connection(is_debug=False):
     import glob
     import serial
     import sys
-    serial_device_no_list=[]
-    serial_device_no_list=[]
+    serial_device_no_list = []
     if sys.platform.startswith('win'):
         ports = ['COM%s' % (i + 1) for i in range(256)]
     elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):

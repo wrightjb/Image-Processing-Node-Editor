@@ -30,7 +30,9 @@ class Node(DpgNodeABC):
     def _callback_add_point(self, sender, app_data, user_data):
         node_id = user_data[0]
         plot_tag = user_data[1]
-        x, y = app_data
+        # app_data from the clicked handler is the mouse button, not position.
+        # Use DearPyGui to fetch the mouse position over the plot instead.
+        x, y = dpg.get_plot_mouse_pos()
         # clip to range 0-255
         x = max(0, min(255, int(x)))
         y = max(0, min(255, int(y)))

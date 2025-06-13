@@ -23,6 +23,7 @@ class Node(DpgNodeABC):
     # drag point tag list per node id
     _drag_points = {}
     _line_series = {}
+    _last_frame = {}
 
     def __init__(self):
         pass
@@ -30,7 +31,9 @@ class Node(DpgNodeABC):
     def _callback_add_point(self, sender, app_data, user_data):
         node_id = user_data[0]
         plot_tag = user_data[1]
-        x, y = app_data
+        # app_data from the clicked handler is the mouse button, not position.
+        # Use DearPyGui to fetch the mouse position over the plot instead.
+        x, y = dpg.get_plot_mouse_pos()
         # clip to range 0-255
         x = max(0, min(255, int(x)))
         y = max(0, min(255, int(y)))
@@ -45,10 +48,54 @@ class Node(DpgNodeABC):
         self._drag_points.setdefault(node_id, []).append(drag_tag)
         self._redraw_line(node_id, plot_tag)
 
+        frame = self._last_frame.get(node_id)
+        if frame is not None:
+            # update texture immediately with new point
+            points = [[0, 0], [255, 255]]
+            for tag in self._drag_points.get(node_id, []):
+                pt = dpg.get_value(tag)
+                pt[0] = max(0, min(255, pt[0]))
+                pt[1] = max(0, min(255, pt[1]))
+                points.append(pt)
+            points = sorted(points, key=lambda p: p[0])
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+            result = cv2.LUT(frame, table)
+            texture = convert_cv_to_dpg(
+                result,
+                self._opencv_setting_dict["process_width"],
+                self._opencv_setting_dict["process_height"],
+            )
+            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
+            dpg_set_value(output_tag, texture)
+
     def _callback_moved_point(self, sender, app_data, user_data):
         node_id = user_data
         plot_tag = f"{node_id}:{self.node_tag}:plot"
         self._redraw_line(node_id, plot_tag)
+
+        frame = self._last_frame.get(node_id)
+        if frame is not None:
+            # rebuild LUT from current points
+            points = [[0, 0], [255, 255]]
+            for tag in self._drag_points.get(node_id, []):
+                pt = dpg.get_value(tag)
+                pt[0] = max(0, min(255, pt[0]))
+                pt[1] = max(0, min(255, pt[1]))
+                points.append(pt)
+            points = sorted(points, key=lambda p: p[0])
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+            result = cv2.LUT(frame, table)
+            texture = convert_cv_to_dpg(
+                result,
+                self._opencv_setting_dict["process_width"],
+                self._opencv_setting_dict["process_height"],
+            )
+            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
+            dpg_set_value(output_tag, texture)
 
     def _redraw_line(self, node_id, plot_tag):
         """Rebuild curve line series based on current drag points."""
@@ -110,6 +157,7 @@ class Node(DpgNodeABC):
                     dpg.add_item_clicked_handler(
                         callback=self._callback_add_point,
                         user_data=(node_id, f"{tag_node_name}:plot"),
+                        parent=handler,
                     )
                     dpg.bind_item_handler_registry(f"{tag_node_name}:plot", handler)
         return tag_node_name
@@ -118,6 +166,9 @@ class Node(DpgNodeABC):
         tag_node_name = f"{node_id}:{self.node_tag}"
         output_value_tag = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01Value"
         plot_tag = f"{tag_node_name}:plot"
+
+        # convert id to int for per-node storage
+        node_id_int = int(node_id)
 
         small_w = self._opencv_setting_dict["process_width"]
         small_h = self._opencv_setting_dict["process_height"]
@@ -129,10 +180,11 @@ class Node(DpgNodeABC):
                 connection_info_src = ':'.join(connection_info_src.split(':')[:2])
 
         frame = node_image_dict.get(connection_info_src, None)
+        self._last_frame[node_id_int] = frame
 
         # build LUT from drag points
         points = [[0, 0], [255, 255]]
-        for tag in self._drag_points.get(node_id, []):
+        for tag in self._drag_points.get(node_id_int, []):
             pt = dpg.get_value(tag)
             pt[0] = max(0, min(255, pt[0]))
             pt[1] = max(0, min(255, pt[1]))
@@ -147,19 +199,22 @@ class Node(DpgNodeABC):
             texture = convert_cv_to_dpg(result, small_w, small_h)
             dpg_set_value(output_value_tag, texture)
             # redraw line
-            self._redraw_line(node_id, plot_tag)
+            self._redraw_line(node_id_int, plot_tag)
             return result, None
         return None, None
 
     def close(self, node_id):
+        node_id_int = int(node_id)
         # clean stored points
-        self._drag_points.pop(node_id, None)
-        self._line_series.pop(node_id, None)
+        self._drag_points.pop(node_id_int, None)
+        self._line_series.pop(node_id_int, None)
+        self._last_frame.pop(node_id_int, None)
 
     def get_setting_dict(self, node_id):
         tag_node_name = f"{node_id}:{self.node_tag}"
         pos = dpg.get_item_pos(tag_node_name)
-        point_list = [dpg.get_value(tag) for tag in self._drag_points.get(node_id, [])]
+        node_id_int = int(node_id)
+        point_list = [dpg.get_value(tag) for tag in self._drag_points.get(node_id_int, [])]
         setting_dict = {
             "ver": self._ver,
             "pos": pos,
@@ -169,14 +224,15 @@ class Node(DpgNodeABC):
 
     def set_setting_dict(self, node_id, setting_dict):
         plot_tag = f"{node_id}:{self.node_tag}:plot"
-        self._drag_points[node_id] = []
+        node_id_int = int(node_id)
+        self._drag_points[node_id_int] = []
         for pt in setting_dict.get("points", []):
             drag_tag = dpg.add_drag_point(
                 parent=plot_tag,
                 label="",
                 default_value=pt,
                 callback=self._callback_moved_point,
-                user_data=node_id,
+                user_data=node_id_int,
             )
-            self._drag_points[node_id].append(drag_tag)
-        self._redraw_line(node_id, plot_tag)
+            self._drag_points[node_id_int].append(drag_tag)
+        self._redraw_line(node_id_int, plot_tag)

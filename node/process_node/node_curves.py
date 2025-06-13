@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """Curves adjustment node for Image Processing Node Editor."""
+import time
 
 import cv2
 import numpy as np
@@ -9,6 +10,18 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value, convert_cv_to_dpg
 from node.node_abc import DpgNodeABC
 
+def image_process(image, points):
+    # build LUT from curves points
+    for pt in points:
+        pt[0] = max(0, min(255, pt[0]))
+        pt[1] = max(0, min(255, pt[1]))
+    points.extend([[0, 0], [255, 255]])
+    points = sorted(points, key=lambda p: p[0])
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+    image = cv2.LUT(image, table)
+    return image
 
 class Node(DpgNodeABC):
     """Curves adjustment node."""
@@ -23,7 +36,6 @@ class Node(DpgNodeABC):
     # drag point tag list per node id
     _drag_points = {}
     _line_series = {}
-    _last_frame = {}
 
     def __init__(self):
         pass
@@ -48,54 +60,10 @@ class Node(DpgNodeABC):
         self._drag_points.setdefault(node_id, []).append(drag_tag)
         self._redraw_line(node_id, plot_tag)
 
-        frame = self._last_frame.get(node_id)
-        if frame is not None:
-            # update texture immediately with new point
-            points = [[0, 0], [255, 255]]
-            for tag in self._drag_points.get(node_id, []):
-                pt = dpg.get_value(tag)
-                pt[0] = max(0, min(255, pt[0]))
-                pt[1] = max(0, min(255, pt[1]))
-                points.append(pt)
-            points = sorted(points, key=lambda p: p[0])
-            xs = [p[0] for p in points]
-            ys = [p[1] for p in points]
-            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
-            result = cv2.LUT(frame, table)
-            texture = convert_cv_to_dpg(
-                result,
-                self._opencv_setting_dict["process_width"],
-                self._opencv_setting_dict["process_height"],
-            )
-            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
-            dpg_set_value(output_tag, texture)
-
     def _callback_moved_point(self, sender, app_data, user_data):
         node_id = user_data
         plot_tag = f"{node_id}:{self.node_tag}:plot"
         self._redraw_line(node_id, plot_tag)
-
-        frame = self._last_frame.get(node_id)
-        if frame is not None:
-            # rebuild LUT from current points
-            points = [[0, 0], [255, 255]]
-            for tag in self._drag_points.get(node_id, []):
-                pt = dpg.get_value(tag)
-                pt[0] = max(0, min(255, pt[0]))
-                pt[1] = max(0, min(255, pt[1]))
-                points.append(pt)
-            points = sorted(points, key=lambda p: p[0])
-            xs = [p[0] for p in points]
-            ys = [p[1] for p in points]
-            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
-            result = cv2.LUT(frame, table)
-            texture = convert_cv_to_dpg(
-                result,
-                self._opencv_setting_dict["process_width"],
-                self._opencv_setting_dict["process_height"],
-            )
-            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
-            dpg_set_value(output_tag, texture)
 
     def _redraw_line(self, node_id, plot_tag):
         """Rebuild curve line series based on current drag points."""
@@ -119,10 +87,13 @@ class Node(DpgNodeABC):
         tag_node_input_value_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Input01Value"
         tag_node_output_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01"
         tag_node_output_value_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01Value"
+        tag_node_output02_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02'
+        tag_node_output02_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
 
         self._opencv_setting_dict = opencv_setting_dict
         small_w = self._opencv_setting_dict["process_width"]
         small_h = self._opencv_setting_dict["process_height"]
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
         black_image = np.zeros((small_w, small_h, 3))
         black_texture = convert_cv_to_dpg(black_image, small_w, small_h)
@@ -160,18 +131,27 @@ class Node(DpgNodeABC):
                         parent=handler,
                     )
                     dpg.bind_item_handler_registry(f"{tag_node_name}:plot", handler)
+            if use_pref_counter:
+                with dpg.node_attribute(
+                        tag=tag_node_output02_name,
+                        attribute_type=dpg.mvNode_Attr_Output,
+                ):
+                    dpg.add_text(
+                        tag=tag_node_output02_value_name,
+                        default_value='elapsed time(ms)',
+                    )
         return tag_node_name
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
+        node_id = int(node_id)
         tag_node_name = f"{node_id}:{self.node_tag}"
-        output_value_tag = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01Value"
+        output_value01_tag = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01Value"
+        output_value02_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
         plot_tag = f"{tag_node_name}:plot"
 
-        # convert id to int for per-node storage
-        node_id_int = int(node_id)
-
-        small_w = self._opencv_setting_dict["process_width"]
-        small_h = self._opencv_setting_dict["process_height"]
+        small_window_w = self._opencv_setting_dict["process_width"]
+        small_window_h = self._opencv_setting_dict["process_height"]
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
         connection_info_src = ''
         for connection_info in connection_list:
@@ -180,35 +160,36 @@ class Node(DpgNodeABC):
                 connection_info_src = ':'.join(connection_info_src.split(':')[:2])
 
         frame = node_image_dict.get(connection_info_src, None)
-        self._last_frame[node_id_int] = frame
 
-        # build LUT from drag points
-        points = [[0, 0], [255, 255]]
-        for tag in self._drag_points.get(node_id_int, []):
-            pt = dpg.get_value(tag)
-            pt[0] = max(0, min(255, pt[0]))
-            pt[1] = max(0, min(255, pt[1]))
-            points.append(pt)
-        points = sorted(points, key=lambda p: p[0])
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+        points = [dpg.get_value(tag) for tag in self._drag_points.get(node_id, [])]
+
+        if frame is not None and use_pref_counter:
+            start_time = time.perf_counter()
 
         if frame is not None:
-            result = cv2.LUT(frame, table)
-            texture = convert_cv_to_dpg(result, small_w, small_h)
-            dpg_set_value(output_value_tag, texture)
-            # redraw line
-            self._redraw_line(node_id_int, plot_tag)
-            return result, None
-        return None, None
+            frame = image_process(frame, points)
+
+        if frame is not None and use_pref_counter:
+            elapsed_time = time.perf_counter() - start_time
+            elapsed_time = int(elapsed_time * 1000)
+            dpg_set_value(output_value02_tag,
+                          str(elapsed_time).zfill(4) + 'ms')
+
+        if frame is not None:
+            texture = convert_cv_to_dpg(
+                frame,
+                small_window_w,
+                small_window_h,
+            )
+            dpg_set_value(output_value01_tag, texture)
+
+        return frame, None
 
     def close(self, node_id):
         node_id_int = int(node_id)
         # clean stored points
         self._drag_points.pop(node_id_int, None)
         self._line_series.pop(node_id_int, None)
-        self._last_frame.pop(node_id_int, None)
 
     def get_setting_dict(self, node_id):
         tag_node_name = f"{node_id}:{self.node_tag}"

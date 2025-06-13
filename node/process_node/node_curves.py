@@ -110,6 +110,7 @@ class Node(DpgNodeABC):
                     dpg.add_item_clicked_handler(
                         callback=self._callback_add_point,
                         user_data=(node_id, f"{tag_node_name}:plot"),
+                        parent=handler,
                     )
                     dpg.bind_item_handler_registry(f"{tag_node_name}:plot", handler)
         return tag_node_name

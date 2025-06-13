@@ -23,6 +23,7 @@ class Node(DpgNodeABC):
     # drag point tag list per node id
     _drag_points = {}
     _line_series = {}
+    _last_frame = {}
 
     def __init__(self):
         pass
@@ -47,10 +48,54 @@ class Node(DpgNodeABC):
         self._drag_points.setdefault(node_id, []).append(drag_tag)
         self._redraw_line(node_id, plot_tag)
 
+        frame = self._last_frame.get(node_id)
+        if frame is not None:
+            # update texture immediately with new point
+            points = [[0, 0], [255, 255]]
+            for tag in self._drag_points.get(node_id, []):
+                pt = dpg.get_value(tag)
+                pt[0] = max(0, min(255, pt[0]))
+                pt[1] = max(0, min(255, pt[1]))
+                points.append(pt)
+            points = sorted(points, key=lambda p: p[0])
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+            result = cv2.LUT(frame, table)
+            texture = convert_cv_to_dpg(
+                result,
+                self._opencv_setting_dict["process_width"],
+                self._opencv_setting_dict["process_height"],
+            )
+            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
+            dpg_set_value(output_tag, texture)
+
     def _callback_moved_point(self, sender, app_data, user_data):
         node_id = user_data
         plot_tag = f"{node_id}:{self.node_tag}:plot"
         self._redraw_line(node_id, plot_tag)
+
+        frame = self._last_frame.get(node_id)
+        if frame is not None:
+            # rebuild LUT from current points
+            points = [[0, 0], [255, 255]]
+            for tag in self._drag_points.get(node_id, []):
+                pt = dpg.get_value(tag)
+                pt[0] = max(0, min(255, pt[0]))
+                pt[1] = max(0, min(255, pt[1]))
+                points.append(pt)
+            points = sorted(points, key=lambda p: p[0])
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
+            result = cv2.LUT(frame, table)
+            texture = convert_cv_to_dpg(
+                result,
+                self._opencv_setting_dict["process_width"],
+                self._opencv_setting_dict["process_height"],
+            )
+            output_tag = f"{node_id}:{self.node_tag}:{self.TYPE_IMAGE}:Output01Value"
+            dpg_set_value(output_tag, texture)
 
     def _redraw_line(self, node_id, plot_tag):
         """Rebuild curve line series based on current drag points."""
@@ -132,6 +177,7 @@ class Node(DpgNodeABC):
                 connection_info_src = ':'.join(connection_info_src.split(':')[:2])
 
         frame = node_image_dict.get(connection_info_src, None)
+        self._last_frame[node_id] = frame
 
         # build LUT from drag points
         points = [[0, 0], [255, 255]]

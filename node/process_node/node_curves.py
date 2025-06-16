@@ -10,18 +10,15 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value, convert_cv_to_dpg
 from node.node_abc import DpgNodeABC
 
+
 def image_process(image, points):
-    # build LUT from curves points
-    for pt in points:
-        pt[0] = max(0, min(255, pt[0]))
-        pt[1] = max(0, min(255, pt[1]))
-    points.extend([[0, 0], [255, 255]])
-    points = sorted(points, key=lambda p: p[0])
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
+    # Builds LUT from curves points
+    # Assumes points are pre-sorted and between 0 and 255
+    xs, ys = zip(*points)
     table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
     image = cv2.LUT(image, table)
     return image
+
 
 class Node(DpgNodeABC):
     """Curves adjustment node."""
@@ -31,11 +28,10 @@ class Node(DpgNodeABC):
     node_label = "Curves"
     node_tag = "Curves"
 
-    _opencv_setting_dict = None
+    _min_val = 0
+    _max_val = 255
 
-    # drag point tag list per node id
-    # _drag_points = {}
-    _line_series = {}
+    _opencv_setting_dict = None
 
     def __init__(self):
         pass
@@ -43,45 +39,50 @@ class Node(DpgNodeABC):
     def _get_tag_node_name(self, node_id):
         return f"{node_id}:{self.node_tag}"
 
-    def _get_plot_tag(self, node_id):
+    def _get_tag_plot_name(self, node_id):
         return f"{node_id}:{self.node_tag}:plot"
 
-    def _get_drag_points(self, node_id):
-        plot_tag = self._get_plot_tag(node_id)
-        # drag points should be only children in slot 0
-        point_items = dpg.get_item_children(plot_tag, slot=0)
-        return [dpg.get_value(tag) for tag in point_items]
+    def _get_tag_plot_series_name(self, node_id):
+        return f"{node_id}:{self.node_tag}:line"        
 
-    def _callback_add_point(
-        self, 
-        sender, 
-        app_data, 
-        user_data
-    ):
+    def _get_drag_points(self, node_id):
+        plot_tag = self._get_tag_plot_name(node_id)
+        # Drag points should be only children in slot 0
+        point_items = dpg.get_item_children(plot_tag, slot=0)
+        return sorted([dpg.get_value(tag) for tag in point_items])
+
+    def _callback_add_point(self, sender, app_data, user_data):
         node_id = user_data[0]
-        plot_tag = self._get_plot_tag(node_id)
-        # app_data from the clicked handler is the mouse button, not position.
-        # Use DearPyGui to fetch the mouse position over the plot instead.
-        x, y = dpg.get_plot_mouse_pos()
-        # clip to range 0-255
-        x = max(0, min(255, int(x)))
-        y = max(0, min(255, int(y)))
-        drag_tag = dpg.add_drag_point(
+        static_x = user_data[1]
+        plot_tag = self._get_tag_plot_name(node_id)
+
+        if static_x is not None:
+            # For endpoints only, which initially have x = y
+            y = x = static_x
+        else:
+            # Click must be within plot, so no need to clip to range(?)
+            x, y = dpg.get_plot_mouse_pos()
+
+        dpg.add_drag_point(
             parent=plot_tag,
             label="",
             default_value=[x, y],
+            delayed=True,
             callback=self._callback_moved_point,
-            user_data=node_id,
+            user_data=(node_id, static_x),
         )
         self._redraw_line(node_id)
 
-    def _callback_moved_point(
-        self, 
-        sender, 
-        app_data, 
-        user_data
-    ):
-        node_id = user_data
+    def _callback_moved_point(self, sender, app_data, user_data):
+        node_id = user_data[0]
+        static_x = user_data[1]
+
+        x, y = dpg.get_value(sender)
+        if static_x is not None:
+            x = static_x
+        # Clip y to range (should be 0-255)
+        y = max(self._min_val, min(self._max_val, int(y)))
+        dpg.set_value(sender, [x,y])
         self._redraw_line(node_id)
 
     def _redraw_line(
@@ -89,18 +90,11 @@ class Node(DpgNodeABC):
         node_id
     ):
         # Rebuild curve line series based on current drag points.
-        plot_tag = self._get_plot_tag(node_id)
+        plot_tag = self._get_tag_plot_name(node_id)
         points = self._get_drag_points(node_id)
-        points.append([0, 0])
-        points.append([255, 255])
-        points = sorted(points)
         x, y = zip(*points)
-        series_tag = self._line_series.get(node_id)
-        if series_tag is None:
-            series_tag = dpg.add_line_series(x, y, parent=f"{plot_tag}_y")
-            self._line_series[node_id] = series_tag
-        else:
-            dpg_set_value(series_tag, [x, y])
+        series_tag = self._get_tag_plot_series_name(node_id)
+        dpg.set_value(series_tag, [x, y])
 
     def add_node(
         self, 
@@ -112,6 +106,8 @@ class Node(DpgNodeABC):
     ):
         # tag names
         tag_node_name = self._get_tag_node_name(node_id)
+        tag_plot_name = self._get_tag_plot_name(node_id)
+        tag_plot_series_name = self._get_tag_plot_series_name(node_id)
         tag_node_input_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Input01"
         tag_node_input_value_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Input01Value"
         tag_node_output_name = f"{tag_node_name}:{self.TYPE_IMAGE}:Output01"
@@ -143,14 +139,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # node
+        # Add node
         with dpg.node(
             tag=tag_node_name, 
             parent=parent, 
             label=self.node_label, 
             pos=pos
         ):
-            # input port
+            # Add input port
             with dpg.node_attribute(
                 tag=tag_node_input_name, 
                 attribute_type=dpg.mvNode_Attr_Input
@@ -159,48 +155,65 @@ class Node(DpgNodeABC):
                     tag=tag_node_input_value_name, 
                     default_value="Input BGR image"
                 )
-            # image
+            # Add image
             with dpg.node_attribute(
                 tag=tag_node_output_name, 
                 attribute_type=dpg.mvNode_Attr_Output
             ):
                 dpg.add_image(tag_node_output_value_name)
-            # curve editor
+            # Add curve editor
             with dpg.node_attribute(
                 attribute_type=dpg.mvNode_Attr_Static
             ):
                 with dpg.plot(
                     width=240, 
                     height=180, 
-                    tag=f"{tag_node_name}:plot", 
+                    tag=tag_plot_name, 
                     no_menus=True
                 ):
                     dpg.add_plot_axis(
                         dpg.mvXAxis, 
                         tag=f"{tag_node_name}:plot_x"
                     )
-                    dpg.set_axis_limits(dpg.last_item(), 0, 255)
+                    dpg.set_axis_limits(
+                        dpg.last_item(), 
+                        self._min_val, 
+                        self._max_val
+                    )
                     dpg.add_plot_axis(
                         dpg.mvYAxis, 
                         tag=f"{tag_node_name}:plot_y"
                     )
-                    dpg.set_axis_limits(dpg.last_item(), 0, 255)
-                    self._line_series[node_id] = dpg.add_line_series(
-                        [0, 255],
-                        [0, 255],
+                    dpg.set_axis_limits(
+                        dpg.last_item(), 
+                        self._min_val, 
+                        self._max_val
+                    )
+                    dpg.add_line_series(
+                        x=[self._min_val, self._max_val],
+                        y=[self._min_val, self._max_val],
                         parent=f"{tag_node_name}:plot_y",
-                        tag=f"{tag_node_name}:line",
+                        tag=tag_plot_series_name,
                     )
                     handler = dpg.add_item_handler_registry()
                     dpg.add_item_clicked_handler(
                         callback=self._callback_add_point,
-                        user_data=(node_id, f"{tag_node_name}:plot"),
+                        user_data=(node_id, None),
                         parent=handler,
                     )
-                    dpg.bind_item_handler_registry(
-                        f"{tag_node_name}:plot", 
-                        handler
+                    # Add bottom right point
+                    self._callback_add_point(
+                        sender=None, 
+                        app_data=None,
+                        user_data=(node_id, self._min_val)
                     )
+                    # Add top right point
+                    self._callback_add_point(
+                        sender=None, 
+                        app_data=None,
+                        user_data=(node_id, self._max_val)
+                    )
+                    dpg.bind_item_handler_registry(tag_plot_name, handler)
             # processing time
             if use_pref_counter:
                 with dpg.node_attribute(
@@ -272,8 +285,7 @@ class Node(DpgNodeABC):
 
     def close(self, node_id):
         node_id = int(node_id)
-        # clean stored points
-        self._line_series.pop(node_id, None)
+        # Clean here
 
     def get_setting_dict(self, node_id):
         node_id = int(node_id)
@@ -288,9 +300,9 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        plot_tag = self._get_plot_tag(node_id)
+        plot_tag = self._get_tag_plot_name(node_id)
         for pt in setting_dict.get("points", []):
-            drag_tag = dpg.add_drag_point(
+            dpg.add_drag_point(
                 parent=plot_tag,
                 label="",
                 default_value=pt,

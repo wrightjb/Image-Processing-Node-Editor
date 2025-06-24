@@ -17,6 +17,7 @@ class DpgNodeEditor(object):
 
     _node_editor_tag = 'NodeEditor'
     _node_editor_label = 'Node editor'
+    _window_tag = _node_editor_tag + 'Window'
 
     _node_id = 0
     _node_instance_list = {}
@@ -88,7 +89,7 @@ class DpgNodeEditor(object):
 
         # ノードエディター ウィンドウ生成
         with dpg.window(
-                tag=self._node_editor_tag + 'Window',
+                tag=self._window_tag,
                 label=self._node_editor_label,
                 width=width,
                 height=height,

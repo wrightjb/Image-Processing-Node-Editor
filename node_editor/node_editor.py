@@ -199,7 +199,8 @@ class DpgNodeEditor(object):
                     dpg.mvKey_Delete,
                     callback=self._callback_mv_key_del,
                 )
-
+        dpg.set_primary_window(self._window_tag, True)
+        
     def get_node_list(self):
         return self._node_list
 

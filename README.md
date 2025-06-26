@@ -13,6 +13,12 @@ pip install -r requirements.txt
 python main.py
 ```
 
+To run tests:
+
+```bash
+python -m pytest
+```
+
 # Note
 Since the nodes are added in the order in which the author(Takahashi) needs them,<br>
 There may be a shortage of nodes responsible for basic processing in image processing.<br>

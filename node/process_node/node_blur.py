@@ -12,13 +12,26 @@ from node.node_abc import DpgNodeABC
 from node_editor.util import convert_cv_to_dpg
 
 
-def image_process(image, kernel_size):
-    image = cv2.blur(image, (kernel_size, kernel_size))
+def image_process(image, blur_type, params):
+    if blur_type == 'Gaussian':
+        kx, ky = params.get('kernel', (3, 3))
+        image = cv2.GaussianBlur(image, (kx, ky), 0)
+    elif blur_type == 'Median':
+        k = params.get('ksize', 3)
+        image = cv2.medianBlur(image, k)
+    elif blur_type == 'Bilateral':
+        d = params.get('d', 9)
+        sigma_color = params.get('sigmaColor', 75)
+        sigma_space = params.get('sigmaSpace', 75)
+        image = cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+    else:  # Box
+        kx, ky = params.get('kernel', (3, 3))
+        image = cv2.blur(image, (kx, ky))
     return image
 
 
 class Node(DpgNodeABC):
-    _ver = '0.0.1'
+    _ver = '0.1.0'
 
     node_label = 'Blur'
     node_tag = 'Blur'
@@ -26,10 +39,50 @@ class Node(DpgNodeABC):
     _min_val = 1
     _max_val = 128
 
+    _blur_types = ['Gaussian', 'Median', 'Bilateral', 'Box']
+
     _opencv_setting_dict = None
 
     def __init__(self):
         pass
+
+    def _update_widget_visibility(self, tag_node_name):
+        blur_type_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
+        aniso_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input03Value'
+        param1_tag = tag_node_name + ':' + self.TYPE_INT + ':Input04Value'
+        param2_tag = tag_node_name + ':' + self.TYPE_INT + ':Input05Value'
+        param3_tag = tag_node_name + ':' + self.TYPE_INT + ':Input06Value'
+
+        blur_type = dpg_get_value(blur_type_tag)
+        anisotropic = dpg_get_value(aniso_tag)
+
+        # Hide all parameter widgets first
+        dpg.hide_item(param1_tag)
+        dpg.hide_item(param2_tag)
+        dpg.hide_item(param3_tag)
+
+        if blur_type in ('Gaussian', 'Box'):
+            dpg.show_item(aniso_tag)
+            if anisotropic:
+                dpg.show_item(param1_tag)
+                dpg.show_item(param2_tag)
+                dpg.set_item_label(param1_tag, 'kernel X')
+                dpg.set_item_label(param2_tag, 'kernel Y')
+            else:
+                dpg.show_item(param1_tag)
+                dpg.set_item_label(param1_tag, 'kernel')
+        elif blur_type == 'Median':
+            dpg.hide_item(aniso_tag)
+            dpg.show_item(param1_tag)
+            dpg.set_item_label(param1_tag, 'kernel')
+        else:  # Bilateral
+            dpg.hide_item(aniso_tag)
+            dpg.show_item(param1_tag)
+            dpg.show_item(param2_tag)
+            dpg.show_item(param3_tag)
+            dpg.set_item_label(param1_tag, 'diameter')
+            dpg.set_item_label(param2_tag, 'sigmaColor')
+            dpg.set_item_label(param3_tag, 'sigmaSpace')
 
     def add_node(
         self,
@@ -43,8 +96,16 @@ class Node(DpgNodeABC):
         tag_node_name = str(node_id) + ':' + self.node_tag
         tag_node_input01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01'
         tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01Value'
-        tag_node_input02_name = tag_node_name + ':' + self.TYPE_INT + ':Input02'
-        tag_node_input02_value_name = tag_node_name + ':' + self.TYPE_INT + ':Input02Value'
+        tag_node_input02_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input02'
+        tag_node_input02_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
+        tag_node_input03_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input03'
+        tag_node_input03_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input03Value'
+        tag_node_input04_name = tag_node_name + ':' + self.TYPE_INT + ':Input04'
+        tag_node_input04_value_name = tag_node_name + ':' + self.TYPE_INT + ':Input04Value'
+        tag_node_input05_name = tag_node_name + ':' + self.TYPE_INT + ':Input05'
+        tag_node_input05_value_name = tag_node_name + ':' + self.TYPE_INT + ':Input05Value'
+        tag_node_input06_name = tag_node_name + ':' + self.TYPE_INT + ':Input06'
+        tag_node_input06_value_name = tag_node_name + ':' + self.TYPE_INT + ':Input06Value'
         tag_node_output01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01'
         tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
         tag_node_output02_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02'
@@ -55,6 +116,9 @@ class Node(DpgNodeABC):
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
+
+        # ensure widget visibility matches current parameters
+        self._update_widget_visibility(tag_node_name)
 
         # 初期化用黒画像
         black_image = np.zeros((small_window_w, small_window_h, 3))
@@ -96,20 +160,80 @@ class Node(DpgNodeABC):
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # カーネルサイズ
+
+            def blur_type_changed(sender, app_data, user_data):
+                self._update_widget_visibility(user_data)
+
+            def aniso_changed(sender, app_data, user_data):
+                self._update_widget_visibility(user_data)
+
+            # Blur type
             with dpg.node_attribute(
                     tag=tag_node_input02_name,
+                    attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_combo(
+                    self._blur_types,
+                    default_value=self._blur_types[0],
+                    width=small_window_w - 40,
+                    label="type",
+                    tag=tag_node_input02_value_name,
+                    callback=blur_type_changed,
+                    user_data=tag_node_name,
+                )
+            # Isotropic / anisotropic
+            with dpg.node_attribute(
+                    tag=tag_node_input03_name,
+                    attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='anisotropic',
+                    tag=tag_node_input03_value_name,
+                    default_value=False,
+                    callback=aniso_changed,
+                    user_data=tag_node_name,
+                )
+            # Parameter1
+            with dpg.node_attribute(
+                    tag=tag_node_input04_name,
                     attribute_type=dpg.mvNode_Attr_Input,
             ):
                 dpg.add_slider_int(
-                    tag=tag_node_input02_value_name,
+                    tag=tag_node_input04_value_name,
                     label="kernel",
                     width=small_window_w - 80,
                     default_value=5,
                     min_value=self._min_val,
                     max_value=self._max_val,
-                    callback=None,
                 )
+            # Parameter2
+            with dpg.node_attribute(
+                    tag=tag_node_input05_name,
+                    attribute_type=dpg.mvNode_Attr_Input,
+            ):
+                dpg.add_slider_int(
+                    tag=tag_node_input05_value_name,
+                    label="",
+                    width=small_window_w - 80,
+                    default_value=5,
+                    min_value=self._min_val,
+                    max_value=self._max_val,
+                )
+            # Parameter3
+            with dpg.node_attribute(
+                    tag=tag_node_input06_name,
+                    attribute_type=dpg.mvNode_Attr_Input,
+            ):
+                dpg.add_slider_int(
+                    tag=tag_node_input06_value_name,
+                    label="",
+                    width=small_window_w - 80,
+                    default_value=5,
+                    min_value=self._min_val,
+                    max_value=self._max_val,
+                )
+            # configure visibility on start
+            self._update_widget_visibility(tag_node_name)
             # 処理時間
             if use_pref_counter:
                 with dpg.node_attribute(
@@ -131,7 +255,11 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_INT + ':Input02Value'
+        type_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
+        aniso_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input03Value'
+        param1_tag = tag_node_name + ':' + self.TYPE_INT + ':Input04Value'
+        param2_tag = tag_node_name + ':' + self.TYPE_INT + ':Input05Value'
+        param3_tag = tag_node_name + ':' + self.TYPE_INT + ':Input06Value'
         output_value01_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
         output_value02_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
 
@@ -161,15 +289,53 @@ class Node(DpgNodeABC):
         # 画像取得
         frame = node_image_dict.get(connection_info_src, None)
 
-        # カーネルサイズ
-        kernel_size = int(dpg_get_value(input_value02_tag))
+        blur_type = dpg_get_value(type_tag)
+        anisotropic = dpg_get_value(aniso_tag)
+        p1 = int(dpg_get_value(param1_tag))
+        p2 = int(dpg_get_value(param2_tag))
+        p3 = int(dpg_get_value(param3_tag))
+
+        params = {}
+        if blur_type == 'Gaussian':
+            if anisotropic:
+                kx = max(1, p1)
+                ky = max(1, p2)
+            else:
+                kx = ky = max(1, p1)
+            if kx % 2 == 0:
+                kx += 1
+                dpg_set_value(param1_tag, kx)
+            if ky % 2 == 0:
+                if anisotropic:
+                    ky += 1
+                    dpg_set_value(param2_tag, ky)
+                else:
+                    ky = kx
+            params['kernel'] = (kx, ky)
+        elif blur_type == 'Median':
+            k = max(1, p1)
+            if k % 2 == 0:
+                k += 1
+                dpg_set_value(param1_tag, k)
+            params['ksize'] = k
+        elif blur_type == 'Bilateral':
+            params['d'] = max(1, p1)
+            params['sigmaColor'] = max(1, p2)
+            params['sigmaSpace'] = max(1, p3)
+        else:  # Box
+            if anisotropic:
+                kx = max(1, p1)
+                ky = max(1, p2)
+            else:
+                kx = ky = max(1, p1)
+            params['kernel'] = (kx, ky)
 
         # 計測開始
         if frame is not None and use_pref_counter:
             start_time = time.perf_counter()
 
         if frame is not None:
-            frame = image_process(frame, kernel_size)
+            frame = image_process(frame, blur_type, params)
 
         # 計測終了
         if frame is not None and use_pref_counter:
@@ -194,23 +360,43 @@ class Node(DpgNodeABC):
 
     def get_setting_dict(self, node_id):
         tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_INT + ':Input02Value'
+        type_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
+        aniso_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input03Value'
+        param1_tag = tag_node_name + ':' + self.TYPE_INT + ':Input04Value'
+        param2_tag = tag_node_name + ':' + self.TYPE_INT + ':Input05Value'
+        param3_tag = tag_node_name + ':' + self.TYPE_INT + ':Input06Value'
 
-        kernel_size = dpg_get_value(input_value02_tag)
+        blur_type = dpg_get_value(type_tag)
+        anisotropic = dpg_get_value(aniso_tag)
+        p1 = dpg_get_value(param1_tag)
+        p2 = dpg_get_value(param2_tag)
+        p3 = dpg_get_value(param3_tag)
 
         pos = dpg.get_item_pos(tag_node_name)
 
         setting_dict = {}
         setting_dict['ver'] = self._ver
         setting_dict['pos'] = pos
-        setting_dict[input_value02_tag] = kernel_size
+        setting_dict[type_tag] = blur_type
+        setting_dict[aniso_tag] = anisotropic
+        setting_dict[param1_tag] = p1
+        setting_dict[param2_tag] = p2
+        setting_dict[param3_tag] = p3
 
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
         tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_INT + ':Input02Value'
+        type_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
+        aniso_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input03Value'
+        param1_tag = tag_node_name + ':' + self.TYPE_INT + ':Input04Value'
+        param2_tag = tag_node_name + ':' + self.TYPE_INT + ':Input05Value'
+        param3_tag = tag_node_name + ':' + self.TYPE_INT + ':Input06Value'
 
-        kernel_size = int(setting_dict[input_value02_tag])
+        dpg_set_value(type_tag, setting_dict.get(type_tag, self._blur_types[0]))
+        dpg_set_value(aniso_tag, setting_dict.get(aniso_tag, False))
+        dpg_set_value(param1_tag, int(setting_dict.get(param1_tag, 5)))
+        dpg_set_value(param2_tag, int(setting_dict.get(param2_tag, 5)))
+        dpg_set_value(param3_tag, int(setting_dict.get(param3_tag, 5)))
 
-        dpg_set_value(input_value02_tag, kernel_size)
+        self._update_widget_visibility(tag_node_name)

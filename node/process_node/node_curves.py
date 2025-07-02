@@ -295,7 +295,7 @@ class Node(DpgNodeABC):
         setting_dict = {
             "ver": self._ver,
             "pos": pos,
-            "points": point_list,
+            "points": points,
         }
         return setting_dict
 

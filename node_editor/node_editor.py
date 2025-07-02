@@ -168,29 +168,6 @@ class DpgNodeEditor(object):
             ):
                 pass
 
-            # インポート制限事項ポップアップ
-            with dpg.window(
-                    label='Delete Files',
-                    modal=True,
-                    show=False,
-                    id='modal_file_import',
-                    no_title_bar=True,
-                    pos=[52, 52],
-            ):
-                dpg.add_text(
-                    'Sorry. In the current implementation, \nfile import works only before adding a node.',
-                )
-                dpg.add_separator()
-                with dpg.group(horizontal=True):
-                    dpg.add_button(
-                        label='OK',
-                        width=375,
-                        callback=lambda: dpg.configure_item(
-                            'modal_file_import',
-                            show=False,
-                        ),
-                    )
-
             # マウス・キーボードコールバック登録
             with dpg.handler_registry():
                 dpg.add_mouse_click_handler(
@@ -398,9 +375,9 @@ class DpgNodeEditor(object):
         dpg.show_item('file_import')
 
     def _callback_file_import(self, sender, data):
+        setting_dict = None
         if data['file_name'] != '.':
             # JSONファイルから読み込み
-            setting_dict = None
             with open(data['file_path_name']) as fp:
                 setting_dict = json.load(fp)
 

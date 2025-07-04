@@ -173,11 +173,11 @@ def main():
     menu_dict = OrderedDict({
         'InputNode': 'input_node',
         'ProcessNode': 'process_node',
-        'DeepLearningNode': 'deep_learning_node',
+        # 'DeepLearningNode': 'deep_learning_node',
         'AnalysisNode': 'analysis_node',
         'DrawNode': 'draw_node',
         'OtherNode': 'other_node',
-        'PreviewReleaseNode': 'preview_release_node'
+        # 'PreviewReleaseNode': 'preview_release_node'
     })
     # print
     node_editor = DpgNodeEditor(

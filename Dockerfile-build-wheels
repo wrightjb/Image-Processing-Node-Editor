@@ -1,0 +1,30 @@
+FROM python:3.13.2-alpine3.21@sha256:323a717dc4a010fee21e3f1aac738ee10bb485de4e7593ce242b36ee48d6b352
+
+# Install system build dependencies and GUI libraries (no X server required)
+RUN apk add --no-cache git \
+    build-base \
+    cmake \
+    git \
+    glfw-dev \
+    mesa-dev \
+    glu-dev \
+    freetype-dev \
+    libx11-dev \
+    libxext-dev \
+    libxrender-dev \
+    libxrandr-dev \
+    libxcursor-dev \
+    libxi-dev \
+    libxinerama-dev \
+    linux-headers \
+    python3-dev
+
+WORKDIR /wheels
+
+# 1. Build DPG from GitHub into wheel
+RUN pip wheel git+https://github.com/hoffstadt/DearPyGui.git -w .
+
+# 2. Build opencv-python and pytest into wheels
+RUN pip wheel opencv-contrib-python>=4.5.5.64 pytest -w .
+
+# docker cp <container-id>:/wheels ./wheels

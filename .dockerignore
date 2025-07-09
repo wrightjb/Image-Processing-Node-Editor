@@ -1,5 +1,22 @@
 *
-!**/*.py
+
+!*.py
+setup.py
 !requirements.txt
 !run_tests.sh
-!wheels
+
+# List needed directories
+!wheels/
+
+# Only want .py files from these
+!node/*.py
+!node_editor/*.py
+!tests/*.py
+!node/analysis_node/*.py
+!node/deep_learning_node/*.py
+!node/draw_node/*.py
+!node/input_node/*.py
+!node/other_node/*.py
+!node/preview_release_node/*.py
+!node/process_node/*.py
+!node/draw_node/draw_util/*.py

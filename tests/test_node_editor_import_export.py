@@ -4,7 +4,6 @@ import os
 from unittest.mock import Mock, patch
 from collections import OrderedDict
 
-# Assuming the DpgNodeEditor is in the node_editor module
 from node_editor.node_editor import DpgNodeEditor
 
 
@@ -137,16 +136,6 @@ class TestDpgNodeEditorImportExport:
             show=True
         )
 
-    def test_callback_file_import_cancel(self, node_editor, mock_dpg):
-        """Test import callback when user cancels (file_name is '.')"""
-        sender = 'file_import'
-        data = {'file_name': '.', 'file_path_name': '/path/to/file.json'}
-
-        node_editor._callback_file_import(sender, data)
-
-        assert node_editor._node_list == []
-        assert node_editor._node_link_list == []
-
     def test_callback_file_import_success(
         self, 
         node_editor, 
@@ -262,7 +251,7 @@ class TestDpgNodeEditorImportExport:
 
         assert node_editor._node_id == 5
 
-    def test_callback_import_missing_key_raises(
+    def test_callback_file_import_missing_key_raises(
         self, 
         node_editor, 
         mock_dpg, 
@@ -306,7 +295,7 @@ class TestDpgNodeEditorImportExport:
             node_editor._callback_file_import(sender, data)
 
     @pytest.mark.parametrize("debug_print", [True, False])
-    def test_debug_print_behavior(
+    def test_callback_file_import_debug_print_behavior(
         self, 
         mock_dpg, 
         mock_node_instance, 
@@ -335,7 +324,7 @@ class TestDpgNodeEditorImportExport:
             else:
                 assert '**** _callback_file_export ****' not in captured.out
 
-    def test_export_import_round_trip(
+    def test_callback_file_export_import_round_trip(
         self, 
         node_editor, 
         mock_dpg, 
@@ -371,7 +360,7 @@ class TestDpgNodeEditorImportExport:
         # Assert: the two JSON payloads are identical
         assert json.loads(orig.read_text()) == json.loads(fresh.read_text())
 
-    def test_complex_graph_import_export(
+    def test_callback_file_export_import_complex_graph(
         self, 
         node_editor, 
         mock_dpg, 

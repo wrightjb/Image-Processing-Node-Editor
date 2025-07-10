@@ -117,24 +117,18 @@ class TestDpgNodeEditorImportExport:
         node_editor._callback_file_export_menu()
         mock_dpg.show_item.assert_called_once_with('file_export')
 
-    def test_callback_file_import_menu_empty_editor(
+    @pytest.mark.parametrize("node_id", [0,1,10,100])
+    def test_callback_file_import_menu(
         self, 
         node_editor, 
-        mock_dpg
+        mock_dpg,
+        node_id
     ):
-        """Test file import menu when editor empty (should show file dialog)"""
-        node_editor._node_id = 0
+        """Test file import menu when editor empty (should show file
+           dialog)"""
+        node_editor._node_id = node_id
         node_editor._callback_file_import_menu()
         mock_dpg.show_item.assert_called_once_with('file_import')
-
-    def test_callback_file_import_menu_with_nodes(self, node_editor, mock_dpg):
-        """Test file import menu when editor has nodes (should show warning)"""
-        node_editor._node_id = 1
-        node_editor._callback_file_import_menu()
-        mock_dpg.configure_item.assert_called_once_with(
-            'modal_file_import', 
-            show=True
-        )
 
     def test_callback_file_import_success(
         self, 
@@ -249,7 +243,13 @@ class TestDpgNodeEditorImportExport:
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
         node_editor._callback_file_import(sender, data)
 
-        assert node_editor._node_id == 5
+        # grab all the new IDs you handed out
+        call_ids = [
+            call.args[1] for call in mock_node_instance.add_node.call_args_list
+            ]
+        highest_assigned = max(call_ids)
+
+        assert node_editor._node_id >= highest_assigned
 
     def test_callback_file_import_missing_key_raises(
         self, 
@@ -257,7 +257,8 @@ class TestDpgNodeEditorImportExport:
         mock_dpg, 
         tmp_path
     ):
-        """Test that importing JSON missing mandatory keys raises KeyError"""
+        """Test that importing JSON missing mandatory keys raises 
+           KeyError"""
         # Create JSON missing 'node_list'
         bad = {'link_list': []}
         path = tmp_path / 'bad.json'
@@ -303,7 +304,8 @@ class TestDpgNodeEditorImportExport:
         capsys, 
         tmp_path
     ):
-        """Test that debug print works correctly when enabled/disabled"""
+        """Test that debug print works correctly when
+           enabled/disabled"""
         with patch('node_editor.node_editor.glob') as mock_glob, \
              patch('node_editor.node_editor.import_module') as mock_import:
             mock_glob.return_value = ['node/test_node/test_node.py']
@@ -421,3 +423,73 @@ class TestDpgNodeEditorImportExport:
         assert set(imported_editor._node_list) == set(original_nodes)
         assert (set(tuple(l) for l in imported_editor._node_link_list) 
                 == set(tuple(l) for l in original_links))
+
+    def test_callback_file_import_after_existing_nodes_non_conflicting(
+        self,
+        node_editor,
+        mock_dpg,
+        mock_node_instance,
+        tmp_path
+    ):
+        """Imported nodes must be renumbered so they don’t clash with
+           existing IDs."""
+        # Arrange: editor already has nodes 1 and 2
+        node_editor._node_list = ['1:test_node', '2:test_node']
+        node_editor._node_link_list = [['1:test_node:out', '2:test_node:in']]
+        node_editor._node_id = 2
+
+        # import JSON with the same IDs (1 & 2), so they must be remapped
+        imported = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': [['1:test_node:out', '2:test_node:in']],
+            '1:test_node': {
+                'id': '1', 'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [10, 20]}
+            },
+            '2:test_node': {
+                'id': '2', 'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [30, 40]}
+            }
+        }
+        path = tmp_path / "after.json"
+        path.write_text(json.dumps(imported))
+        data = {'file_name': path.name, 'file_path_name': str(path)}
+
+        # Act
+        node_editor._callback_file_import(None, data)
+
+        # Assert: we still have exactly 4 nodes total
+        assert len(node_editor._node_list) == 4
+
+        # old IDs remain present
+        assert set(node_editor._node_list).issuperset(['1:test_node', '2:test_node'])
+
+        # extract new IDs and verify they don’t collide and are unique
+        existing_ids = {1, 2}
+        all_ids = [int(n.split(':')[0]) for n in node_editor._node_list]
+        new_ids = [i for i in all_ids if i not in existing_ids]
+        assert len(new_ids) == 2
+        assert len(set(new_ids)) == 2
+        assert all(i not in existing_ids for i in new_ids)
+
+        # ensure _node_id has advanced at least to the max assigned ID
+        assert node_editor._node_id >= max(all_ids)
+
+        # ensure add_node was called with exactly those two new IDs
+        call_ids = [call.args[1] for call in mock_node_instance.add_node.call_args_list]
+        assert set(call_ids) == set(new_ids)
+
+        # grab all links that connect two imported IDs
+        imported_links = [
+            link for link in node_editor._node_link_list
+            if int(link[0].split(':')[0]) in new_ids
+            and int(link[1].split(':')[0]) in new_ids
+        ]
+
+        # there should be exactly one of those
+        assert len(imported_links) == 1
+
+        # and it should connect the two imported IDs
+        src_id, dst_id = [int(x.split(':')[0]) for x in imported_links[0]]
+        assert {src_id, dst_id} == set(new_ids)
+

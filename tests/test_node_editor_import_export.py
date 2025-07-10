@@ -54,7 +54,7 @@ class TestDpgNodeEditorImportExport:
             editor = DpgNodeEditor(use_debug_print=False)
             return editor
 
-    def test_callback_file_export_empty_editor(
+    def test_export_empty_editor(
         self, 
         node_editor, 
         mock_dpg, 
@@ -75,7 +75,7 @@ class TestDpgNodeEditorImportExport:
         assert exported_data['node_list'] == []
         assert exported_data['link_list'] == []
 
-    def test_callback_file_export_with_nodes(
+    def test_export_with_nodes(
         self, 
         node_editor, 
         mock_dpg, 
@@ -112,13 +112,13 @@ class TestDpgNodeEditorImportExport:
         
         assert mock_node_instance.get_setting_dict.call_count == 2
 
-    def test_callback_file_export_menu(self, node_editor, mock_dpg):
+    def test_export_menu(self, node_editor, mock_dpg):
         """Test the file export menu callback"""
         node_editor._callback_file_export_menu()
         mock_dpg.show_item.assert_called_once_with('file_export')
 
     @pytest.mark.parametrize("node_id", [0,1,10,100])
-    def test_callback_file_import_menu(
+    def test_import_menu(
         self, 
         node_editor, 
         mock_dpg,
@@ -130,7 +130,7 @@ class TestDpgNodeEditorImportExport:
         node_editor._callback_file_import_menu()
         mock_dpg.show_item.assert_called_once_with('file_import')
 
-    def test_callback_file_import_success(
+    def test_import_success(
         self, 
         node_editor, 
         mock_dpg, 
@@ -182,7 +182,7 @@ class TestDpgNodeEditorImportExport:
             parent=node_editor._node_editor_tag
         )
 
-    def test_callback_file_import_version_warning(
+    def test_import_version_warning(
         self, 
         node_editor, 
         mock_dpg, 
@@ -217,7 +217,7 @@ class TestDpgNodeEditorImportExport:
         assert 'Load Version ->1.0.0' in captured.out
         assert 'Code Version ->2.0.0' in captured.out
 
-    def test_callback_file_import_updates_node_id(
+    def test_import_updates_node_id(
         self, 
         node_editor, 
         mock_dpg, 
@@ -251,12 +251,7 @@ class TestDpgNodeEditorImportExport:
 
         assert node_editor._node_id >= highest_assigned
 
-    def test_callback_file_import_missing_key_raises(
-        self, 
-        node_editor, 
-        mock_dpg, 
-        tmp_path
-    ):
+    def test_import_missing_key_raises(self, node_editor, mock_dpg, tmp_path):
         """Test that importing JSON missing mandatory keys raises 
            KeyError"""
         # Create JSON missing 'node_list'
@@ -269,12 +264,7 @@ class TestDpgNodeEditorImportExport:
                 {'file_name': path.name, 'file_path_name': str(path)}
             )
 
-    def test_callback_file_import_invalid_json(
-        self, 
-        node_editor, 
-        mock_dpg, 
-        tmp_path
-    ):
+    def test_import_invalid_json_raises(self, node_editor, mock_dpg, tmp_path):
         """Test import with invalid JSON file"""
         temp_path = tmp_path / "invalid.json"
         with open(temp_path, 'w') as f:
@@ -285,7 +275,7 @@ class TestDpgNodeEditorImportExport:
         with pytest.raises(json.JSONDecodeError):
             node_editor._callback_file_import(sender, data)
 
-    def test_callback_file_import_missing_file(self, node_editor, mock_dpg):
+    def test_import_missing_file_raises(self, node_editor, mock_dpg):
         """Test import with non-existent file"""
         sender = 'file_import'
         data = {
@@ -296,7 +286,7 @@ class TestDpgNodeEditorImportExport:
             node_editor._callback_file_import(sender, data)
 
     @pytest.mark.parametrize("debug_print", [True, False])
-    def test_callback_file_import_debug_print_behavior(
+    def test_import_debug_print_behavior(
         self, 
         mock_dpg, 
         mock_node_instance, 
@@ -326,7 +316,7 @@ class TestDpgNodeEditorImportExport:
             else:
                 assert '**** _callback_file_export ****' not in captured.out
 
-    def test_callback_file_export_import_round_trip(
+    def test_export_import_round_trip(
         self, 
         node_editor, 
         mock_dpg, 
@@ -362,7 +352,7 @@ class TestDpgNodeEditorImportExport:
         # Assert: the two JSON payloads are identical
         assert json.loads(orig.read_text()) == json.loads(fresh.read_text())
 
-    def test_callback_file_export_import_complex_graph(
+    def test_export_import_complex_graph(
         self, 
         node_editor, 
         mock_dpg, 
@@ -424,7 +414,7 @@ class TestDpgNodeEditorImportExport:
         assert (set(tuple(l) for l in imported_editor._node_link_list) 
                 == set(tuple(l) for l in original_links))
 
-    def test_callback_file_import_after_existing_nodes_non_conflicting(
+    def test_import_after_existing_nodes_non_conflicting(
         self,
         node_editor,
         mock_dpg,

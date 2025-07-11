@@ -663,7 +663,7 @@ To use it with Image-Processing-Node-Editor, follow the installation instruction
 # ToDo
 - [ ] Investigating the problem that the graph part of the RGB Histgram node is always in the foreground
 - [ ] Investigating the problem that the connection line remains when deleting a node that connects multiple nodes
-- [ ] Improved behavior that the import feature can only be used before adding a node
+- [x] Import feature now works even after nodes have been added
   
 # Author
 Kazuhito Takahashi(https://twitter.com/KzhtTkhs)

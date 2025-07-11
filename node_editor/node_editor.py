@@ -168,29 +168,6 @@ class DpgNodeEditor(object):
             ):
                 pass
 
-            # インポート制限事項ポップアップ
-            with dpg.window(
-                    label='Delete Files',
-                    modal=True,
-                    show=False,
-                    id='modal_file_import',
-                    no_title_bar=True,
-                    pos=[52, 52],
-            ):
-                dpg.add_text(
-                    'Sorry. In the current implementation, \nfile import works only before adding a node.',
-                )
-                dpg.add_separator()
-                with dpg.group(horizontal=True):
-                    dpg.add_button(
-                        label='OK',
-                        width=375,
-                        callback=lambda: dpg.configure_item(
-                            'modal_file_import',
-                            show=False,
-                        ),
-                    )
-
             # マウス・キーボードコールバック登録
             with dpg.handler_registry():
                 dpg.add_mouse_click_handler(
@@ -395,30 +372,28 @@ class DpgNodeEditor(object):
         dpg.show_item('file_export')
 
     def _callback_file_import_menu(self):
-        if self._node_id == 0:
-            dpg.show_item('file_import')
-        else:
-            dpg.configure_item('modal_file_import', show=True)
+        dpg.show_item('file_import')
 
     def _callback_file_import(self, sender, data):
+        setting_dict = None
         if data['file_name'] != '.':
             # JSONファイルから読み込み
-            setting_dict = None
             with open(data['file_path_name']) as fp:
                 setting_dict = json.load(fp)
 
+            id_map = {}
+            new_node_list = []
+            new_link_list = []
+
             # 各ノードの設定値復元
             for node_id_name in setting_dict['node_list']:
-                node_id, node_name = node_id_name.split(':')
+                old_id, node_name = node_id_name.split(':')
                 node = self._node_instance_list[node_name]
 
-                node_id = int(node_id)
-
-                if node_id > self._node_id:
-                    self._node_id = node_id
-
-                # ノードインスタンス取得
-                node = self._node_instance_list[node_name]
+                # 新しいIDを割り当て
+                self._node_id += 1
+                new_id = self._node_id
+                id_map[old_id] = str(new_id)
 
                 # バージョン警告
                 ver = setting_dict[node_id_name]['setting']['ver']
@@ -434,28 +409,53 @@ class DpgNodeEditor(object):
                 pos = setting_dict[node_id_name]['setting']['pos']
                 node.add_node(
                     self._node_editor_tag,
-                    node_id,
+                    new_id,
                     pos=pos,
                     opencv_setting_dict=self._opencv_setting_dict,
                 )
 
+                # 設定値のキーを変換
+                original_setting = setting_dict[node_id_name]['setting']
+                new_setting = {}
+                for key, value in original_setting.items():
+                    if key.startswith(str(old_id) + ':' + node_name):
+                        new_key = key.replace(
+                            str(old_id) + ':' + node_name,
+                            str(new_id) + ':' + node_name,
+                            1,
+                        )
+                        new_setting[new_key] = value
+                    else:
+                        new_setting[key] = value
+
                 # 設定値復元
                 node.set_setting_dict(
-                    node_id,
-                    setting_dict[node_id_name]['setting'],
+                    new_id,
+                    new_setting,
                 )
 
-            # ノードリスト、接続リスト復元
-            self._node_list = setting_dict['node_list']
-            self._node_link_list = setting_dict['link_list']
+                new_node_list.append(str(new_id) + ':' + node_name)
 
-            # ノード接続復元
-            for node_link in self._node_link_list:
-                dpg.add_node_link(
-                    node_link[0],
-                    node_link[1],
-                    parent=self._node_editor_tag,
-                )
+            # 接続情報復元
+            for link_info in setting_dict['link_list']:
+                source = link_info[0].split(':')
+                destination = link_info[1].split(':')
+
+                if source[0] in id_map and destination[0] in id_map:
+                    source[0] = id_map[source[0]]
+                    destination[0] = id_map[destination[0]]
+                    new_source = ':'.join(source)
+                    new_destination = ':'.join(destination)
+                    dpg.add_node_link(
+                        new_source,
+                        new_destination,
+                        parent=self._node_editor_tag,
+                    )
+                    new_link_list.append([new_source, new_destination])
+
+            # ノードリスト、接続リスト更新
+            self._node_list.extend(new_node_list)
+            self._node_link_list.extend(new_link_list)
 
             # ノードグラフ再生成
             self._node_connection_dict = self._sort_node_graph(

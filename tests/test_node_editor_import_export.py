@@ -482,4 +482,3 @@ class TestDpgNodeEditorImportExport:
         # and it should connect the two imported IDs
         src_id, dst_id = [int(x.split(':')[0]) for x in imported_links[0]]
         assert {src_id, dst_id} == set(new_ids)
-

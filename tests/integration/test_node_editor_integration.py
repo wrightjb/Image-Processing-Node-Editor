@@ -92,12 +92,12 @@ class TestNodeEditorIntegration:
             self.advance_frames()
 
             # Add image node
-            editor._callback_add_node(None, None, 'Image')
+            editor.cntrl_add_node(None, None, 'Image')
             image_node_id = '1:Image'
             
             # Add blur node
             editor._last_pos = [self.node_width, self.node_height] # non-overlap for debug
-            editor._callback_add_node(None, None, 'Blur')
+            editor.cntrl_add_node(None, None, 'Blur')
             blur_node_id = '2:Blur'
 
             # Set image path in image node
@@ -118,7 +118,7 @@ class TestNodeEditorIntegration:
             blur_input_id = dpg.get_alias_id(blur_input_tag)
             
             # Use editor's callback to link nodes
-            editor._callback_link('NodeEditor', [image_output_id, blur_input_id])
+            editor.cntrl_link('NodeEditor', [image_output_id, blur_input_id])
 
             # Create node dictionaries for update
             node_image_dict = {}
@@ -197,12 +197,12 @@ class TestNodeEditorIntegration:
             self.advance_frames()
 
             # Add image node
-            editor._callback_add_node(None, None, 'Image')
+            editor.cntrl_add_node(None, None, 'Image')
             image_node_id = '1:Image'
             
             # Add contrast node
             editor._last_pos = [self.node_width, self.node_height] # non-overlap for debug
-            editor._callback_add_node(None, None, 'Contrast')
+            editor.cntrl_add_node(None, None, 'Contrast')
             contrast_node_id = '2:Contrast'
 
             # Set image path in image node
@@ -223,7 +223,7 @@ class TestNodeEditorIntegration:
             contrast_input_id = dpg.get_alias_id(contrast_input_tag)
             
             # Use editor's callback to link nodes
-            editor._callback_link('NodeEditor', [image_output_id, contrast_input_id])
+            editor.cntrl_link('NodeEditor', [image_output_id, contrast_input_id])
             
             # Create node dictionaries for update
             node_image_dict = {}
@@ -302,17 +302,17 @@ class TestNodeEditorIntegration:
             self.advance_frames()
 
             # Add image node
-            editor._callback_add_node(None, None, 'Image')
+            editor.cntrl_add_node(None, None, 'Image')
             image_node_id = '1:Image'
             
             # Add blur node
             editor._last_pos = [self.node_width, self.node_height] # non-overlap for debug
-            editor._callback_add_node(None, None, 'Blur')
+            editor.cntrl_add_node(None, None, 'Blur')
             blur_node_id = '2:Blur'
             
             # Add contrast node
             editor._last_pos = [self.node_width*2, self.node_height*2]
-            editor._callback_add_node(None, None, 'Contrast')
+            editor.cntrl_add_node(None, None, 'Contrast')
             contrast_node_id = '3:Contrast'
 
             # Set image path in image node
@@ -342,10 +342,10 @@ class TestNodeEditorIntegration:
             contrast_input_id = dpg.get_alias_id(contrast_input_tag)
             
             # Connect image -> blur
-            editor._callback_link('NodeEditor', [image_output_id, blur_input_id])
+            editor.cntrl_link('NodeEditor', [image_output_id, blur_input_id])
             
             # Connect blur -> contrast
-            editor._callback_link('NodeEditor', [blur_output_id, contrast_input_id])
+            editor.cntrl_link('NodeEditor', [blur_output_id, contrast_input_id])
 
             # Create node dictionaries for update
             node_image_dict = {}

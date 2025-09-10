@@ -1,0 +1,101 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:Blur",
+        "3:Curves",
+        "4:ResultImageLarge"
+    ],
+    "link_list": [
+        [
+            "1:Image:Image:Output01",
+            "2:Blur:Image:Input01"
+        ],
+        [
+            "2:Blur:Image:Output01",
+            "3:Curves:Image:Input01"
+        ],
+        [
+            "3:Curves:Image:Output01",
+            "4:ResultImageLarge:Image:Input01"
+        ]
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                0,
+                0
+            ]
+        }
+    },
+    "2:Blur": {
+        "id": "2",
+        "name": "Blur",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                304,
+                0
+            ],
+            "2:Blur:Int:Input02Value": 92
+        }
+    },
+    "3:Curves": {
+        "id": "3",
+        "name": "Curves",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                595,
+                -7
+            ],
+            "points": [
+                [
+                    0.0,
+                    0.0
+                ],
+                [
+                    33.08108139038086,
+                    238.4892120361328
+                ],
+                [
+                    81.32432556152344,
+                    38.52518081665039
+                ],
+                [
+                    119.9189224243164,
+                    212.80575561523438
+                ],
+                [
+                    162.64865112304688,
+                    33.021583557128906
+                ],
+                [
+                    187.45945739746094,
+                    243.99281311035156
+                ],
+                [
+                    220.54054260253906,
+                    38.52518081665039
+                ],
+                [
+                    255.0,
+                    255.0
+                ]
+            ]
+        }
+    },
+    "4:ResultImageLarge": {
+        "id": "4",
+        "name": "ResultImageLarge",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                908,
+                2
+            ]
+        }
+    }
+}

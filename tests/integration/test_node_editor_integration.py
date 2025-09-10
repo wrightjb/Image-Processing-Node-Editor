@@ -12,6 +12,8 @@ from collections import OrderedDict
 
 from node_editor.node_editor import DpgNodeEditor
 from main import update_node_info
+from node.process_node.node_blur import image_process as blur_image_process
+from node.process_node.node_contrast import image_process as contrast_image_process
 
 
 class TestNodeEditorIntegration:
@@ -148,6 +150,11 @@ class TestNodeEditorIntegration:
             # Check that blur result has expected shape
             assert blur_result.shape == test_image.shape, "Blur should preserve image shape"
 
+            # Check that blur result matches direct processing
+            expected_blur_result = blur_image_process(test_image, kernel_size)
+            np.testing.assert_allclose(blur_result, expected_blur_result, atol=1,
+                                       err_msg="Blur node output differs from direct processing")
+
             if debug_test:
                 self.advance_frames()
                 breakpoint()
@@ -244,6 +251,11 @@ class TestNodeEditorIntegration:
             # Check that contrast result has expected shape
             assert contrast_result.shape == test_image.shape, "Contrast should preserve image shape"
 
+            # Check that contrast result matches direct processing
+            expected_contrast_result = contrast_image_process(test_image, contrast_alpha)
+            np.testing.assert_allclose(contrast_result, expected_contrast_result, atol=1,
+                                       err_msg="Contrast node output differs from direct processing")
+
             if debug_test:
                 self.advance_frames()
                 breakpoint()
@@ -255,8 +267,8 @@ class TestNodeEditorIntegration:
 
     @pytest.mark.parametrize("kernel_size,contrast_alpha", [
         (3, 0.5),
-        (5, 1.0),
-        (7, 2.0)
+        (7, 1.0),
+        (15, 2.0)
     ])
     def test_image_blur_contrast_pipeline(self, kernel_size, contrast_alpha, debug_test):
         """Test image input -> blur -> contrast processing pipeline."""
@@ -357,6 +369,12 @@ class TestNodeEditorIntegration:
             
             # Check that processing chain works
             assert contrast_result.shape == test_image.shape, "Final result should preserve image shape"
+
+            # Check that final result matches direct processing chain
+            expected_blur_result = blur_image_process(test_image, kernel_size)
+            expected_contrast_result = contrast_image_process(expected_blur_result, contrast_alpha)
+            np.testing.assert_allclose(contrast_result, expected_contrast_result, atol=1,
+                                       err_msg="Chained node output differs from direct processing")
 
             if debug_test:
                 self.advance_frames()

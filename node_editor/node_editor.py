@@ -42,13 +42,13 @@ class DpgNodeEditor(object):
         menu_dict=None,
         use_debug_print=False,
     ):
-        self.mdl_init(opencv_setting_dict, use_debug_print)
-        self.vw_init(width, height, pos, node_dir, menu_dict)
-        self.cntrl_init()
+        self._mdl_init(opencv_setting_dict, use_debug_print)
+        self._cntrl_init(node_dir, menu_dict)
+        self._vw_init(width, height, pos)
 
     # -------------------------------------------------------------------------
     # Model functions
-    def mdl_init(self, opencv_setting_dict=None, use_debug_print=False):
+    def _mdl_init(self, opencv_setting_dict=None, use_debug_print=False):
         self._node_id = 0
         self._node_instance_list = {}
         self._node_list = []
@@ -58,12 +58,13 @@ class DpgNodeEditor(object):
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
 
-    def mdl_add_node(self, node_tag):
+    def _mdl_add_node(self, node_tag):
         self._node_id += 1
-        node_instance = self._node_instance_list[node_tag]
-        return self._node_id, node_instance
+        new_node_id_name = f"{self._node_id}:{node_tag}"
+        self._node_list.append(new_node_id_name)
+        return self._node_id
 
-    def mdl_add_link(self, source, destination):
+    def _mdl_add_link(self, source, destination):
         # 型が一致するもののみ処理
         source_type = source.split(':')[2]
         destination_type = destination.split(':')[2]
@@ -78,7 +79,7 @@ class DpgNodeEditor(object):
         self._node_link_list.append([source, destination])
         return True
 
-    def mdl_get_export_settings(self):
+    def _mdl_get_export_settings(self):
         setting_dict = {}
         setting_dict['node_list'] = self._node_list
         setting_dict['link_list'] = self._node_link_list
@@ -93,7 +94,7 @@ class DpgNodeEditor(object):
             }
         return setting_dict
 
-    def mdl_delete_node(self, node_id_name):
+    def _mdl_delete_node(self, node_id_name):
         node_id, node_name = node_id_name.split(':')
         if node_name == 'ExecPythonCode':
             return
@@ -107,13 +108,13 @@ class DpgNodeEditor(object):
             destination_node = ':'.join(link_info[1].split(':')[:2])
             if source_node == node_id_name or destination_node == node_id_name:
                 self._node_link_list.remove(link_info)
-        self.mdl_sort_node_graph()
+        self._mdl_sort_node_graph()
 
-    def mdl_delete_link(self, link):
+    def _mdl_delete_link(self, link):
         self._node_link_list.remove(link)
-        self.mdl_sort_node_graph()
+        self._mdl_sort_node_graph()
 
-    def mdl_sort_node_graph(self):
+    def _mdl_sort_node_graph(self):
         node_list = self._node_list
         node_link_list = self._node_link_list
 
@@ -121,9 +122,7 @@ class DpgNodeEditor(object):
         node_connection_dict = OrderedDict({})
 
         # ノードIDとノード接続を辞書形式で整理
-        for node_link_info in node_link_list:
-            source = dpg.get_item_alias(node_link_info[0])
-            destination = dpg.get_item_alias(node_link_info[1])
+        for source, destination in node_link_list:
             source_id = int(source.split(':')[0])
             destination_id = int(destination.split(':')[0])
 
@@ -133,7 +132,6 @@ class DpgNodeEditor(object):
                 node_id_dict[destination_id].append(source_id)
 
             split_destination = destination.split(':')
-
             node_name = split_destination[0] + ':' + split_destination[1]
             if node_name not in node_connection_dict:
                 node_connection_dict[node_name] = [[source, destination]]
@@ -190,18 +188,11 @@ class DpgNodeEditor(object):
 
     # -------------------------------------------------------------------------
     # View functions
-    def vw_init(self, width, height, pos, node_dir, menu_dict):
-        # メニュー項目定義(key：メニュー名、value：ノードのコード格納ディレクトリ名)
-        if menu_dict is None:
-            menu_dict = OrderedDict({
-                'Input Node': 'input_node',
-                'Process Node': 'process_node',
-                'Output Node': 'output_node'
-            })
-        self.vw_create_file_dialogs(height)
-        self.vw_create_main_window(width, height, pos, node_dir, menu_dict)
+    def _vw_init(self, width, height, pos):
+        self._vw_create_file_dialogs(height)
+        self._vw_create_main_window(width, height, pos)
 
-    def vw_create_file_dialogs(self, height):
+    def _vw_create_file_dialogs(self, height):
         datetime_now = datetime.datetime.now()
         with dpg.file_dialog(
                 directory_selector=False,
@@ -209,7 +200,7 @@ class DpgNodeEditor(object):
                 modal=True,
                 height=int(height / 2),
                 default_filename=datetime_now.strftime('%Y%m%d'),
-                callback=self.cntrl_file_export,
+                callback=self._cntrl_file_export,
                 id='file_export',
         ):
             dpg.add_file_extension('.json')
@@ -220,13 +211,13 @@ class DpgNodeEditor(object):
                 show=False,
                 modal=True,
                 height=int(height / 2),
-                callback=self.cntrl_file_import,
+                callback=self._cntrl_file_import,
                 id='file_import',
         ):
             dpg.add_file_extension('.json')
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
-    def vw_create_main_window(self, width, height, pos, node_dir, menu_dict):
+    def _vw_create_main_window(self, width, height, pos):
         with dpg.window(
                 tag=self._window_tag,
                 label=self._node_editor_label,
@@ -234,98 +225,116 @@ class DpgNodeEditor(object):
                 height=height,
                 pos=pos,
                 menubar=True,
-                on_close=self.cntrl_close_window,
+                on_close=self._cntrl_close_window,
         ):
             with dpg.menu_bar(label='MenuBar'):
                 with dpg.menu(label='File'):
                     dpg.add_menu_item(
                         tag='Menu_File_Export',
                         label='Export',
-                        callback=self.cntrl_file_export_menu,
+                        callback=self._cntrl_file_export_menu,
                         user_data='Menu_File_Export',
                     )
                     dpg.add_menu_item(
                         tag='Menu_File_Import',
                         label='Import',
-                        callback=self.cntrl_file_import_menu,
+                        callback=self._cntrl_file_import_menu,
                         user_data='Menu_File_Import',
                     )
-                self.vw_create_node_menus(node_dir, menu_dict)
+                self._vw_create_node_menus()
             with dpg.node_editor(
                     tag=self._node_editor_tag,
-                    callback=self.cntrl_link,
+                    callback=self._cntrl_link,
                     minimap=True,
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
         dpg.set_primary_window(self._window_tag, True)
 
-    def vw_create_node_menus(self, node_dir, menu_dict):
-        for menu_label, sub_dir in menu_dict.items():
+    def _vw_create_node_menus(self):
+        for menu_label, nodes in self._menu_nodes.items():
             with dpg.menu(label=menu_label):
-                node_sources_path = os.path.join(node_dir, sub_dir, '*.py')
-                node_sources = glob(node_sources_path)
-                for node_source in node_sources:
-                    import_path = os.path.splitext(
-                        os.path.normpath(node_source))[0]
-                    if platform.system() == 'Windows':
-                        import_path = import_path.replace('\\', '.')
-                    else:
-                        import_path = import_path.replace('/', '.')
-                    import_path = '.'.join(import_path.split('.')[-3:])
-                    if import_path.endswith('__init__'):
-                        continue
-                    module = import_module(import_path)
-                    node = module.Node()
+                for node_info in nodes:
                     dpg.add_menu_item(
-                        tag='Menu_' + node.node_tag,
-                        label=node.node_label,
-                        callback=self.cntrl_add_node,
-                        user_data=node.node_tag,
+                        tag='Menu_' + node_info['tag'],
+                        label=node_info['label'],
+                        callback=self._cntrl_add_node,
+                        user_data=node_info['tag'],
                     )
-                    self._node_instance_list[node.node_tag] = node
 
-    def vw_add_node(self, node_tag, new_id, pos):
+    def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        tag_name = node.add_node(
+        node.add_node(
             self._node_editor_tag,
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
         )
-        self._node_list.append(f"{new_id}:{node_tag}")
 
-    def vw_add_link(self, source, destination):
+    def _vw_add_link(self, source, destination):
         dpg.add_node_link(source, destination, parent=self._node_editor_tag)
 
-    def vw_delete_item(self, item_id):
+    def _vw_delete_item(self, item_id):
         dpg.delete_item(item_id)
 
-    def vw_show_file_export(self):
+    def _vw_show_file_export(self):
         dpg.show_item('file_export')
 
-    def vw_show_file_import(self):
+    def _vw_show_file_import(self):
         dpg.show_item('file_import')
 
     # -------------------------------------------------------------------------
     # Controller functions
-    def cntrl_init(self):
+    def _cntrl_init(self, node_dir, menu_dict):
+        self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
-            dpg.add_mouse_click_handler(callback=self.cntrl_save_last_pos)
+            dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
-                callback=self.cntrl_delete_selected,
+                callback=self._cntrl_delete_selected,
             )
 
-    def cntrl_add_node(self, sender, data, user_data):
-        new_id, node_instance = self.mdl_add_node(user_data)
+    def _cntrl_discover_nodes(self, node_dir, menu_dict):
+        # メニュー項目定義(key：メニュー名、value：ノードのコード格納ディレクトリ名)
+        if menu_dict is None:
+            menu_dict = OrderedDict({
+                'Input Node': 'input_node',
+                'Process Node': 'process_node',
+                'Output Node': 'output_node'
+            })
+
+        self._menu_nodes = OrderedDict()
+        for menu_label, sub_dir in menu_dict.items():
+            self._menu_nodes[menu_label] = []
+            node_sources_path = os.path.join(node_dir, sub_dir, '*.py')
+            node_sources = glob(node_sources_path)
+            for node_source in node_sources:
+                import_path = os.path.splitext(
+                    os.path.normpath(node_source))[0]
+                if platform.system() == 'Windows':
+                    import_path = import_path.replace('\\', '.')
+                else:
+                    import_path = import_path.replace('/', '.')
+                import_path = '.'.join(import_path.split('.')[-3:])
+                if import_path.endswith('__init__'):
+                    continue
+                module = import_module(import_path)
+                node = module.Node()
+                self._node_instance_list[node.node_tag] = node
+                self._menu_nodes[menu_label].append({
+                    'tag': node.node_tag,
+                    'label': node.node_label
+                })
+
+    def _cntrl_add_node(self, sender, data, user_data):
+        new_id = self._mdl_add_node(user_data)
         pos = [0, 0]
         if self._last_pos is not None:
             pos = [self._last_pos[0] + 30, self._last_pos[1] + 30]
-        self.vw_add_node(user_data, new_id, pos)
+        self._vw_add_node(user_data, new_id, pos)
 
         if self._use_debug_print:
-            print('**** cntrl_add_node ****')
+            print('**** _cntrl_add_node ****')
             print(f'    Node ID         : {self._node_id}')
             print(f'    sender          : {sender}')
             print(f'    data            : {data}')
@@ -333,17 +342,17 @@ class DpgNodeEditor(object):
             print(f'    self._node_list : {", ".join(self._node_list)}')
             print()
 
-    def cntrl_link(self, sender, data):
+    def _cntrl_link(self, sender, data):
         source = dpg.get_item_alias(data[0])
         destination = dpg.get_item_alias(data[1])
 
-        if self.mdl_add_link(source, destination):
-            self.vw_add_link(source, destination)
+        if self._mdl_add_link(source, destination):
+            self._vw_add_link(source, destination)
 
-        self.mdl_sort_node_graph()
+        self._mdl_sort_node_graph()
 
         if self._use_debug_print:
-            print('**** cntrl_link ****')
+            print('**** _cntrl_link ****')
             print(f'    sender                     : {sender}')
             print(f'    data                       : {data}')
             print(f'    self._node_list            : {self._node_list}')
@@ -351,28 +360,28 @@ class DpgNodeEditor(object):
             print(f'    self._node_connection_dict : {self._node_connection_dict}')
             print()
 
-    def cntrl_close_window(self, sender):
-        self.vw_delete_item(sender)
+    def _cntrl_close_window(self, sender):
+        self._vw_delete_item(sender)
 
-    def cntrl_file_export(self, sender, data):
-        setting_dict = self.mdl_get_export_settings()
+    def _cntrl_file_export(self, sender, data):
+        setting_dict = self._mdl_get_export_settings()
         with open(data['file_path_name'], 'w') as fp:
             json.dump(setting_dict, fp, indent=4)
 
         if self._use_debug_print:
-            print('**** cntrl_file_export ****')
+            print('**** _cntrl_file_export ****')
             print(f'    sender          : {sender}')
             print(f'    data            : {data}')
             print(f'    setting_dict    : {setting_dict}')
             print()
 
-    def cntrl_file_export_menu(self, sender, data, user_data):
-        self.vw_show_file_export()
+    def _cntrl_file_export_menu(self, sender, data, user_data):
+        self._vw_show_file_export()
 
-    def cntrl_file_import_menu(self, sender, data, user_data):
-        self.vw_show_file_import()
+    def _cntrl_file_import_menu(self, sender, data, user_data):
+        self._vw_show_file_import()
 
-    def cntrl_file_import(self, sender, data):
+    def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':
             return
         with open(data['file_path_name']) as fp:
@@ -386,7 +395,7 @@ class DpgNodeEditor(object):
             old_id, node_name = node_id_name.split(':')
             node = self._node_instance_list[node_name]
 
-            new_id, _ = self.mdl_add_node(node_name)
+            new_id = self._mdl_add_node(node_name)
             id_map[old_id] = str(new_id)
 
             ver = setting_dict[node_id_name]['setting']['ver']
@@ -397,7 +406,7 @@ class DpgNodeEditor(object):
                 print(f'                     Code Version -> {node._ver}\n')
 
             pos = setting_dict[node_id_name]['setting']['pos']
-            self.vw_add_node(node_name, new_id, pos)
+            self._vw_add_node(node_name, new_id, pos)
 
             original_setting = setting_dict[node_id_name]['setting']
             new_setting = {}
@@ -421,30 +430,30 @@ class DpgNodeEditor(object):
                 dest_parts[0] = id_map[dest_parts[0]]
                 new_source = ':'.join(source_parts)
                 new_destination = ':'.join(dest_parts)
-                self.vw_add_link(new_source, new_destination)
+                self._vw_add_link(new_source, new_destination)
                 new_link_list.append([new_source, new_destination])
 
         self._node_link_list.extend(new_link_list)
-        self.mdl_sort_node_graph()
+        self._mdl_sort_node_graph()
 
         if self._use_debug_print:
-            print('**** cntrl_file_import ****')
+            print('**** _cntrl_file_import ****')
             print(f'    sender          : {sender}')
             print(f'    data            : {data}')
             print(f'    setting_dict    : {setting_dict}')
             print()
 
-    def cntrl_save_last_pos(self, sender, data):
+    def _cntrl_save_last_pos(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
-    def cntrl_delete_selected(self, sender, data):
+    def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         for node_id in selected_nodes:
             node_id_name = dpg.get_item_alias(node_id)
-            self.mdl_delete_node(node_id_name)
-            self.vw_delete_item(node_id)
+            self._mdl_delete_node(node_id_name)
+            self._vw_delete_item(node_id)
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         for link_id in selected_links:
@@ -453,11 +462,11 @@ class DpgNodeEditor(object):
                 dpg.get_item_alias(config['attr_1']),
                 dpg.get_item_alias(config['attr_2'])
             ]
-            self.mdl_delete_link(link)
-            self.vw_delete_item(link_id)
+            self._mdl_delete_link(link)
+            self._vw_delete_item(link_id)
 
         if self._use_debug_print:
-            print('**** cntrl_delete_selected ****')
+            print('**** _cntrl_delete_selected ****')
             print(f'    self._node_list            : {self._node_list}')
             print(f'    self._node_link_list       : {self._node_link_list}')
             print(f'    self._node_connection_dict : {self._node_connection_dict}')

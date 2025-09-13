@@ -65,7 +65,7 @@ class TestDpgNodeEditorImportExport:
         sender = 'file_export'
         data = {'file_path_name': str(temp_path)}
 
-        node_editor.cntrl_file_export(sender, data)
+        node_editor._cntrl_file_export(sender, data)
 
         with open(temp_path, 'r') as f:
             exported_data = json.load(f)
@@ -93,7 +93,7 @@ class TestDpgNodeEditorImportExport:
         sender = 'file_export'
         data = {'file_path_name': str(temp_path)}
 
-        node_editor.cntrl_file_export(sender, data)
+        node_editor._cntrl_file_export(sender, data)
 
         with open(temp_path, 'r') as f:
             exported_data = json.load(f)
@@ -114,7 +114,7 @@ class TestDpgNodeEditorImportExport:
 
     def test_export_menu(self, node_editor, mock_dpg):
         """Test the file export menu callback"""
-        node_editor.cntrl_file_export_menu(None, None, None)
+        node_editor._cntrl_file_export_menu(None, None, None)
         mock_dpg.show_item.assert_called_once_with('file_export')
 
     @pytest.mark.parametrize("node_id", [0,1,10,100])
@@ -127,7 +127,7 @@ class TestDpgNodeEditorImportExport:
         """Test file import menu when editor empty (should show file
            dialog)"""
         node_editor._node_id = node_id
-        node_editor.cntrl_file_import_menu(None, None, None)
+        node_editor._cntrl_file_import_menu(None, None, None)
         mock_dpg.show_item.assert_called_once_with('file_import')
 
     def test_import_success(
@@ -166,7 +166,7 @@ class TestDpgNodeEditorImportExport:
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
-        node_editor.cntrl_file_import(sender, data)
+        node_editor._cntrl_file_import(sender, data)
 
         assert node_editor._node_list == ['1:test_node', '2:test_node']
         assert node_editor._node_link_list == [[
@@ -210,7 +210,7 @@ class TestDpgNodeEditorImportExport:
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
-        node_editor.cntrl_file_import(sender, data)
+        node_editor._cntrl_file_import(sender, data)
 
         captured = capsys.readouterr()
         assert 'WARNING : test_node is different version' in captured.out
@@ -241,7 +241,7 @@ class TestDpgNodeEditorImportExport:
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
-        node_editor.cntrl_file_import(sender, data)
+        node_editor._cntrl_file_import(sender, data)
 
         # grab all the new IDs you handed out
         call_ids = [
@@ -259,7 +259,7 @@ class TestDpgNodeEditorImportExport:
         path = tmp_path / 'bad.json'
         path.write_text(json.dumps(bad))
         with pytest.raises(KeyError):
-            node_editor.cntrl_file_import(
+            node_editor._cntrl_file_import(
                 None, 
                 {'file_name': path.name, 'file_path_name': str(path)}
             )
@@ -273,7 +273,7 @@ class TestDpgNodeEditorImportExport:
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
         with pytest.raises(json.JSONDecodeError):
-            node_editor.cntrl_file_import(sender, data)
+            node_editor._cntrl_file_import(sender, data)
 
     def test_import_missing_file_raises(self, node_editor, mock_dpg):
         """Test import with non-existent file"""
@@ -283,7 +283,7 @@ class TestDpgNodeEditorImportExport:
             'file_path_name': '/nonexistent/file.json'
         }
         with pytest.raises(FileNotFoundError):
-            node_editor.cntrl_file_import(sender, data)
+            node_editor._cntrl_file_import(sender, data)
 
     @pytest.mark.parametrize("debug_print", [True, False])
     def test_import_debug_print_behavior(
@@ -308,13 +308,13 @@ class TestDpgNodeEditorImportExport:
 
             sender = 'file_export'
             data = {'file_path_name': str(temp_path)}
-            editor.cntrl_file_export(sender, data)
+            editor._cntrl_file_export(sender, data)
 
             captured = capsys.readouterr()
             if debug_print:
-                assert '**** cntrl_file_export ****' in captured.out
+                assert '**** _cntrl_file_export ****' in captured.out
             else:
-                assert '**** cntrl_file_export ****' not in captured.out
+                assert '**** _cntrl_file_export ****' not in captured.out
 
     def test_export_import_round_trip(
         self, 
@@ -332,7 +332,7 @@ class TestDpgNodeEditorImportExport:
 
         # Act: export the original state to JSON
         orig = tmp_path / 'orig.json'
-        node_editor.cntrl_file_export(None, {'file_path_name': str(orig)})
+        node_editor._cntrl_file_export(None, {'file_path_name': str(orig)})
 
         # Act: import into a fresh editor instance
         with patch('node_editor.node_editor.glob') as mg, \
@@ -340,14 +340,14 @@ class TestDpgNodeEditorImportExport:
             mg.return_value = ['node/test_node/test_node.py']
             mi.return_value = Mock(Node=lambda: mock_node_instance)
             new_ed = DpgNodeEditor(use_debug_print=False)
-            new_ed.cntrl_file_import(
+            new_ed._cntrl_file_import(
                 None,
                 {'file_name': orig.name, 'file_path_name': str(orig)}
             )
 
             # Re-export the imported state to another JSON
             fresh = tmp_path / 'fresh.json'
-            new_ed.cntrl_file_export(None, {'file_path_name': str(fresh)})
+            new_ed._cntrl_file_export(None, {'file_path_name': str(fresh)})
 
         # Assert: the two JSON payloads are identical
         assert json.loads(orig.read_text()) == json.loads(fresh.read_text())
@@ -384,7 +384,7 @@ class TestDpgNodeEditorImportExport:
 
         # Act: export the graph
         export_path = tmp_path / 'complex.json'
-        node_editor.cntrl_file_export(
+        node_editor._cntrl_file_export(
             None, 
             {'file_path_name': str(export_path)}
         )
@@ -401,7 +401,7 @@ class TestDpgNodeEditorImportExport:
             mg.return_value = ['node/test_node/test_node.py']
             mi.return_value = Mock(Node=lambda: mock_node_instance)
             imported_editor = DpgNodeEditor(use_debug_print=False)
-            imported_editor.cntrl_file_import(
+            imported_editor._cntrl_file_import(
                 None,
                 {
                     'file_name': export_path.name, 
@@ -446,7 +446,7 @@ class TestDpgNodeEditorImportExport:
         data = {'file_name': path.name, 'file_path_name': str(path)}
 
         # Act
-        node_editor.cntrl_file_import(None, data)
+        node_editor._cntrl_file_import(None, data)
 
         # Assert: we still have exactly 4 nodes total
         assert len(node_editor._node_list) == 4

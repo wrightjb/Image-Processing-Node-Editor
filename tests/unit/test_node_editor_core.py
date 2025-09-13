@@ -87,29 +87,34 @@ def test_save_last_pos_no_selection(editor_and_dpg):
 
 def test_link_callback_basic(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {101: '1:TestNode:Int:Output01', 102: '2:TestNode:Int:Input01'}.get
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
-    link = ['1:TestNode:Int:Out', '2:TestNode:Int:In']
-    editor._cntrl_link('NodeEditor', link)
-    assert editor._node_link_list == [link]
-    dpg.add_node_link.assert_called_once_with(link[0], link[1], parent='NodeEditor')
+    link_ids = [101, 102]
+    editor._cntrl_link('NodeEditor', link_ids)
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
 
 
 def test_link_prevents_duplicate_dest(editor_and_dpg):
-    editor, _ = editor_and_dpg
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {101: '1:TestNode:Int:Output01', 102: '2:TestNode:Int:Input01'}.get
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
-    link = ['1:TestNode:Int:Out', '2:TestNode:Int:In']
-    editor._cntrl_link('NodeEditor', link)
-    editor._cntrl_link('NodeEditor', link)
+    link_ids = [101, 102]
+    editor._cntrl_link('NodeEditor', link_ids)
+    editor._cntrl_link('NodeEditor', link_ids)
     assert len(editor._node_link_list) == 1
 
 
 def test_link_mismatched_type_ignored(editor_and_dpg):
-    editor, _ = editor_and_dpg
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode:Int:Output01', 102: '2:TestNode:Float:Input01'
+    }.get
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
-    editor._cntrl_link('NodeEditor', ['1:TestNode:Int:Out', '2:TestNode:Float:In'])
+    editor._cntrl_link('NodeEditor', [101, 102])
     assert editor._node_link_list == []
 
 
@@ -123,10 +128,10 @@ def test_sort_node_graph(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_list = ['1:TestNode', '2:TestNode', '3:TestNode', '4:TestNode']
     editor._node_link_list = [
-        ['1:TestNode:out', '2:TestNode:in'],
-        ['1:TestNode:out', '3:TestNode:in'],
-        ['2:TestNode:out', '4:TestNode:in'],
-        ['3:TestNode:out', '4:TestNode:in'],
+        ['1:TestNode:Output01', '2:TestNode:Input01'],
+        ['1:TestNode:Output01', '3:TestNode:Input01'],
+        ['2:TestNode:Output01', '4:TestNode:Input01'],
+        ['3:TestNode:Output01', '4:TestNode:Input01'],
     ]
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()
@@ -164,7 +169,7 @@ def test_delete_node(editor_and_dpg):
     editor, dpg = editor_and_dpg
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
-    editor._node_link_list = [['1:TestNode:out', '2:TestNode:in']]
+    editor._node_link_list = [['1:TestNode:Output01', '2:TestNode:Input01']]
     dpg.get_selected_nodes.return_value = ['1:TestNode']
     editor._cntrl_delete_selected(None, None)
     assert '1:TestNode' not in editor._node_list
@@ -175,13 +180,13 @@ def test_mv_key_del_no_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     # initial state
     editor._node_list = ['1:TestNode']
-    editor._node_link_list = [['1:TestNode:out', '1:TestNode:in']]
+    editor._node_link_list = [['1:TestNode:Output01', '1:TestNode:Input01']]
     # no nodes or links selected
     dpg.get_selected_nodes.return_value = []
     dpg.get_selected_links.return_value = []
     editor._cntrl_delete_selected(None, None)
     assert editor._node_list == ['1:TestNode']
-    assert editor._node_link_list == [['1:TestNode:out', '1:TestNode:in']]
+    assert editor._node_link_list == [['1:TestNode:Output01', '1:TestNode:Input01']]
 
 
 def test_set_get_terminate_flag(editor_and_dpg):

@@ -64,19 +64,11 @@ class DpgNodeEditor(object):
         self._node_list.append(new_node_id_name)
         return self._node_id
 
-    def _mdl_add_link(self, source, destination):
-        # 型が一致するもののみ処理
-        source_type = source.split(':')[2]
-        destination_type = destination.split(':')[2]
-        if source_type != destination_type:
+    def _mdl_add_link(self, source_alias, dest_alias):
+        # leave only the single-input guard here or drop it once controller enforces it
+        if any(dest_alias == d for _, d in self._node_link_list):
             return False
-
-        # 入力端子に複数接続しようとしていないかチェック
-        for _, dest_node in self._node_link_list:
-            if destination == dest_node:
-                return False
-
-        self._node_link_list.append([source, destination])
+        self._node_link_list.append([source_alias, dest_alias])
         return True
 
     def _mdl_get_export_settings(self):
@@ -343,12 +335,16 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_link(self, sender, data):
-        source = dpg.get_item_alias(data[0])
-        destination = dpg.get_item_alias(data[1])
+        s_dpgid, d_dpgid = data
+        s = dpg.get_item_alias(s_dpgid)
+        d = dpg.get_item_alias(d_dpgid)
+        s_type = s.split(':')[2]
+        d_type = d.split(':')[2]
 
-        if self._mdl_add_link(source, destination):
-            self._vw_add_link(source, destination)
-
+        if s_type != d_type:
+            return
+        if self._mdl_add_link(s, d):
+            self._vw_add_link(s_dpgid, d_dpgid)
         self._mdl_sort_node_graph()
 
         if self._use_debug_print:

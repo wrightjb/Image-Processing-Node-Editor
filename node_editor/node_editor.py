@@ -64,11 +64,10 @@ class DpgNodeEditor(object):
         self._node_list.append(new_node_id_name)
         return self._node_id
 
-    def _mdl_add_link(self, source_alias, dest_alias):
-        # leave only the single-input guard here or drop it once controller enforces it
-        if any(dest_alias == d for _, d in self._node_link_list):
+    def _mdl_add_link(self, source_tag, dest_tag):
+        if any(dest_tag == d_tag for _, d_tag in self._node_link_list):
             return False
-        self._node_link_list.append([source_alias, dest_alias])
+        self._node_link_list.append([source_tag, dest_tag])
         return True
 
     def _mdl_get_export_settings(self):
@@ -327,33 +326,33 @@ class DpgNodeEditor(object):
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
-            print(f'    Node ID         : {self._node_id}')
-            print(f'    sender          : {sender}')
-            print(f'    data            : {data}')
-            print(f'    user_data       : {user_data}')
-            print(f'    self._node_list : {", ".join(self._node_list)}')
+            print(f'\tNode ID         : {self._node_id}')
+            print(f'\tsender          : {sender}')
+            print(f'\tdata            : {data}')
+            print(f'\tuser_data       : {user_data}')
+            print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
 
     def _cntrl_link(self, sender, data):
-        s_dpgid, d_dpgid = data
-        s = dpg.get_item_alias(s_dpgid)
-        d = dpg.get_item_alias(d_dpgid)
-        s_type = s.split(':')[2]
-        d_type = d.split(':')[2]
+        source_dpg_id, dest_dpg_id = data
+        source_tag = dpg.get_item_alias(source_dpg_id)
+        dest_tag = dpg.get_item_alias(dest_dpg_id)
+        source_type = source_tag.split(':')[2]
+        dest_type = dest_tag.split(':')[2]
 
-        if s_type != d_type:
+        if source_type != dest_type:
             return
-        if self._mdl_add_link(s, d):
-            self._vw_add_link(s_dpgid, d_dpgid)
+        if self._mdl_add_link(source_tag, dest_tag):
+            self._vw_add_link(source_dpg_id, dest_dpg_id)
         self._mdl_sort_node_graph()
 
         if self._use_debug_print:
             print('**** _cntrl_link ****')
-            print(f'    sender                     : {sender}')
-            print(f'    data                       : {data}')
-            print(f'    self._node_list            : {self._node_list}')
-            print(f'    self._node_link_list       : {self._node_link_list}')
-            print(f'    self._node_connection_dict : {self._node_connection_dict}')
+            print(f'\tsender                     : {sender}')
+            print(f'\tdata                       : {data}')
+            print(f'\tself._node_list            : {self._node_list}')
+            print(f'\tself._node_link_list       : {self._node_link_list}')
+            print(f'\tself._node_connection_dict : {self._node_connection_dict}')
             print()
 
     def _cntrl_close_window(self, sender):
@@ -366,9 +365,9 @@ class DpgNodeEditor(object):
 
         if self._use_debug_print:
             print('**** _cntrl_file_export ****')
-            print(f'    sender          : {sender}')
-            print(f'    data            : {data}')
-            print(f'    setting_dict    : {setting_dict}')
+            print(f'\tsender          : {sender}')
+            print(f'\tdata            : {data}')
+            print(f'\tsetting_dict    : {setting_dict}')
             print()
 
     def _cntrl_file_export_menu(self, sender, data, user_data):
@@ -398,8 +397,8 @@ class DpgNodeEditor(object):
             if ver != node._ver:
                 warning_node_name = setting_dict[node_id_name]['name']
                 print(f'WARNING : {warning_node_name} is different version')
-                print(f'                     Load Version -> {ver}')
-                print(f'                     Code Version -> {node._ver}\n')
+                print(f'\t                 Load Version -> {ver}')
+                print(f'\t                 Code Version -> {node._ver}\n')
 
             pos = setting_dict[node_id_name]['setting']['pos']
             self._vw_add_node(node_name, new_id, pos)
@@ -434,9 +433,9 @@ class DpgNodeEditor(object):
 
         if self._use_debug_print:
             print('**** _cntrl_file_import ****')
-            print(f'    sender          : {sender}')
-            print(f'    data            : {data}')
-            print(f'    setting_dict    : {setting_dict}')
+            print(f'\tsender          : {sender}')
+            print(f'\tdata            : {data}')
+            print(f'\tsetting_dict    : {setting_dict}')
             print()
 
     def _cntrl_save_last_pos(self, sender, data):
@@ -446,26 +445,26 @@ class DpgNodeEditor(object):
 
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
-        for node_id in selected_nodes:
-            node_id_name = dpg.get_item_alias(node_id)
-            self._mdl_delete_node(node_id_name)
-            self._vw_delete_item(node_id)
+        for node_dpg_id in selected_nodes:
+            node_tag = dpg.get_item_alias(node_dpg_id)
+            self._mdl_delete_node(node_tag)
+            self._vw_delete_item(node_dpg_id)
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
-        for link_id in selected_links:
-            config = dpg.get_item_configuration(link_id)
+        for link_dpg_id in selected_links:
+            link_dpg_config = dpg.get_item_configuration(link_dpg_id)
             link = [
-                dpg.get_item_alias(config['attr_1']),
-                dpg.get_item_alias(config['attr_2'])
+                dpg.get_item_alias(link_dpg_config['attr_1']),
+                dpg.get_item_alias(link_dpg_config['attr_2'])
             ]
             self._mdl_delete_link(link)
-            self._vw_delete_item(link_id)
+            self._vw_delete_item(link_dpg_id)
 
         if self._use_debug_print:
             print('**** _cntrl_delete_selected ****')
-            print(f'    self._node_list            : {self._node_list}')
-            print(f'    self._node_link_list       : {self._node_link_list}')
-            print(f'    self._node_connection_dict : {self._node_connection_dict}')
+            print(f'\tself._node_list            : {self._node_list}')
+            print(f'\tself._node_link_list       : {self._node_link_list}')
+            print(f'\tself._node_connection_dict : {self._node_connection_dict}')
 
     # Public functions
     def get_node_list(self):

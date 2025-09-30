@@ -14,9 +14,16 @@ This project is an image processing application built with DearPyGui. It allows 
 - Keep public documentation bilingual (Japanese and English) when updating README files.
 
 ## Testing
-There is no automated test suite. Before committing, run a syntax check on all Python files:
+There is an automated test suite using pytest. Before committing, run the test suite:
+
+First, make sure you have activated the virtual environment:
 ```bash
-python -m py_compile $(git ls-files "*.py")
+.venv\Scripts\activate
+```
+
+Then run the tests:
+```bash
+python -m pytest
 ```
 
 ## Commit messages

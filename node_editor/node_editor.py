@@ -322,6 +322,7 @@ class DpgNodeEditor(object):
         if self._last_pos is not None:
             pos = [self._last_pos[0] + 30, self._last_pos[1] + 30]
         self._vw_add_node(user_data, new_id, pos)
+        # Must add to list AFTER fully init because update's always async
         self._node_list.append(new_node_id_name)
 
         if self._use_debug_print:

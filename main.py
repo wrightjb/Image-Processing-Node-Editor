@@ -82,6 +82,8 @@ def update_node_info(
                 )
             except Exception as e:
                 print(e)
+                import traceback
+                traceback.print_exc()
                 sys.exit()
         else:
             image, result = node_instance.update(

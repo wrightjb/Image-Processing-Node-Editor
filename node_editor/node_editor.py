@@ -61,8 +61,7 @@ class DpgNodeEditor(object):
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
         new_node_id_name = f"{self._node_id}:{node_tag}"
-        self._node_list.append(new_node_id_name)
-        return self._node_id
+        return self._node_id, new_node_id_name
 
     def _mdl_add_link(self, source_tag, dest_tag):
         if any(dest_tag == d_tag for _, d_tag in self._node_link_list):
@@ -318,11 +317,12 @@ class DpgNodeEditor(object):
                 })
 
     def _cntrl_add_node(self, sender, data, user_data):
-        new_id = self._mdl_add_node(user_data)
+        new_id, new_node_id_name = self._mdl_add_node(user_data)
         pos = [0, 0]
         if self._last_pos is not None:
             pos = [self._last_pos[0] + 30, self._last_pos[1] + 30]
         self._vw_add_node(user_data, new_id, pos)
+        self._node_list.append(new_node_id_name)
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
@@ -390,7 +390,7 @@ class DpgNodeEditor(object):
             old_id, node_name = node_id_name.split(':')
             node = self._node_instance_list[node_name]
 
-            new_id = self._mdl_add_node(node_name)
+            new_id, _ = self._mdl_add_node(node_name)
             id_map[old_id] = str(new_id)
 
             ver = setting_dict[node_id_name]['setting']['ver']
@@ -402,6 +402,7 @@ class DpgNodeEditor(object):
 
             pos = setting_dict[node_id_name]['setting']['pos']
             self._vw_add_node(node_name, new_id, pos)
+            self._node_list.append(f'{new_id}:{node_name}')
 
             original_setting = setting_dict[node_id_name]['setting']
             new_setting = {}

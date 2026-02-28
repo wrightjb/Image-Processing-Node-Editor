@@ -3,7 +3,7 @@
 This project is an image processing application built with DearPyGui. It allows users to build pipelines by connecting nodes. Each node is placed under `node/` and is implemented using the interface defined in `node/node_abc.py`. The GUI logic resides in `node_editor/` and the entry point is `main.py`.
 
 ## Directory overview
-- `main.py` – Application entry point creating the node editor.
+- `main.py` – Application entry point creating the node editor; runs the main event loop asynchronously of GUI callbacks.
 - `node_editor/` – GUI and common utilities.
 - `node/` – Collection of node modules grouped in subdirectories such as `input_node`, `process_node`, and `deep_learning_node`.
 - `docker/` – Example container image for running with GPU support.
@@ -14,9 +14,16 @@ This project is an image processing application built with DearPyGui. It allows 
 - Keep public documentation bilingual (Japanese and English) when updating README files.
 
 ## Testing
-There is no automated test suite. Before committing, run a syntax check on all Python files:
+There is an automated test suite using pytest. Before committing, run the test suite:
+
+First, make sure you have activated the virtual environment:
 ```bash
-python -m py_compile $(git ls-files "*.py")
+.venv\Scripts\activate
+```
+
+Then run the tests:
+```bash
+python -m pytest
 ```
 
 ## Commit messages

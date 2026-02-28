@@ -131,6 +131,16 @@ def update_node_info(
     node_cache_dict=None,
     mode_async=True,
 ):
+    """
+    Update all nodes in topological order with optional in-memory caching.
+
+    Cache path (connected nodes):
+      1) build a signature from upstream outputs + node settings
+      2) if signature matches previous run, reuse cached output and skip update()
+
+    Non-cache path (source nodes without inbound links):
+      always run update() so UI/callback-driven state changes are picked up.
+    """
     if node_cache_dict is None:
         node_cache_dict = {}
 
@@ -155,8 +165,11 @@ def update_node_info(
             node_setting = node_instance.get_setting_dict(node_id)
 
         cache_signature = None
+        # Only cache nodes that have inbound links (downstream processors).
+        # Source/input nodes must keep running every frame.
         use_cache = len(connection_list) > 0
         if use_cache:
+            # Cache-hit path: skip expensive update() when nothing relevant changed.
             cache_signature = _build_node_signature(
                 node_id,
                 connection_list,
@@ -198,17 +211,21 @@ def update_node_info(
                 node_image_dict,
                 node_result_dict,
             )
+        # Cache-miss path (or source node path): run node update and store outputs.
         node_image_dict[node_id_name] = copy.deepcopy(image)
         node_result_dict[node_id_name] = copy.deepcopy(result)
         if use_cache:
+            # Persist latest outputs for the next signature match.
             node_cache_dict[node_id_name] = {
                 'signature': cache_signature,
                 'image': copy.deepcopy(image),
                 'result': copy.deepcopy(result),
             }
         elif node_id_name in node_cache_dict:
+            # Ensure source nodes never keep stale cache entries.
             del node_cache_dict[node_id_name]
 
+    # Remove cache entries for nodes that were deleted from the graph.
     deleted_node_id_name_list = [
         node_id_name for node_id_name in node_cache_dict.keys()
         if node_id_name not in node_list

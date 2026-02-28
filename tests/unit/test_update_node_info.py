@@ -117,3 +117,104 @@ def test_update_node_info_sync_exception():
     with pytest.raises(RuntimeError) as exc_info:
         update_node_info(editor, image_dict, result_dict, mode_async=False)
     assert "sync boom" in str(exc_info.value)
+
+
+
+def test_update_node_info_uses_cache_when_signature_unchanged():
+    node = Mock()
+    node.update.return_value = ('img1', {'v': 1})
+    node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:TestNode']
+    conn_dict = OrderedDict([('1:TestNode', [])])
+    editor = FakeEditor(nodes, conn_dict, {'TestNode': node})
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+
+    assert node.update.call_count == 1
+    assert image_dict['1:TestNode'] == 'img1'
+    assert result_dict['1:TestNode'] == {'v': 1}
+
+
+def test_update_node_info_invalidates_cache_when_setting_changes():
+    node = Mock()
+    node.update.side_effect = [('img1', {'v': 1}), ('img2', {'v': 2})]
+    node.get_setting_dict.side_effect = [{'alpha': 0.5}, {'alpha': 0.7}]
+
+    nodes = ['1:TestNode']
+    conn_dict = OrderedDict([('1:TestNode', [])])
+    editor = FakeEditor(nodes, conn_dict, {'TestNode': node})
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+
+    assert node.update.call_count == 2
+    assert image_dict['1:TestNode'] == 'img2'
+    assert result_dict['1:TestNode'] == {'v': 2}
+
+
+def test_update_node_info_cleans_cache_for_deleted_nodes():
+    node = Mock()
+    node.update.return_value = ('img1', {'v': 1})
+    node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:TestNode']
+    conn_dict = OrderedDict([('1:TestNode', [])])
+    editor = FakeEditor(nodes, conn_dict, {'TestNode': node})
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+
+    editor.nodes = []
+    editor.conn_dict = OrderedDict([])
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+
+    assert cache_dict == {}

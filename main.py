@@ -154,23 +154,28 @@ def update_node_info(
         if hasattr(node_instance, 'get_setting_dict'):
             node_setting = node_instance.get_setting_dict(node_id)
 
-        cache_signature = _build_node_signature(
-            node_id,
-            connection_list,
-            node_image_dict,
-            node_result_dict,
-            node_setting,
-        )
-        cached_result = node_cache_dict.get(node_id_name)
-        if (
-            cached_result is not None and
-            cached_result.get('signature') == cache_signature
-        ):
-            node_image_dict[node_id_name] = copy.deepcopy(cached_result['image'])
-            node_result_dict[node_id_name] = copy.deepcopy(
-                cached_result['result']
+        cache_signature = None
+        use_cache = len(connection_list) > 0
+        if use_cache:
+            cache_signature = _build_node_signature(
+                node_id,
+                connection_list,
+                node_image_dict,
+                node_result_dict,
+                node_setting,
             )
-            continue
+            cached_result = node_cache_dict.get(node_id_name)
+            if (
+                cached_result is not None and
+                cached_result.get('signature') == cache_signature
+            ):
+                node_image_dict[node_id_name] = copy.deepcopy(
+                    cached_result['image']
+                )
+                node_result_dict[node_id_name] = copy.deepcopy(
+                    cached_result['result']
+                )
+                continue
 
         # 指定ノードの情報を更新
         if mode_async:
@@ -195,11 +200,14 @@ def update_node_info(
             )
         node_image_dict[node_id_name] = copy.deepcopy(image)
         node_result_dict[node_id_name] = copy.deepcopy(result)
-        node_cache_dict[node_id_name] = {
-            'signature': cache_signature,
-            'image': copy.deepcopy(image),
-            'result': copy.deepcopy(result),
-        }
+        if use_cache:
+            node_cache_dict[node_id_name] = {
+                'signature': cache_signature,
+                'image': copy.deepcopy(image),
+                'result': copy.deepcopy(result),
+            }
+        elif node_id_name in node_cache_dict:
+            del node_cache_dict[node_id_name]
 
     deleted_node_id_name_list = [
         node_id_name for node_id_name in node_cache_dict.keys()

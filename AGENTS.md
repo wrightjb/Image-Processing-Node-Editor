@@ -26,6 +26,12 @@ Then run the tests:
 python -m pytest
 ```
 
+If OpenCV cannot be imported in your environment (for example, missing
+`libGL.so.1` in headless CI), run pytest with the repository's official cv2
+stub mode:
+```bash
+python -m pytest --use-cv2-stub
+```
+
 ## Commit messages
 Write clear commit messages in English. Use a short summary line followed by a blank line and additional details if necessary.
-

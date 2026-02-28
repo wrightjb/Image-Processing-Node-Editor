@@ -307,6 +307,6 @@ class Node(DpgNodeABC):
                 label="",
                 default_value=pt,
                 callback=self._callback_moved_point,
-                user_data=node_id,
+                user_data=(node_id, None)
             )
         self._redraw_line(node_id)

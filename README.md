@@ -19,6 +19,26 @@ To run tests:
 python -m pytest
 ```
 
+If your environment cannot import OpenCV (for example `libGL.so.1` is missing), run tests with the official cv2 stub:
+
+```bash
+python -m pytest --use-cv2-stub
+```
+
+---
+
+テスト実行方法:
+
+```bash
+python -m pytest
+```
+
+OpenCV の読み込みに失敗する環境（例: `libGL.so.1` が無い環境）では、公式の cv2 スタブを使って実行できます。
+
+```bash
+python -m pytest --use-cv2-stub
+```
+
 # Note
 Since the nodes are added in the order in which the author(Takahashi) needs them,<br>
 There may be a shortage of nodes responsible for basic processing in image processing.<br>

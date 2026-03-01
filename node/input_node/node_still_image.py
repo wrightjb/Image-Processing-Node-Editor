@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import os
+
 import cv2
 import numpy as np
 import dearpygui.dearpygui as dpg
@@ -142,15 +144,30 @@ class Node(DpgNodeABC):
         tag_node_name = str(node_id) + ':' + self.node_tag
 
         pos = dpg.get_item_pos(tag_node_name)
+        image_path = self._image_filepath.get(str(node_id), None)
 
         setting_dict = {}
         setting_dict['ver'] = self._ver
         setting_dict['pos'] = pos
+        setting_dict['image_path'] = image_path
 
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        pass
+        image_path = setting_dict.get('image_path', None)
+
+        if image_path is None:
+            return
+
+        node_id = str(node_id)
+        if os.path.isfile(image_path):
+            self._image_filepath[node_id] = image_path
+            return
+
+        self._image_filepath.pop(node_id, None)
+        self._prev_image_filepath.pop(node_id, None)
+        self._image.pop(node_id, None)
+        print(f'WARNING : Image file not found ({image_path})')
 
     def _callback_file_select(self, sender, data):
         if data['file_name'] != '.':

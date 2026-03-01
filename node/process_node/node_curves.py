@@ -30,6 +30,7 @@ class Node(DpgNodeABC):
 
     _min_val = 0
     _max_val = 255
+    _delete_hit_radius = 6
 
     _opencv_setting_dict = None
 
@@ -43,7 +44,7 @@ class Node(DpgNodeABC):
         return f"{node_id}:{self.node_tag}:plot"
 
     def _get_tag_plot_series_name(self, node_id):
-        return f"{node_id}:{self.node_tag}:line"        
+        return f"{node_id}:{self.node_tag}:line"
 
     def _get_drag_points(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
@@ -55,7 +56,6 @@ class Node(DpgNodeABC):
         node_id = user_data[0]
         static_x = user_data[1]
         plot_tag = self._get_tag_plot_name(node_id)
-
         if static_x is not None:
             # For endpoints only, which initially have x = y
             y = x = static_x
@@ -82,8 +82,40 @@ class Node(DpgNodeABC):
             x = static_x
         # Clip y to range (should be 0-255)
         y = max(self._min_val, min(self._max_val, int(y)))
-        dpg.set_value(sender, [x,y])
+        dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
+
+    def _callback_delete_point(self, sender, app_data, user_data):
+        node_id = user_data[0]
+        plot_tag = self._get_tag_plot_name(node_id)
+        point_items = dpg.get_item_children(plot_tag, slot=0)
+        mouse_x, mouse_y = dpg.get_plot_mouse_pos()
+
+        closest_point_tag = None
+        closest_distance_sq = float("inf")
+        hit_radius_sq = self._delete_hit_radius ** 2
+
+        for point_tag in point_items:
+            point_user_data = dpg.get_item_user_data(point_tag)
+            if point_user_data is None:
+                continue
+
+            _, static_x = point_user_data
+            if static_x is not None:
+                continue
+
+            px, py = dpg.get_value(point_tag)
+            distance_sq = ((px - mouse_x) ** 2) + ((py - mouse_y) ** 2)
+            if distance_sq > hit_radius_sq:
+                continue
+
+            if distance_sq < closest_distance_sq:
+                closest_distance_sq = distance_sq
+                closest_point_tag = point_tag
+
+        if closest_point_tag is not None:
+            dpg.delete_item(closest_point_tag)
+            self._redraw_line(node_id)
 
     def _redraw_line(
         self, 
@@ -199,6 +231,13 @@ class Node(DpgNodeABC):
                     dpg.add_item_clicked_handler(
                         callback=self._callback_add_point,
                         user_data=(node_id, None),
+                        button=dpg.mvMouseButton_Left,
+                        parent=handler,
+                    )
+                    dpg.add_item_clicked_handler(
+                        callback=self._callback_delete_point,
+                        user_data=(node_id,),
+                        button=dpg.mvMouseButton_Right,
                         parent=handler,
                     )
                     # Add bottom right point
@@ -302,11 +341,12 @@ class Node(DpgNodeABC):
     def set_setting_dict(self, node_id, setting_dict):
         plot_tag = self._get_tag_plot_name(node_id)
         for pt in setting_dict.get("points", []):
+            static_x = pt[0] if pt[0] in [self._min_val, self._max_val] else None
             dpg.add_drag_point(
                 parent=plot_tag,
                 label="",
                 default_value=pt,
                 callback=self._callback_moved_point,
-                user_data=(node_id, None)
+                user_data=(node_id, static_x)
             )
         self._redraw_line(node_id)

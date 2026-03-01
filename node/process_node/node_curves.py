@@ -30,6 +30,7 @@ class Node(DpgNodeABC):
 
     _min_val = 0
     _max_val = 255
+    _delete_hit_radius = 6
 
     _opencv_setting_dict = None
 
@@ -88,23 +89,33 @@ class Node(DpgNodeABC):
         node_id = user_data[0]
         plot_tag = self._get_tag_plot_name(node_id)
         point_items = dpg.get_item_children(plot_tag, slot=0)
+        mouse_x, mouse_y = dpg.get_plot_mouse_pos()
+
+        closest_point_tag = None
+        closest_distance_sq = float("inf")
+        hit_radius_sq = self._delete_hit_radius ** 2
 
         for point_tag in point_items:
-            state = dpg.get_item_state(point_tag)
-            if not state.get("hovered", False):
-                continue
-
             point_user_data = dpg.get_item_user_data(point_tag)
             if point_user_data is None:
                 continue
 
             _, static_x = point_user_data
             if static_x is not None:
-                return
+                continue
 
-            dpg.delete_item(point_tag)
+            px, py = dpg.get_value(point_tag)
+            distance_sq = ((px - mouse_x) ** 2) + ((py - mouse_y) ** 2)
+            if distance_sq > hit_radius_sq:
+                continue
+
+            if distance_sq < closest_distance_sq:
+                closest_distance_sq = distance_sq
+                closest_point_tag = point_tag
+
+        if closest_point_tag is not None:
+            dpg.delete_item(closest_point_tag)
             self._redraw_line(node_id)
-            return
 
     def _redraw_line(
         self, 

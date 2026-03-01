@@ -45,9 +45,6 @@ class Node(DpgNodeABC):
     def _get_tag_plot_series_name(self, node_id):
         return f"{node_id}:{self.node_tag}:line"
 
-    def _get_tag_drag_point_handler_name(self, node_id):
-        return f"{node_id}:{self.node_tag}:drag_point_handler"
-
     def _get_drag_points(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
         # Drag points should be only children in slot 0
@@ -58,8 +55,6 @@ class Node(DpgNodeABC):
         node_id = user_data[0]
         static_x = user_data[1]
         plot_tag = self._get_tag_plot_name(node_id)
-        point_handler_tag = self._get_tag_drag_point_handler_name(node_id)
-
         if static_x is not None:
             # For endpoints only, which initially have x = y
             y = x = static_x
@@ -67,7 +62,7 @@ class Node(DpgNodeABC):
             # Click must be within plot, so no need to clip to range(?)
             x, y = dpg.get_plot_mouse_pos()
 
-        point_tag = dpg.add_drag_point(
+        dpg.add_drag_point(
             parent=plot_tag,
             label="",
             default_value=[x, y],
@@ -75,8 +70,6 @@ class Node(DpgNodeABC):
             callback=self._callback_moved_point,
             user_data=(node_id, static_x),
         )
-        dpg.bind_item_handler_registry(point_tag, point_handler_tag)
-        dpg.set_item_user_data(point_tag, (node_id, static_x, point_tag))
         self._redraw_line(node_id)
 
     def _callback_moved_point(self, sender, app_data, user_data):
@@ -92,14 +85,25 @@ class Node(DpgNodeABC):
         self._redraw_line(node_id)
 
     def _callback_delete_point(self, sender, app_data, user_data):
-        node_id, static_x, point_tag = user_data
+        node_id = user_data[0]
+        plot_tag = self._get_tag_plot_name(node_id)
+        point_items = dpg.get_item_children(plot_tag, slot=0)
 
-        if static_x is not None:
-            return
+        for point_tag in point_items:
+            if not dpg.is_item_hovered(point_tag):
+                continue
 
-        if dpg.does_item_exist(point_tag):
+            point_user_data = dpg.get_item_user_data(point_tag)
+            if point_user_data is None:
+                continue
+
+            _, static_x = point_user_data
+            if static_x is not None:
+                return
+
             dpg.delete_item(point_tag)
-        self._redraw_line(node_id)
+            self._redraw_line(node_id)
+            return
 
     def _redraw_line(
         self, 
@@ -218,14 +222,12 @@ class Node(DpgNodeABC):
                         button=dpg.mvMouseButton_Left,
                         parent=handler,
                     )
-                    point_handler_tag = self._get_tag_drag_point_handler_name(
-                        node_id
+                    dpg.add_item_clicked_handler(
+                        callback=self._callback_delete_point,
+                        user_data=(node_id,),
+                        button=dpg.mvMouseButton_Right,
+                        parent=handler,
                     )
-                    with dpg.item_handler_registry(tag=point_handler_tag):
-                        dpg.add_item_clicked_handler(
-                            callback=self._callback_delete_point,
-                            button=dpg.mvMouseButton_Right,
-                        )
                     # Add bottom right point
                     self._callback_add_point(
                         sender=None, 
@@ -326,16 +328,13 @@ class Node(DpgNodeABC):
 
     def set_setting_dict(self, node_id, setting_dict):
         plot_tag = self._get_tag_plot_name(node_id)
-        point_handler_tag = self._get_tag_drag_point_handler_name(node_id)
         for pt in setting_dict.get("points", []):
             static_x = pt[0] if pt[0] in [self._min_val, self._max_val] else None
-            point_tag = dpg.add_drag_point(
+            dpg.add_drag_point(
                 parent=plot_tag,
                 label="",
                 default_value=pt,
                 callback=self._callback_moved_point,
                 user_data=(node_id, static_x)
             )
-            dpg.bind_item_handler_registry(point_tag, point_handler_tag)
-            dpg.set_item_user_data(point_tag, (node_id, static_x, point_tag))
         self._redraw_line(node_id)

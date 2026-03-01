@@ -90,7 +90,8 @@ class Node(DpgNodeABC):
         point_items = dpg.get_item_children(plot_tag, slot=0)
 
         for point_tag in point_items:
-            if not dpg.is_item_hovered(point_tag):
+            state = dpg.get_item_state(point_tag)
+            if not state.get("hovered", False):
                 continue
 
             point_user_data = dpg.get_item_user_data(point_tag)

@@ -144,8 +144,23 @@ def update_node_info(
     if node_cache_dict is None:
         node_cache_dict = {}
 
+    def _is_valid_connection(connection_info, valid_nodes):
+        if len(connection_info) != 2:
+            return False
+
+        source_tag, dest_tag = connection_info
+        source_node_id_name = ':'.join(source_tag.split(':')[:2])
+        dest_node_id_name = ':'.join(dest_tag.split(':')[:2])
+        if source_node_id_name not in valid_nodes:
+            return False
+        if dest_node_id_name not in valid_nodes:
+            return False
+
+        return True
+
     # ノードリスト取得
     node_list = node_editor.get_node_list()
+    active_node_set = set(node_list)
 
     # ノード接続情報取得
     sorted_node_connection_dict = node_editor.get_sorted_node_connection()
@@ -157,6 +172,10 @@ def update_node_info(
 
         node_id, node_name = node_id_name.split(':')
         connection_list = sorted_node_connection_dict.get(node_id_name, [])
+        connection_list = [
+            connection_info for connection_info in connection_list
+            if _is_valid_connection(connection_info, active_node_set)
+        ]
 
         # ノード名からインスタンスを取得
         node_instance = node_editor.get_node_instance(node_name)
@@ -203,7 +222,7 @@ def update_node_info(
                 print(e)
                 import traceback
                 traceback.print_exc()
-                sys.exit()
+                image, result = None, None
         else:
             image, result = node_instance.update(
                 node_id,

@@ -83,7 +83,7 @@ def test_update_node_info_basic(nodes, conn_dict, updates):
         assert inst_map[node_name].update.call_count == 1
 
 
-def test_update_node_info_async_exception():
+def test_update_node_info_async_exception_recovers_without_exit():
     class BadNode:
         def update(self, *args, **kwargs):
             raise ValueError("boom")
@@ -93,10 +93,14 @@ def test_update_node_info_async_exception():
     inst_map = {'TestNode': BadNode()}
     editor = FakeEditor(nodes, conn_dict, inst_map)
 
-    with patch('sys.exit', side_effect=SystemExit) as exit_mock:
-        with pytest.raises(SystemExit):
-            update_node_info(editor, {}, {}, mode_async=True)
-        assert exit_mock.called
+    image_dict = {}
+    result_dict = {}
+    with patch('sys.exit') as exit_mock:
+        update_node_info(editor, image_dict, result_dict, mode_async=True)
+
+    exit_mock.assert_not_called()
+    assert image_dict['1:TestNode'] is None
+    assert result_dict['1:TestNode'] is None
 
 
 def test_update_node_info_sync_exception():
@@ -273,3 +277,30 @@ def test_update_node_info_cleans_cache_for_deleted_nodes():
     )
 
     assert cache_dict == {}
+
+def test_update_node_info_ignores_stale_connections():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', None)
+    source_node.get_setting_dict.return_value = {}
+
+    process_node = Mock()
+    process_node.update.return_value = ('out-img', None)
+    process_node.get_setting_dict.return_value = {}
+
+    nodes = ['2:ProcessNode']
+    conn_dict = OrderedDict([
+        ('2:ProcessNode', [['1:SourceNode:Image:Output01', '2:ProcessNode:Image:Input01']]),
+    ])
+    editor = FakeEditor(nodes, conn_dict, {'ProcessNode': process_node})
+
+    image_dict = {}
+    result_dict = {}
+
+    update_node_info(editor, image_dict, result_dict, mode_async=False)
+
+    process_node.update.assert_called_once_with(
+        '2',
+        [],
+        image_dict,
+        result_dict,
+    )

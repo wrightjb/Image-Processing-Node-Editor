@@ -52,13 +52,22 @@ def async_main(node_editor, use_debug_print=False):
     # メインループ
     while not node_editor.get_terminate_flag():
         tick_count += 1
-        update_summary = update_node_info(
-            node_editor,
-            node_image_dict,
-            node_result_dict,
-            node_cache_dict=node_cache_dict,
-            use_debug_print=use_debug_print,
-        )
+        try:
+            update_summary = update_node_info(
+                node_editor,
+                node_image_dict,
+                node_result_dict,
+                node_cache_dict=node_cache_dict,
+                use_debug_print=use_debug_print,
+            )
+        except Exception as e:
+            print('ERROR: async_main loop exception')
+            print(f"\ttick                 : {tick_count}")
+            print(f"\terror                : {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            print()
+            continue
 
         if not use_debug_print:
             continue
@@ -287,7 +296,20 @@ def update_node_info(
             continue
         node_setting = {}
         if hasattr(node_instance, 'get_setting_dict'):
-            node_setting = node_instance.get_setting_dict(node_id)
+            if mode_async:
+                try:
+                    node_setting = node_instance.get_setting_dict(node_id)
+                except Exception as e:
+                    update_summary['exception_count'] += 1
+                    node_image_dict[node_id_name] = None
+                    node_result_dict[node_id_name] = None
+                    if use_debug_print:
+                        update_summary['node_states'].append(
+                            f'{node_id_name}: exception:{type(e).__name__}'
+                        )
+                    continue
+            else:
+                node_setting = node_instance.get_setting_dict(node_id)
 
         cache_signature = None
         # Only cache nodes that have inbound links (downstream processors).

@@ -294,27 +294,35 @@ def update_node_info(
                     f'{node_id_name}: missing_instance'
                 )
             continue
+        cache_signature = None
+        # Only cache nodes that have inbound links (downstream processors).
+        # Source/input nodes must keep running every frame.
+        use_cache = len(connection_list) > 0
         node_setting = {}
-        if hasattr(node_instance, 'get_setting_dict'):
+        if use_cache and hasattr(node_instance, 'get_setting_dict'):
             if mode_async:
                 try:
                     node_setting = node_instance.get_setting_dict(node_id)
                 except Exception as e:
                     update_summary['exception_count'] += 1
-                    node_image_dict[node_id_name] = None
-                    node_result_dict[node_id_name] = None
                     if use_debug_print:
-                        update_summary['node_states'].append(
-                            f'{node_id_name}: exception:{type(e).__name__}'
+                        print(
+                            'WARNING: failed to read node settings in '
+                            f'update_node_info ({node_id_name})'
                         )
-                    continue
+                        print(
+                            f"\terror                : "
+                            f"{type(e).__name__}: {e}"
+                        )
+                        import traceback
+                        traceback.print_exc()
+                        update_summary['node_states'].append(
+                            f'{node_id_name}: setting_error:{type(e).__name__}'
+                        )
+                    use_cache = False
             else:
                 node_setting = node_instance.get_setting_dict(node_id)
 
-        cache_signature = None
-        # Only cache nodes that have inbound links (downstream processors).
-        # Source/input nodes must keep running every frame.
-        use_cache = len(connection_list) > 0
         if use_cache:
             # Cache-hit path: skip expensive update() when nothing relevant changed.
             cache_signature = _build_node_signature(
@@ -352,7 +360,10 @@ def update_node_info(
                     node_result_dict,
                 )
             except Exception as e:
-                print(e)
+                print(
+                    'WARNING: node update exception '
+                    f'({node_id_name}) {type(e).__name__}: {e}'
+                )
                 import traceback
                 traceback.print_exc()
                 update_summary['exception_count'] += 1

@@ -47,14 +47,17 @@ def async_main(node_editor, use_debug_print=False):
     node_cache_dict = {}
 
     idle_warning_tick_count = 0
+    tick_count = 0
 
     # メインループ
     while not node_editor.get_terminate_flag():
+        tick_count += 1
         update_summary = update_node_info(
             node_editor,
             node_image_dict,
             node_result_dict,
             node_cache_dict=node_cache_dict,
+            use_debug_print=use_debug_print,
         )
 
         if not use_debug_print:
@@ -72,6 +75,7 @@ def async_main(node_editor, use_debug_print=False):
 
         if idle_warning_tick_count == 30:
             print('WARNING: update loop has no progress for 30 ticks')
+            print(f"\ttick                 : {tick_count}")
             print(f"\tactive_node_count    : {active_count}")
             print(
                 f"\tupdated_node_count   : "
@@ -93,6 +97,18 @@ def async_main(node_editor, use_debug_print=False):
                 f"\texception_count      : "
                 f"{update_summary['exception_count']}"
             )
+            if update_summary['node_states']:
+                print('\tnode_states          :')
+                for state in update_summary['node_states']:
+                    print(f"\t  - {state}")
+            print()
+
+        if update_summary['exception_count'] > 0:
+            print('WARNING: update loop had node exceptions this tick')
+            print(f"\ttick                 : {tick_count}")
+            for state in update_summary['node_states']:
+                if 'exception:' in state:
+                    print(f"\t  - {state}")
             print()
 
 
@@ -170,6 +186,7 @@ def update_node_info(
     node_result_dict,
     node_cache_dict=None,
     mode_async=True,
+    use_debug_print=False,
 ):
     """
     Update all nodes in topological order with optional in-memory caching.
@@ -191,6 +208,7 @@ def update_node_info(
         'skipped_inactive_count': 0,
         'missing_instance_count': 0,
         'exception_count': 0,
+        'node_states': [],
     }
 
     def _is_valid_connection(connection_info, valid_nodes):
@@ -242,6 +260,10 @@ def update_node_info(
             try:
                 if not node_editor.is_node_active(node_id_name):
                     update_summary['skipped_inactive_count'] += 1
+                    if use_debug_print:
+                        update_summary['node_states'].append(
+                            f'{node_id_name}: skipped_inactive'
+                        )
                     continue
             except Exception:
                 pass
@@ -258,6 +280,10 @@ def update_node_info(
             update_summary['missing_instance_count'] += 1
             node_image_dict[node_id_name] = None
             node_result_dict[node_id_name] = None
+            if use_debug_print:
+                update_summary['node_states'].append(
+                    f'{node_id_name}: missing_instance'
+                )
             continue
         node_setting = {}
         if hasattr(node_instance, 'get_setting_dict'):
@@ -288,6 +314,10 @@ def update_node_info(
                     cached_result['result']
                 )
                 update_summary['cache_hit_count'] += 1
+                if use_debug_print:
+                    update_summary['node_states'].append(
+                        f'{node_id_name}: cache_hit'
+                    )
                 continue
 
         # 指定ノードの情報を更新
@@ -305,6 +335,10 @@ def update_node_info(
                 traceback.print_exc()
                 update_summary['exception_count'] += 1
                 image, result = None, None
+                if use_debug_print:
+                    update_summary['node_states'].append(
+                        f'{node_id_name}: exception:{type(e).__name__}'
+                    )
         else:
             image, result = node_instance.update(
                 node_id,
@@ -316,6 +350,11 @@ def update_node_info(
         node_image_dict[node_id_name] = copy.deepcopy(image)
         node_result_dict[node_id_name] = copy.deepcopy(result)
         update_summary['updated_node_count'] += 1
+        if use_debug_print:
+            image_state = 'none' if image is None else 'image'
+            update_summary['node_states'].append(
+                f'{node_id_name}: updated:{image_state}'
+            )
         if use_cache:
             # Persist latest outputs for the next signature match.
             node_cache_dict[node_id_name] = {
@@ -334,6 +373,9 @@ def update_node_info(
     ]
     for deleted_node_id_name in deleted_node_id_name_list:
         del node_cache_dict[deleted_node_id_name]
+
+    if not use_debug_print:
+        update_summary['node_states'] = []
 
     return update_summary
 

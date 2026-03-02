@@ -25,6 +25,22 @@ If your environment cannot import OpenCV (for example `libGL.so.1` is missing), 
 python -m pytest --use-cv2-stub
 ```
 
+## Async update-loop safety / 非同期更新ループの安全性
+
+**English**
+
+- During delete/import stress, async node updates can race with GUI callbacks and hit transient DearPyGui errors.
+- For node code reachable from `Node.update()`, prefer guarded helpers in `node_editor/util.py` (`dpg_get_value`, `dpg_set_value`, `dpg_get_item_children`) over direct `dpg.get_*` calls.
+- Keep node input parsing defensive (for example, tolerate `None` / malformed values).
+- For a deeper explanation and architecture recommendations, see: [`docs/async-dpg-race-guide.md`](docs/async-dpg-race-guide.md).
+
+**日本語**
+
+- ノード削除・Import の繰り返し時は、GUI コールバックと非同期更新が競合し、DearPyGui の一時的な例外が発生することがあります。
+- `Node.update()` から到達する処理では、`dpg.get_*` を直接呼ぶより、`node_editor/util.py` のガード付きヘルパー（`dpg_get_value` / `dpg_set_value` / `dpg_get_item_children`）の利用を推奨します。
+- ノード入力値のパースは、`None` や不正値を許容する防御的な実装にしてください。
+- 詳細な背景と推奨アーキテクチャは [`docs/async-dpg-race-guide.md`](docs/async-dpg-race-guide.md) を参照してください。
+
 ---
 
 テスト実行方法:

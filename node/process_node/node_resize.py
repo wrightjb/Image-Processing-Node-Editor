@@ -43,6 +43,15 @@ class Node(DpgNodeABC):
     def __init__(self):
         pass
 
+    def _safe_int_value(self, tag, default_value):
+        value = dpg_get_value(tag)
+        if value is None:
+            return default_value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default_value
+
     def add_node(
         self,
         parent,
@@ -202,8 +211,8 @@ class Node(DpgNodeABC):
         frame = node_image_dict.get(connection_info_src, None)
 
         # リサイズパラメータ
-        width = int(dpg_get_value(input_value02_tag))
-        height = int(dpg_get_value(input_value03_tag))
+        width = self._safe_int_value(input_value02_tag, 960)
+        height = self._safe_int_value(input_value03_tag, 540)
         if self._min_val > width:
             width = 1
             dpg_set_value(input_value02_tag, width)

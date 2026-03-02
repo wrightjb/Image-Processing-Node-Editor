@@ -48,9 +48,31 @@ class Node(DpgNodeABC):
 
     def _get_drag_points(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
+        if not dpg.does_item_exist(plot_tag):
+            return [
+                [self._min_val, self._min_val],
+                [self._max_val, self._max_val],
+            ]
         # Drag points should be only children in slot 0
         point_items = dpg.get_item_children(plot_tag, slot=0)
-        return sorted([dpg.get_value(tag) for tag in point_items])
+        points = []
+        for tag in point_items:
+            value = dpg.get_value(tag)
+            if (
+                isinstance(value, (list, tuple)) and
+                len(value) == 2 and
+                value[0] is not None and
+                value[1] is not None
+            ):
+                points.append([value[0], value[1]])
+
+        if len(points) < 2:
+            return [
+                [self._min_val, self._min_val],
+                [self._max_val, self._max_val],
+            ]
+
+        return sorted(points)
 
     def _callback_add_point(self, sender, app_data, user_data):
         node_id = user_data[0]

@@ -40,20 +40,60 @@ def get_args():
     return args
 
 
-def async_main(node_editor):
+def async_main(node_editor, use_debug_print=False):
     # 各ノードの処理結果保持用Dict
     node_image_dict = {}
     node_result_dict = {}
     node_cache_dict = {}
 
+    idle_warning_tick_count = 0
+
     # メインループ
     while not node_editor.get_terminate_flag():
-        update_node_info(
+        update_summary = update_node_info(
             node_editor,
             node_image_dict,
             node_result_dict,
             node_cache_dict=node_cache_dict,
         )
+
+        if not use_debug_print:
+            continue
+
+        active_count = update_summary['active_node_count']
+        progressed = (
+            update_summary['updated_node_count'] > 0 or
+            update_summary['cache_hit_count'] > 0
+        )
+        if active_count > 0 and not progressed:
+            idle_warning_tick_count += 1
+        else:
+            idle_warning_tick_count = 0
+
+        if idle_warning_tick_count == 30:
+            print('WARNING: update loop has no progress for 30 ticks')
+            print(f"\tactive_node_count    : {active_count}")
+            print(
+                f"\tupdated_node_count   : "
+                f"{update_summary['updated_node_count']}"
+            )
+            print(
+                f"\tcache_hit_count      : "
+                f"{update_summary['cache_hit_count']}"
+            )
+            print(
+                f"\tskipped_inactive     : "
+                f"{update_summary['skipped_inactive_count']}"
+            )
+            print(
+                f"\tmissing_instance     : "
+                f"{update_summary['missing_instance_count']}"
+            )
+            print(
+                f"\texception_count      : "
+                f"{update_summary['exception_count']}"
+            )
+            print()
 
 
 def _freeze_cache_value(value):
@@ -144,6 +184,15 @@ def update_node_info(
     if node_cache_dict is None:
         node_cache_dict = {}
 
+    update_summary = {
+        'active_node_count': 0,
+        'updated_node_count': 0,
+        'cache_hit_count': 0,
+        'skipped_inactive_count': 0,
+        'missing_instance_count': 0,
+        'exception_count': 0,
+    }
+
     def _is_valid_connection(connection_info, valid_nodes):
         if len(connection_info) != 2:
             return False
@@ -161,6 +210,7 @@ def update_node_info(
     # ノードリスト取得
     node_list = list(node_editor.get_node_list())
     active_node_set = set(node_list)
+    update_summary['active_node_count'] = len(node_list)
 
     # Remove stale outputs for nodes deleted from the editor.
     deleted_image_node_id_name_list = [
@@ -191,6 +241,7 @@ def update_node_info(
         if hasattr(node_editor, 'is_node_active'):
             try:
                 if not node_editor.is_node_active(node_id_name):
+                    update_summary['skipped_inactive_count'] += 1
                     continue
             except Exception:
                 pass
@@ -204,6 +255,7 @@ def update_node_info(
         # ノード名からインスタンスを取得
         node_instance = node_editor.get_node_instance(node_name)
         if node_instance is None:
+            update_summary['missing_instance_count'] += 1
             node_image_dict[node_id_name] = None
             node_result_dict[node_id_name] = None
             continue
@@ -235,6 +287,7 @@ def update_node_info(
                 node_result_dict[node_id_name] = copy.deepcopy(
                     cached_result['result']
                 )
+                update_summary['cache_hit_count'] += 1
                 continue
 
         # 指定ノードの情報を更新
@@ -250,6 +303,7 @@ def update_node_info(
                 print(e)
                 import traceback
                 traceback.print_exc()
+                update_summary['exception_count'] += 1
                 image, result = None, None
         else:
             image, result = node_instance.update(
@@ -261,6 +315,7 @@ def update_node_info(
         # Cache-miss path (or source node path): run node update and store outputs.
         node_image_dict[node_id_name] = copy.deepcopy(image)
         node_result_dict[node_id_name] = copy.deepcopy(result)
+        update_summary['updated_node_count'] += 1
         if use_cache:
             # Persist latest outputs for the next signature match.
             node_cache_dict[node_id_name] = {
@@ -279,6 +334,8 @@ def update_node_info(
     ]
     for deleted_node_id_name in deleted_node_id_name_list:
         del node_cache_dict[deleted_node_id_name]
+
+    return update_summary
 
 
 def main():
@@ -383,7 +440,7 @@ def main():
     print('**** Start Main Event Loop ********')
     if not unuse_async_draw:
         event_loop = asyncio.get_event_loop()
-        event_loop.run_in_executor(None, async_main, node_editor)
+        event_loop.run_in_executor(None, async_main, node_editor, use_debug_print)
         dpg.start_dearpygui()
     else:
         # 各ノードの処理結果保持用Dict

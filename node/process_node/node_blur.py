@@ -31,6 +31,15 @@ class Node(DpgNodeABC):
     def __init__(self):
         pass
 
+    def _safe_int_value(self, tag, default_value):
+        value = dpg_get_value(tag)
+        if value is None:
+            return default_value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default_value
+
     def add_node(
         self,
         parent,
@@ -148,7 +157,7 @@ class Node(DpgNodeABC):
                 source_tag = connection_info[0] + 'Value'
                 destination_tag = connection_info[1] + 'Value'
                 # 値更新
-                input_value = int(dpg_get_value(source_tag))
+                input_value = self._safe_int_value(source_tag, self._min_val)
                 input_value = max([self._min_val, input_value])
                 input_value = min([self._max_val, input_value])
                 dpg_set_value(destination_tag, input_value)
@@ -162,7 +171,7 @@ class Node(DpgNodeABC):
         frame = node_image_dict.get(connection_info_src, None)
 
         # カーネルサイズ
-        kernel_size = int(dpg_get_value(input_value02_tag))
+        kernel_size = self._safe_int_value(input_value02_tag, 1)
 
         # 計測開始
         if frame is not None and use_pref_counter:

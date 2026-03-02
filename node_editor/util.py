@@ -61,12 +61,27 @@ def check_serial_connection(is_debug=False):
     return serial_device_no_list
 
 def dpg_set_value(tag, value):
-    if dpg.does_item_exist(tag):
-        dpg.set_value(tag, value)
+    try:
+        if dpg.does_item_exist(tag):
+            dpg.set_value(tag, value)
+    except (SystemError, RuntimeError):
+        pass
 
 
 def dpg_get_value(tag):
     value = None
-    if dpg.does_item_exist(tag):
-        value = dpg.get_value(tag)
+    try:
+        if dpg.does_item_exist(tag):
+            value = dpg.get_value(tag)
+    except (SystemError, RuntimeError):
+        value = None
     return value
+
+
+def dpg_get_item_children(tag, slot=0):
+    try:
+        if dpg.does_item_exist(tag):
+            return dpg.get_item_children(tag, slot=slot)
+    except (SystemError, RuntimeError):
+        pass
+    return []

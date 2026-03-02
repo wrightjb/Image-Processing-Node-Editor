@@ -7,7 +7,12 @@ import cv2
 import numpy as np
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_value, dpg_set_value, convert_cv_to_dpg
+from node_editor.util import (
+    dpg_get_value,
+    dpg_set_value,
+    dpg_get_item_children,
+    convert_cv_to_dpg,
+)
 from node.node_abc import DpgNodeABC
 
 
@@ -48,9 +53,31 @@ class Node(DpgNodeABC):
 
     def _get_drag_points(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
+        if not dpg.does_item_exist(plot_tag):
+            return [
+                [self._min_val, self._min_val],
+                [self._max_val, self._max_val],
+            ]
         # Drag points should be only children in slot 0
-        point_items = dpg.get_item_children(plot_tag, slot=0)
-        return sorted([dpg.get_value(tag) for tag in point_items])
+        point_items = dpg_get_item_children(plot_tag, slot=0)
+        points = []
+        for tag in point_items:
+            value = dpg.get_value(tag)
+            if (
+                isinstance(value, (list, tuple)) and
+                len(value) == 2 and
+                value[0] is not None and
+                value[1] is not None
+            ):
+                points.append([value[0], value[1]])
+
+        if len(points) < 2:
+            return [
+                [self._min_val, self._min_val],
+                [self._max_val, self._max_val],
+            ]
+
+        return sorted(points)
 
     def _callback_add_point(self, sender, app_data, user_data):
         node_id = user_data[0]
@@ -88,7 +115,7 @@ class Node(DpgNodeABC):
     def _callback_delete_point(self, sender, app_data, user_data):
         node_id = user_data[0]
         plot_tag = self._get_tag_plot_name(node_id)
-        point_items = dpg.get_item_children(plot_tag, slot=0)
+        point_items = dpg_get_item_children(plot_tag, slot=0)
         mouse_x, mouse_y = dpg.get_plot_mouse_pos()
 
         closest_point_tag = None

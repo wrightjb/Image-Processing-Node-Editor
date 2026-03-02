@@ -33,5 +33,11 @@ stub mode:
 python -m pytest --use-cv2-stub
 ```
 
+## Async DearPyGui safety notes
+- In this repository, `Node.update()` runs in an async worker by default (`main.py` loop). GUI callbacks can mutate/delete DPG items concurrently.
+- For code paths reachable from `Node.update()`, prefer guarded helpers in `node_editor/util.py` (`dpg_get_value`, `dpg_set_value`, `dpg_get_item_children`) instead of direct `dpg.get_*` calls.
+- Parse node inputs defensively (`None` / malformed UI values can occur during delete/import races).
+- See `docs/async-dpg-race-guide.md` for details and architecture recommendations.
+
 ## Commit messages
 Write clear commit messages in English. Use a short summary line followed by a blank line and additional details if necessary.

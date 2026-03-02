@@ -40,7 +40,7 @@ def get_args():
     return args
 
 
-def async_main(node_editor):
+def async_main(node_editor, use_debug_print=False):
     # 各ノードの処理結果保持用Dict
     node_image_dict = {}
     node_result_dict = {}
@@ -48,12 +48,20 @@ def async_main(node_editor):
 
     # メインループ
     while not node_editor.get_terminate_flag():
-        update_node_info(
-            node_editor,
-            node_image_dict,
-            node_result_dict,
-            node_cache_dict=node_cache_dict,
-        )
+        try:
+            update_node_info(
+                node_editor,
+                node_image_dict,
+                node_result_dict,
+                node_cache_dict=node_cache_dict,
+            )
+        except Exception as e:
+            print('ERROR: async_main loop exception')
+            print(f"\terror                : {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            print()
+            continue
 
 
 def _freeze_cache_value(value):
@@ -144,8 +152,37 @@ def update_node_info(
     if node_cache_dict is None:
         node_cache_dict = {}
 
+    def _is_valid_connection(connection_info, valid_nodes):
+        if len(connection_info) != 2:
+            return False
+
+        source_tag, dest_tag = connection_info
+        source_node_id_name = ':'.join(source_tag.split(':')[:2])
+        dest_node_id_name = ':'.join(dest_tag.split(':')[:2])
+        if source_node_id_name not in valid_nodes:
+            return False
+        if dest_node_id_name not in valid_nodes:
+            return False
+
+        return True
+
     # ノードリスト取得
-    node_list = node_editor.get_node_list()
+    node_list = list(node_editor.get_node_list())
+    active_node_set = set(node_list)
+    # Remove stale outputs for nodes deleted from the editor.
+    deleted_image_node_id_name_list = [
+        node_id_name for node_id_name in node_image_dict.keys()
+        if node_id_name not in active_node_set
+    ]
+    for deleted_node_id_name in deleted_image_node_id_name_list:
+        del node_image_dict[deleted_node_id_name]
+
+    deleted_result_node_id_name_list = [
+        node_id_name for node_id_name in node_result_dict.keys()
+        if node_id_name not in active_node_set
+    ]
+    for deleted_node_id_name in deleted_result_node_id_name_list:
+        del node_result_dict[deleted_node_id_name]
 
     # ノード接続情報取得
     sorted_node_connection_dict = node_editor.get_sorted_node_connection()
@@ -156,18 +193,48 @@ def update_node_info(
             node_image_dict[node_id_name] = None
 
         node_id, node_name = node_id_name.split(':')
+
+        # Skip nodes that were deleted in GUI callbacks during this update tick.
+        if hasattr(node_editor, 'is_node_active'):
+            try:
+                if not node_editor.is_node_active(node_id_name):
+                    continue
+            except Exception:
+                pass
+
         connection_list = sorted_node_connection_dict.get(node_id_name, [])
+        connection_list = [
+            connection_info for connection_info in connection_list
+            if _is_valid_connection(connection_info, active_node_set)
+        ]
 
         # ノード名からインスタンスを取得
         node_instance = node_editor.get_node_instance(node_name)
-        node_setting = {}
-        if hasattr(node_instance, 'get_setting_dict'):
-            node_setting = node_instance.get_setting_dict(node_id)
-
+        if node_instance is None:
+            node_image_dict[node_id_name] = None
+            node_result_dict[node_id_name] = None
+            continue
         cache_signature = None
         # Only cache nodes that have inbound links (downstream processors).
         # Source/input nodes must keep running every frame.
         use_cache = len(connection_list) > 0
+        node_setting = {}
+        if use_cache and hasattr(node_instance, 'get_setting_dict'):
+            if mode_async:
+                try:
+                    node_setting = node_instance.get_setting_dict(node_id)
+                except Exception as e:
+                    print(
+                        'WARNING: failed to read node settings in '
+                        f'update_node_info ({node_id_name}) '
+                        f'{type(e).__name__}: {e}'
+                    )
+                    import traceback
+                    traceback.print_exc()
+                    use_cache = False
+            else:
+                node_setting = node_instance.get_setting_dict(node_id)
+
         if use_cache:
             # Cache-hit path: skip expensive update() when nothing relevant changed.
             cache_signature = _build_node_signature(
@@ -200,10 +267,13 @@ def update_node_info(
                     node_result_dict,
                 )
             except Exception as e:
-                print(e)
+                print(
+                    'WARNING: node update exception '
+                    f'({node_id_name}) {type(e).__name__}: {e}'
+                )
                 import traceback
                 traceback.print_exc()
-                sys.exit()
+                image, result = None, None
         else:
             image, result = node_instance.update(
                 node_id,
@@ -232,6 +302,8 @@ def update_node_info(
     ]
     for deleted_node_id_name in deleted_node_id_name_list:
         del node_cache_dict[deleted_node_id_name]
+
+    return
 
 
 def main():
@@ -336,7 +408,7 @@ def main():
     print('**** Start Main Event Loop ********')
     if not unuse_async_draw:
         event_loop = asyncio.get_event_loop()
-        event_loop.run_in_executor(None, async_main, node_editor)
+        event_loop.run_in_executor(None, async_main, node_editor, use_debug_print)
         dpg.start_dearpygui()
     else:
         # 各ノードの処理結果保持用Dict

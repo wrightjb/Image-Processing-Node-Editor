@@ -472,6 +472,9 @@ class DpgNodeEditor(object):
     def get_node_list(self):
         return self._node_list
 
+    def is_node_active(self, node_id_name):
+        return node_id_name in self._node_list
+
     def get_sorted_node_connection(self):
         return self._node_connection_dict
 

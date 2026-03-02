@@ -304,3 +304,52 @@ def test_update_node_info_ignores_stale_connections():
         image_dict,
         result_dict,
     )
+
+
+def test_update_node_info_removes_deleted_node_outputs():
+    node = Mock()
+    node.update.return_value = ('img', {'ok': True})
+    node.get_setting_dict.return_value = {}
+
+    nodes = ['2:ProcessNode']
+    conn_dict = OrderedDict([('2:ProcessNode', [])])
+    editor = FakeEditor(nodes, conn_dict, {'ProcessNode': node})
+
+    image_dict = {
+        '1:OldNode': 'stale',
+        '2:ProcessNode': None,
+    }
+    result_dict = {
+        '1:OldNode': {'stale': True},
+    }
+
+    update_node_info(editor, image_dict, result_dict, mode_async=False)
+
+    assert '1:OldNode' not in image_dict
+    assert '1:OldNode' not in result_dict
+    assert image_dict['2:ProcessNode'] == 'img'
+
+
+def test_update_node_info_skips_inactive_nodes_during_tick():
+    class FakeEditorWithActive(FakeEditor):
+        def __init__(self, nodes, conn_dict, inst_map, active_set):
+            super().__init__(nodes, conn_dict, inst_map)
+            self.active_set = active_set
+
+        def is_node_active(self, node_id_name):
+            return node_id_name in self.active_set
+
+    node = Mock()
+    node.update.return_value = ('img', None)
+    node.get_setting_dict.return_value = {}
+
+    nodes = ['1:NodeA']
+    conn_dict = OrderedDict([('1:NodeA', [])])
+    editor = FakeEditorWithActive(nodes, conn_dict, {'NodeA': node}, active_set=set())
+
+    image_dict = {}
+    result_dict = {}
+
+    update_node_info(editor, image_dict, result_dict, mode_async=False)
+
+    node.update.assert_not_called()

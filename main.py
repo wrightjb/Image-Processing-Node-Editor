@@ -159,8 +159,23 @@ def update_node_info(
         return True
 
     # ノードリスト取得
-    node_list = node_editor.get_node_list()
+    node_list = list(node_editor.get_node_list())
     active_node_set = set(node_list)
+
+    # Remove stale outputs for nodes deleted from the editor.
+    deleted_image_node_id_name_list = [
+        node_id_name for node_id_name in node_image_dict.keys()
+        if node_id_name not in active_node_set
+    ]
+    for deleted_node_id_name in deleted_image_node_id_name_list:
+        del node_image_dict[deleted_node_id_name]
+
+    deleted_result_node_id_name_list = [
+        node_id_name for node_id_name in node_result_dict.keys()
+        if node_id_name not in active_node_set
+    ]
+    for deleted_node_id_name in deleted_result_node_id_name_list:
+        del node_result_dict[deleted_node_id_name]
 
     # ノード接続情報取得
     sorted_node_connection_dict = node_editor.get_sorted_node_connection()
@@ -171,6 +186,15 @@ def update_node_info(
             node_image_dict[node_id_name] = None
 
         node_id, node_name = node_id_name.split(':')
+
+        # Skip nodes that were deleted in GUI callbacks during this update tick.
+        if hasattr(node_editor, 'is_node_active'):
+            try:
+                if not node_editor.is_node_active(node_id_name):
+                    continue
+            except Exception:
+                pass
+
         connection_list = sorted_node_connection_dict.get(node_id_name, [])
         connection_list = [
             connection_info for connection_info in connection_list
@@ -179,6 +203,10 @@ def update_node_info(
 
         # ノード名からインスタンスを取得
         node_instance = node_editor.get_node_instance(node_name)
+        if node_instance is None:
+            node_image_dict[node_id_name] = None
+            node_result_dict[node_id_name] = None
+            continue
         node_setting = {}
         if hasattr(node_instance, 'get_setting_dict'):
             node_setting = node_instance.get_setting_dict(node_id)

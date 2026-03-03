@@ -34,6 +34,13 @@ def get_args():
     )
     parser.add_argument("--unuse_async_draw", action="store_true")
     parser.add_argument("--use_debug_print", action="store_true")
+    parser.add_argument(
+        "-i",
+        "--import_json",
+        type=str,
+        default=None,
+        help="Path to a node editor JSON file to import at startup.",
+    )
 
     args = parser.parse_args()
 
@@ -312,6 +319,7 @@ def main():
     setting = args.setting
     unuse_async_draw = args.unuse_async_draw
     use_debug_print = args.use_debug_print
+    import_json = args.import_json
 
     # 動作設定
     print('**** Load Config ********')
@@ -400,6 +408,10 @@ def main():
         use_debug_print=use_debug_print,
         node_dir=current_path + '/node',
     )
+
+    if import_json is not None:
+        print('**** Import JSON ********')
+        node_editor.import_setting_file(import_json)
 
     # ビューポート表示
     dpg.show_viewport()

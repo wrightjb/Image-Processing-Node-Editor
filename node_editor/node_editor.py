@@ -32,6 +32,11 @@ class DpgNodeEditor(object):
 
     _use_debug_print = False
 
+    _dragging_node_tag = None
+    _drag_start_mouse_pos = None
+    _drag_start_node_pos = None
+    _node_title_bar_height = 26
+
     def __init__(
         self,
         width=1280,
@@ -57,6 +62,9 @@ class DpgNodeEditor(object):
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
+        self._dragging_node_tag = None
+        self._drag_start_mouse_pos = None
+        self._drag_start_node_pos = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -279,6 +287,18 @@ class DpgNodeEditor(object):
         self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
+            dpg.add_mouse_down_handler(
+                button=dpg.mvMouseButton_Left,
+                callback=self._cntrl_node_drag_start,
+            )
+            dpg.add_mouse_drag_handler(
+                button=dpg.mvMouseButton_Left,
+                callback=self._cntrl_node_drag,
+            )
+            dpg.add_mouse_release_handler(
+                button=dpg.mvMouseButton_Left,
+                callback=self._cntrl_node_drag_end,
+            )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
                 callback=self._cntrl_delete_selected,
@@ -460,6 +480,53 @@ class DpgNodeEditor(object):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
+
+    def _cntrl_node_drag_start(self, sender, data):
+        # Work around DearPyGui hit-test edge cases for overlapping nodes.
+        mouse_pos = dpg.get_mouse_pos(local=False)
+        mouse_x, mouse_y = mouse_pos
+
+        for node_id_name in reversed(self._node_list):
+            if not dpg.does_item_exist(node_id_name):
+                continue
+
+            rect_min_x, rect_min_y = dpg.get_item_rect_min(node_id_name)
+            rect_max_x, rect_max_y = dpg.get_item_rect_max(node_id_name)
+            if not (rect_min_x <= mouse_x <= rect_max_x and
+                    rect_min_y <= mouse_y <= rect_max_y):
+                continue
+
+            in_title_bar = rect_min_y <= mouse_y <= (
+                rect_min_y + self._node_title_bar_height)
+            if not in_title_bar:
+                break
+
+            self._dragging_node_tag = node_id_name
+            self._drag_start_mouse_pos = list(mouse_pos)
+            self._drag_start_node_pos = dpg.get_item_pos(node_id_name)
+            break
+
+    def _cntrl_node_drag(self, sender, data):
+        if self._dragging_node_tag is None:
+            return
+        if not dpg.does_item_exist(self._dragging_node_tag):
+            self._cntrl_node_drag_end(sender, data)
+            return
+
+        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
+        start_mouse_x, start_mouse_y = self._drag_start_mouse_pos
+        start_node_x, start_node_y = self._drag_start_node_pos
+
+        new_pos = [
+            int(start_node_x + (mouse_x - start_mouse_x)),
+            int(start_node_y + (mouse_y - start_mouse_y)),
+        ]
+        dpg.set_item_pos(self._dragging_node_tag, new_pos)
+
+    def _cntrl_node_drag_end(self, sender, data):
+        self._dragging_node_tag = None
+        self._drag_start_mouse_pos = None
+        self._drag_start_node_pos = None
 
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)

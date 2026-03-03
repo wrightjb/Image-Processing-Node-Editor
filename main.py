@@ -411,7 +411,15 @@ def main():
 
     if import_json is not None:
         print('**** Import JSON ********')
-        node_editor.import_setting_file(import_json)
+        try:
+            node_editor.import_setting_file(import_json)
+        except Exception as e:
+            print('ERROR: failed to import startup JSON file')
+            print(f'	path                 : {import_json}')
+            print(f"	error                : {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            print()
 
     # ビューポート表示
     dpg.show_viewport()

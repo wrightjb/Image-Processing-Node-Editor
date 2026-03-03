@@ -32,10 +32,7 @@ class DpgNodeEditor(object):
 
     _use_debug_print = False
 
-    _dragging_node_tag = None
-    _drag_start_mouse_pos = None
-    _drag_start_node_pos = None
-    _node_title_bar_height = 26
+    _node_overlap_margin = 24
 
     def __init__(
         self,
@@ -62,9 +59,6 @@ class DpgNodeEditor(object):
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
-        self._dragging_node_tag = None
-        self._drag_start_mouse_pos = None
-        self._drag_start_node_pos = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -287,17 +281,9 @@ class DpgNodeEditor(object):
         self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
-            dpg.add_mouse_down_handler(
-                button=dpg.mvMouseButton_Left,
-                callback=self._cntrl_node_drag_start,
-            )
-            dpg.add_mouse_drag_handler(
-                button=dpg.mvMouseButton_Left,
-                callback=self._cntrl_node_drag,
-            )
             dpg.add_mouse_release_handler(
                 button=dpg.mvMouseButton_Left,
-                callback=self._cntrl_node_drag_end,
+                callback=self._cntrl_resolve_selected_node_overlap,
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
@@ -344,6 +330,8 @@ class DpgNodeEditor(object):
         self._vw_add_node(user_data, new_id, pos)
         # Must add to list AFTER fully init because update's always async
         self._node_list.append(new_node_id_name)
+        if len(self._node_list) > 1:
+            self._cntrl_resolve_node_overlap(new_node_id_name)
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
@@ -463,6 +451,7 @@ class DpgNodeEditor(object):
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
+        self._cntrl_resolve_all_node_overlaps()
 
     def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':
@@ -481,52 +470,74 @@ class DpgNodeEditor(object):
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
-    def _cntrl_node_drag_start(self, sender, data):
-        # Work around DearPyGui hit-test edge cases for overlapping nodes.
-        mouse_pos = dpg.get_mouse_pos(local=False)
-        mouse_x, mouse_y = mouse_pos
+    def _cntrl_resolve_selected_node_overlap(self, sender, data):
+        selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
+        if not selected_nodes:
+            return
+        node_tag = dpg.get_item_alias(selected_nodes[0])
+        self._cntrl_resolve_node_overlap(node_tag)
 
-        for node_id_name in reversed(self._node_list):
-            if not dpg.does_item_exist(node_id_name):
-                continue
+    def _cntrl_get_node_rect(self, node_tag):
+        if not dpg.does_item_exist(node_tag):
+            return None
 
-            rect_min_x, rect_min_y = dpg.get_item_rect_min(node_id_name)
-            rect_max_x, rect_max_y = dpg.get_item_rect_max(node_id_name)
-            if not (rect_min_x <= mouse_x <= rect_max_x and
-                    rect_min_y <= mouse_y <= rect_max_y):
-                continue
+        item_pos = dpg.get_item_pos(node_tag)
+        item_size = dpg.get_item_rect_size(node_tag)
 
-            in_title_bar = rect_min_y <= mouse_y <= (
-                rect_min_y + self._node_title_bar_height)
-            if not in_title_bar:
+        if (not isinstance(item_pos, (list, tuple)) or len(item_pos) != 2 or
+                not isinstance(item_size, (list, tuple)) or
+                len(item_size) != 2):
+            return None
+
+        x, y = item_pos
+        width, height = item_size
+        return x, y, x + width, y + height
+
+    def _cntrl_rect_overlap(self, rect_a, rect_b):
+        return not (
+            rect_a[2] <= rect_b[0] or
+            rect_b[2] <= rect_a[0] or
+            rect_a[3] <= rect_b[1] or
+            rect_b[3] <= rect_a[1]
+        )
+
+    def _cntrl_resolve_node_overlap(self, node_tag):
+        moving_rect = self._cntrl_get_node_rect(node_tag)
+        if moving_rect is None:
+            return
+
+        max_retries = max(len(self._node_list) * 3, 8)
+        retries = 0
+        while retries < max_retries:
+            overlaps = False
+            for other_node_tag in self._node_list:
+                if other_node_tag == node_tag:
+                    continue
+                other_rect = self._cntrl_get_node_rect(other_node_tag)
+                if other_rect is None:
+                    continue
+                if self._cntrl_rect_overlap(moving_rect, other_rect):
+                    item_pos = dpg.get_item_pos(node_tag)
+                    if (not isinstance(item_pos, (list, tuple)) or
+                            len(item_pos) != 2):
+                        return
+                    x, y = item_pos
+                    dpg.set_item_pos(node_tag, [
+                        int(x + self._node_overlap_margin),
+                        int(y + self._node_overlap_margin),
+                    ])
+                    moving_rect = self._cntrl_get_node_rect(node_tag)
+                    if moving_rect is None:
+                        return
+                    overlaps = True
+                    break
+            if not overlaps:
                 break
+            retries += 1
 
-            self._dragging_node_tag = node_id_name
-            self._drag_start_mouse_pos = list(mouse_pos)
-            self._drag_start_node_pos = dpg.get_item_pos(node_id_name)
-            break
-
-    def _cntrl_node_drag(self, sender, data):
-        if self._dragging_node_tag is None:
-            return
-        if not dpg.does_item_exist(self._dragging_node_tag):
-            self._cntrl_node_drag_end(sender, data)
-            return
-
-        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
-        start_mouse_x, start_mouse_y = self._drag_start_mouse_pos
-        start_node_x, start_node_y = self._drag_start_node_pos
-
-        new_pos = [
-            int(start_node_x + (mouse_x - start_mouse_x)),
-            int(start_node_y + (mouse_y - start_mouse_y)),
-        ]
-        dpg.set_item_pos(self._dragging_node_tag, new_pos)
-
-    def _cntrl_node_drag_end(self, sender, data):
-        self._dragging_node_tag = None
-        self._drag_start_mouse_pos = None
-        self._drag_start_node_pos = None
+    def _cntrl_resolve_all_node_overlaps(self):
+        for node_tag in self._node_list:
+            self._cntrl_resolve_node_overlap(node_tag)
 
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)

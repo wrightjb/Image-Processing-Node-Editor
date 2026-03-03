@@ -378,12 +378,16 @@ class DpgNodeEditor(object):
         self._vw_show_file_import()
 
     def import_setting_file(self, file_path):
+        """Public helper for startup/programmatic imports."""
+        return self._cntrl_import_setting_file(file_path)
+
+    def _cntrl_import_setting_file(self, file_path):
         with open(file_path) as fp:
             setting_dict = json.load(fp)
-        self._import_setting_dict(setting_dict)
+        self._cntrl_import_setting_dict(setting_dict)
         return setting_dict
 
-    def _import_setting_dict(self, setting_dict):
+    def _cntrl_import_setting_dict(self, setting_dict):
         if setting_dict is None:
             return
 
@@ -443,7 +447,7 @@ class DpgNodeEditor(object):
     def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':
             return
-        setting_dict = self.import_setting_file(data['file_path_name'])
+        setting_dict = self._cntrl_import_setting_file(data['file_path_name'])
 
         if self._use_debug_print:
             print('**** _cntrl_file_import ****')

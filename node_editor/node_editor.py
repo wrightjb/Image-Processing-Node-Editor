@@ -377,11 +377,22 @@ class DpgNodeEditor(object):
     def _cntrl_file_import_menu(self, sender, data, user_data):
         self._vw_show_file_import()
 
-    def _cntrl_file_import(self, sender, data):
-        if data['file_name'] == '.':
-            return
-        with open(data['file_path_name']) as fp:
+    def import_setting_file(self, file_path):
+        """Public helper for startup/programmatic imports."""
+        return self._cntrl_import_setting_file(file_path)
+
+    def _cntrl_import_setting_file(self, file_path):
+        with open(file_path) as fp:
             setting_dict = json.load(fp)
+        self._cntrl_import_setting_dict(setting_dict)
+        return setting_dict
+
+    def _cntrl_import_setting_dict(self, setting_dict):
+        if setting_dict is None:
+            return
+
+        if 'node_list' not in setting_dict or 'link_list' not in setting_dict:
+            raise KeyError('Invalid node editor setting file format.')
 
         id_map = {}
         new_node_list = []
@@ -432,6 +443,11 @@ class DpgNodeEditor(object):
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
+
+    def _cntrl_file_import(self, sender, data):
+        if data['file_name'] == '.':
+            return
+        setting_dict = self._cntrl_import_setting_file(data['file_path_name'])
 
         if self._use_debug_print:
             print('**** _cntrl_file_import ****')

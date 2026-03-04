@@ -1,0 +1,271 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import time
+from abc import abstractmethod
+
+import dearpygui.dearpygui as dpg
+import numpy as np
+
+from node.node_abc import DpgNodeABC
+from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
+
+
+class DeclarativeImageProcessNodeBase(DpgNodeABC):
+    """Common implementation for simple image process nodes."""
+
+    _opencv_setting_dict = None
+
+    parameters = []
+    show_elapsed_time = True
+
+    def add_node(
+        self,
+        parent,
+        node_id,
+        pos=[0, 0],
+        opencv_setting_dict=None,
+        callback=None,
+    ):
+        del callback
+
+        tag_node_name = self._node_name(node_id)
+        input_image_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
+        input_image_value_tag = self._value_tag(input_image_tag)
+        output_image_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        output_image_value_tag = self._value_tag(output_image_tag)
+        elapsed_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        elapsed_value_tag = self._value_tag(elapsed_tag)
+
+        self._opencv_setting_dict = opencv_setting_dict
+        small_window_w = self._opencv_setting_dict['process_width']
+        small_window_h = self._opencv_setting_dict['process_height']
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
+
+        black_image = np.zeros((small_window_w, small_window_h, 3))
+        black_texture = convert_cv_to_dpg(black_image, small_window_w, small_window_h)
+
+        with dpg.texture_registry(show=False):
+            dpg.add_raw_texture(
+                small_window_w,
+                small_window_h,
+                black_texture,
+                tag=output_image_value_tag,
+                format=dpg.mvFormat_Float_rgb,
+            )
+
+        with dpg.node(
+            tag=tag_node_name,
+            parent=parent,
+            label=self.node_label,
+            pos=pos,
+        ):
+            with dpg.node_attribute(
+                tag=input_image_tag,
+                attribute_type=dpg.mvNode_Attr_Input,
+            ):
+                dpg.add_text(
+                    tag=input_image_value_tag,
+                    default_value='Input BGR image',
+                )
+
+            with dpg.node_attribute(
+                tag=output_image_tag,
+                attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                dpg.add_image(output_image_value_tag)
+
+            for parameter in self.parameters:
+                self._add_parameter_ui(tag_node_name, parameter, small_window_w)
+
+            if self.show_elapsed_time and use_pref_counter:
+                with dpg.node_attribute(
+                    tag=elapsed_tag,
+                    attribute_type=dpg.mvNode_Attr_Output,
+                ):
+                    dpg.add_text(
+                        tag=elapsed_value_tag,
+                        default_value='elapsed time(ms)',
+                    )
+
+        return tag_node_name
+
+    def update(
+        self,
+        node_id,
+        connection_list,
+        node_image_dict,
+        node_result_dict,
+    ):
+        del node_result_dict
+
+        tag_node_name = self._node_name(node_id)
+        output_image_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        )
+        elapsed_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        )
+
+        small_window_w = self._opencv_setting_dict['process_width']
+        small_window_h = self._opencv_setting_dict['process_height']
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
+
+        connection_info_src = ''
+        self._sync_linked_parameters(connection_list)
+
+        for connection_info in connection_list:
+            connection_type = connection_info[0].split(':')[2]
+            if connection_type == self.TYPE_IMAGE:
+                connection_info_src = ':'.join(connection_info[0].split(':')[:2])
+
+        frame = node_image_dict.get(connection_info_src, None)
+        parameter_values = self._get_parameter_values(tag_node_name)
+
+        start_time = None
+        if frame is not None and use_pref_counter:
+            start_time = time.perf_counter()
+
+        if frame is not None:
+            frame, result = self.process(frame, **parameter_values)
+        else:
+            result = None
+
+        if frame is not None and use_pref_counter and start_time is not None:
+            elapsed_time = int((time.perf_counter() - start_time) * 1000)
+            dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
+
+        if frame is not None:
+            texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
+            dpg_set_value(output_image_value_tag, texture)
+
+        return frame, result
+
+    def close(self, node_id):
+        del node_id
+
+    def get_setting_dict(self, node_id):
+        tag_node_name = self._node_name(node_id)
+
+        setting_dict = {
+            'ver': self._ver,
+            'pos': dpg.get_item_pos(tag_node_name),
+        }
+
+        for parameter in self.parameters:
+            parameter_value_tag = self._value_tag(
+                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            )
+            setting_dict[parameter_value_tag] = dpg_get_value(parameter_value_tag)
+
+        return setting_dict
+
+    def set_setting_dict(self, node_id, setting_dict):
+        tag_node_name = self._node_name(node_id)
+
+        for parameter in self.parameters:
+            parameter_value_tag = self._value_tag(
+                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            )
+            if parameter_value_tag not in setting_dict:
+                continue
+            value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
+            dpg_set_value(parameter_value_tag, value)
+
+    @abstractmethod
+    def process(self, frame, **parameter_values):
+        pass
+
+    def _sync_linked_parameters(self, connection_list):
+        for connection_info in connection_list:
+            connection_type = connection_info[0].split(':')[2]
+            parameter = self._find_parameter_by_type(connection_type)
+            if parameter is None:
+                continue
+
+            source_tag = connection_info[0] + 'Value'
+            destination_tag = connection_info[1] + 'Value'
+            source_value = dpg_get_value(source_tag)
+            if source_value is None:
+                continue
+
+            value = self._cast_parameter_value(parameter, source_value)
+            value = self._clamp_parameter_value(parameter, value)
+            dpg_set_value(destination_tag, value)
+
+    def _get_parameter_values(self, tag_node_name):
+        values = {}
+        for parameter in self.parameters:
+            parameter_value_tag = self._value_tag(
+                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            )
+            value = dpg_get_value(parameter_value_tag)
+            value = self._cast_parameter_value(parameter, value)
+            value = self._clamp_parameter_value(parameter, value)
+            values[parameter['name']] = value
+        return values
+
+    def _add_parameter_ui(self, tag_node_name, parameter, width):
+        port_tag = self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+        value_tag = self._value_tag(port_tag)
+
+        with dpg.node_attribute(
+            tag=port_tag,
+            attribute_type=dpg.mvNode_Attr_Input,
+        ):
+            if parameter['widget'] == 'slider_int':
+                dpg.add_slider_int(
+                    tag=value_tag,
+                    label=parameter['label'],
+                    width=width - 80,
+                    default_value=parameter['default'],
+                    min_value=parameter['min'],
+                    max_value=parameter['max'],
+                    callback=None,
+                )
+            elif parameter['widget'] == 'slider_float':
+                dpg.add_slider_float(
+                    tag=value_tag,
+                    label=parameter['label'],
+                    width=width - 80,
+                    default_value=parameter['default'],
+                    min_value=parameter['min'],
+                    max_value=parameter['max'],
+                    callback=None,
+                )
+
+    def _find_parameter_by_type(self, value_type):
+        for parameter in self.parameters:
+            if parameter['type'] == value_type:
+                return parameter
+        return None
+
+    def _cast_parameter_value(self, parameter, value):
+        cast = parameter.get('cast', None)
+        if cast is int:
+            return int(value)
+        if cast is float:
+            value = float(value)
+            precision = parameter.get('precision', None)
+            if precision is not None:
+                value = round(value, precision)
+            return value
+        return value
+
+    def _clamp_parameter_value(self, parameter, value):
+        min_value = parameter.get('min', None)
+        max_value = parameter.get('max', None)
+
+        if min_value is not None:
+            value = max(min_value, value)
+        if max_value is not None:
+            value = min(max_value, value)
+        return value
+
+    def _node_name(self, node_id):
+        return str(node_id) + ':' + self.node_tag
+
+    def _port_tag(self, node_name, value_type, port_name):
+        return f'{node_name}:{value_type}:{port_name}'
+
+    def _value_tag(self, port_tag):
+        return f'{port_tag}Value'

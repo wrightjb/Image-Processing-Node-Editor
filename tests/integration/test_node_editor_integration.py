@@ -14,6 +14,7 @@ from node_editor.node_editor import DpgNodeEditor
 from main import update_node_info
 from node.process_node.node_blur import image_process as blur_image_process
 from node.process_node.node_contrast import image_process as contrast_image_process
+from node.process_node.node_brightness import image_process as brightness_image_process
 
 
 class TestNodeEditorIntegration:
@@ -161,6 +162,88 @@ class TestNodeEditorIntegration:
 
         finally:
             # Cleanup
+            if os.path.exists(image_path):
+                os.unlink(image_path)
+
+
+    @pytest.mark.parametrize("brightness_beta", [0, 32, 96])
+    def test_image_brightness_pipeline(self, brightness_beta, debug_test):
+        """Test image input -> brightness processing pipeline."""
+        test_image = self.create_gradient_image()
+
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            cv2.imwrite(tmp.name, test_image)
+            image_path = tmp.name
+
+        try:
+            menu_dict = OrderedDict({
+                'InputNode': 'input_node',
+                'ProcessNode': 'process_node',
+            })
+            editor = DpgNodeEditor(
+                width=800,
+                height=600,
+                opencv_setting_dict={
+                    'input_window_width': self.node_width,
+                    'input_window_height': self.node_height,
+                    'process_width': self.node_width,
+                    'process_height': self.node_height,
+                    'use_pref_counter': False
+                },
+                menu_dict=menu_dict,
+                node_dir='node'
+            )
+            self.advance_frames()
+
+            editor._cntrl_add_node(None, None, 'Image')
+            image_node_id = '1:Image'
+
+            editor._last_pos = [self.node_width, self.node_height]
+            editor._cntrl_add_node(None, None, 'Brightness')
+            brightness_node_id = '2:Brightness'
+
+            image_node = editor.get_node_instance('Image')
+            image_node._image_filepath['1'] = image_path
+            image_node._image['1'] = test_image
+
+            brightness_node = editor.get_node_instance('Brightness')
+            beta_tag = brightness_node_id + ':' + brightness_node.TYPE_INT + ':Input02Value'
+            dpg.set_value(beta_tag, brightness_beta)
+
+            image_output_tag = image_node_id + ':' + image_node.TYPE_IMAGE + ':Output01'
+            brightness_input_tag = brightness_node_id + ':' + brightness_node.TYPE_IMAGE + ':Input01'
+
+            image_output_id = dpg.get_alias_id(image_output_tag)
+            brightness_input_id = dpg.get_alias_id(brightness_input_tag)
+            editor._cntrl_link('NodeEditor', [image_output_id, brightness_input_id])
+
+            node_image_dict = {}
+            node_result_dict = {}
+            update_node_info(editor, node_image_dict, node_result_dict)
+
+            assert image_node_id in node_image_dict
+            assert brightness_node_id in node_image_dict
+
+            image_result = node_image_dict[image_node_id]
+            brightness_result = node_image_dict[brightness_node_id]
+
+            assert image_result is not None
+            assert brightness_result is not None
+            assert brightness_result.shape == test_image.shape
+
+            expected_brightness_result = brightness_image_process(test_image, brightness_beta)
+            np.testing.assert_allclose(
+                brightness_result,
+                expected_brightness_result,
+                atol=1,
+                err_msg='Brightness node output differs from direct processing',
+            )
+
+            if debug_test:
+                self.advance_frames()
+                breakpoint()
+
+        finally:
             if os.path.exists(image_path):
                 os.unlink(image_path)
 

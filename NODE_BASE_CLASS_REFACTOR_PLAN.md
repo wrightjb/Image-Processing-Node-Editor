@@ -214,11 +214,10 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - safe default fallback when UI values are missing/invalid during async races
   - Declarative test coverage expanded for new behaviors.
 
-- **Wave 3 (this update)**
+- **Wave 3 (completed)**
   - Additional process nodes migrated to declarative base:
     - `GaussianBlur`
     - `Canny`
-    - `Curves`
     - `Resize`
   - Base class enhanced with small extensibility hooks:
     - `normalize_parameter_values(...)` for per-node defensive normalization in `update()`
@@ -226,7 +225,7 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - declarative `input_int` widget support
 
 
-- **Wave 4 (this update)**
+- **Wave 4 (completed)**
   - Migrated additional nodes to declarative base:
     - `Crop`
     - `SimpleFilter`
@@ -235,12 +234,14 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - Crop crossed-bounds normalization behavior
     - SimpleFilter full settings coverage and linked `K` clamp range
 
-### Next suggested wave
 
-- **Wave 5 candidate: `Curves` (hybrid migration)**
-  - Keep drag-point plot UI and callbacks as node-local custom code.
-  - Adopt declarative base only for shared image I/O, timing output, and common settings shell where useful.
-  - Add async-safety hardening in update-reachable paths (prefer guarded DPG helpers and defensive parsing).
+- **Wave 5 (completed)**
+  - Migrated `Curves` to declarative base using a hybrid approach:
+    - kept drag-point plot UI/callbacks as node-local custom logic
+    - adopted shared image I/O and elapsed-time output behavior from base class
+    - persisted/restored curve points via declarative custom-settings hooks
+
+### Next suggested wave
 
 - **Wave 6 candidate: `OmnidirectionalViewer` (stateful migration)**
   - Preserve the node-local internal map cache (`phi/theta`) optimization because recomputation is expensive.
@@ -249,7 +250,6 @@ This addresses your idea directly: most nodes can become declarations + core pro
 
 ### Why these are deferred from simple-wave migrations
 
-- `Curves` has bespoke interactive plot behavior (drag points, hit-testing, add/delete callbacks) that is intentionally not generalized into the base today.
 - `OmnidirectionalViewer` has non-trivial internal state/caching semantics beyond declarative slider-driven transforms.
 
 ### Entry criteria for starting each deferred wave

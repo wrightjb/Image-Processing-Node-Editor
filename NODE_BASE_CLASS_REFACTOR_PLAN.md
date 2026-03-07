@@ -224,7 +224,17 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - `on_node_added(...)` / `on_settings_applied(...)` for UI-only post setup (e.g., `Auto Sigma` enable/disable)
     - declarative `input_int` widget support
 
+
+- **Wave 4 (this update)**
+  - Migrated additional nodes to declarative base:
+    - `Crop`
+    - `SimpleFilter`
+  - Fixed `SimpleFilter` settings/caching mismatch by declaratively persisting all kernel fields (`Input02`..`Input11`) instead of only first four.
+  - Expanded tests for:
+    - Crop crossed-bounds normalization behavior
+    - SimpleFilter full settings coverage and linked `K` clamp range
+
 ### Next suggested wave
 
-- `SimpleFilter` (many parameters; good candidate once bulk parameter declarations are finalized).
+- `Curves` (keep drag-point UI custom; migrate only shared image/update/settings scaffolding if beneficial).
 - `Crop`, `Flip`, and similar nodes already migrated can be used as templates for remaining medium-complexity process nodes.

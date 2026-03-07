@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 
 from node.base import declarative_node_base as base_module
@@ -9,6 +10,8 @@ import node.process_node.node_threshold as threshold_module
 import node.process_node.node_canny as canny_module
 import node.process_node.node_resize as resize_module
 import node.process_node.node_gaussian_blur as gaussian_blur_module
+import node.process_node.node_crop as crop_module
+import node.process_node.node_simple_filter as simple_filter_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -18,6 +21,8 @@ ThresholdNode = threshold_module.Node
 CannyNode = canny_module.Node
 ResizeNode = resize_module.Node
 GaussianBlurNode = gaussian_blur_module.Node
+CropNode = crop_module.Node
+SimpleFilterNode = simple_filter_module.Node
 
 
 class DpgStub:
@@ -302,3 +307,105 @@ def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
 
     assert calls['kernel'] == (5, 5)
     assert calls['sigma'] == 0.0
+
+
+def test_crop_node_normalizes_crossed_bounds(monkeypatch):
+    node = CropNode()
+    _prepare_node(node)
+
+    values = {
+        '61:Crop:Float:Input02Value': 0.9,
+        '61:Crop:Float:Input03Value': 0.2,
+        '61:Crop:Float:Input04Value': 0.8,
+        '61:Crop:Float:Input05Value': 0.1,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(crop_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+
+    out_frame, result = node.update(
+        61,
+        [
+            ['6:ImageSource:Image:Output01', '61:Crop:Image:Input01'],
+        ],
+        {'6:ImageSource': frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape[0] > 0
+    assert out_frame.shape[1] > 0
+    assert writes['61:Crop:Float:Input02Value'] == 0.19
+    assert writes['61:Crop:Float:Input03Value'] == 0.91
+    assert writes['61:Crop:Float:Input04Value'] == pytest.approx(0.09)
+    assert writes['61:Crop:Float:Input05Value'] == pytest.approx(0.81)
+
+
+def test_simple_filter_settings_include_all_kernel_values(monkeypatch):
+    node = SimpleFilterNode()
+
+    values = {
+        '70:SimpleFilter:Float:Input02Value': 0.0,
+        '70:SimpleFilter:Float:Input03Value': 0.1,
+        '70:SimpleFilter:Float:Input04Value': 0.2,
+        '70:SimpleFilter:Float:Input05Value': 0.3,
+        '70:SimpleFilter:Float:Input06Value': 0.4,
+        '70:SimpleFilter:Float:Input07Value': 0.5,
+        '70:SimpleFilter:Float:Input08Value': 0.6,
+        '70:SimpleFilter:Float:Input09Value': 0.7,
+        '70:SimpleFilter:Float:Input10Value': 0.8,
+        '70:SimpleFilter:Float:Input11Value': 1.9,
+    }
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg', DpgStub())
+
+    setting = node.get_setting_dict(70)
+
+    for index in range(2, 12):
+        tag = f'70:SimpleFilter:Float:Input{index:02d}Value'
+        assert tag in setting
+
+
+def test_simple_filter_linked_k_value_uses_k_range(monkeypatch):
+    node = SimpleFilterNode()
+    _prepare_node(node)
+
+    values = {
+        '88:FloatValue:Float:Output01Value': 12.0,
+        '80:SimpleFilter:Float:Input02Value': 0.0,
+        '80:SimpleFilter:Float:Input03Value': 0.0,
+        '80:SimpleFilter:Float:Input04Value': 0.0,
+        '80:SimpleFilter:Float:Input05Value': 0.0,
+        '80:SimpleFilter:Float:Input06Value': 1.0,
+        '80:SimpleFilter:Float:Input07Value': 0.0,
+        '80:SimpleFilter:Float:Input08Value': 0.0,
+        '80:SimpleFilter:Float:Input09Value': 0.0,
+        '80:SimpleFilter:Float:Input10Value': 0.0,
+        '80:SimpleFilter:Float:Input11Value': 1.0,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(simple_filter_module.cv2, 'filter2D', lambda image, d, k: image, raising=False)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    node.update(
+        80,
+        [
+            ['3:ImageSource:Image:Output01', '80:SimpleFilter:Image:Input01'],
+            ['88:FloatValue:Float:Output01', '80:SimpleFilter:Float:Input11'],
+        ],
+        {'3:ImageSource': frame},
+        {},
+    )
+
+    assert writes['80:SimpleFilter:Float:Input11Value'] == 10.0

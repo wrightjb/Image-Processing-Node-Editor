@@ -191,3 +191,73 @@ class Node(DeclarativeNodeBase):
 ```
 
 This addresses your idea directly: most nodes can become declarations + core processing logic, while one-off nodes can override hooks or stay custom.
+
+## Implementation progress (ongoing)
+
+### Completed waves
+
+- **Wave 1 (already completed)**
+  - Base class introduced at `node/base/declarative_node_base.py`.
+  - Pilot nodes migrated: `Brightness`, `Contrast`, `Blur`.
+
+- **Wave 2 (completed)**
+  - Additional simple process nodes migrated to declarative base:
+    - `Grayscale`
+    - `EqualizeHist`
+    - `GammaCorrection`
+    - `Flip`
+    - `ApplyColorMap`
+    - `Threshold`
+  - Base class hardened for async GUI race resilience guidance:
+    - defensive connection parsing for malformed/stale links
+    - per-port parameter matching (avoids cross-updating same-typed controls)
+    - safe default fallback when UI values are missing/invalid during async races
+  - Declarative test coverage expanded for new behaviors.
+
+- **Wave 3 (completed)**
+  - Additional process nodes migrated to declarative base:
+    - `GaussianBlur`
+    - `Canny`
+    - `Resize`
+  - Base class enhanced with small extensibility hooks:
+    - `normalize_parameter_values(...)` for per-node defensive normalization in `update()`
+    - `on_node_added(...)` / `on_settings_applied(...)` for UI-only post setup (e.g., `Auto Sigma` enable/disable)
+    - declarative `input_int` widget support
+
+
+- **Wave 4 (completed)**
+  - Migrated additional nodes to declarative base:
+    - `Crop`
+    - `SimpleFilter`
+  - Fixed `SimpleFilter` settings/caching mismatch by declaratively persisting all kernel fields (`Input02`..`Input11`) instead of only first four.
+  - Expanded tests for:
+    - Crop crossed-bounds normalization behavior
+    - SimpleFilter full settings coverage and linked `K` clamp range
+
+
+- **Wave 5 (completed)**
+  - Migrated `Curves` to declarative base using a hybrid approach:
+    - kept drag-point plot UI/callbacks as node-local custom logic
+    - adopted shared image I/O and elapsed-time output behavior from base class
+    - persisted/restored curve points via declarative custom-settings hooks
+
+- **Wave 6 (completed)**
+  - Migrated `OmnidirectionalViewer` to declarative base while preserving stateful map caching semantics.
+  - Kept expensive `phi/theta` map generation cached per node id and recomputed only when viewpoint parameters change.
+  - Added explicit cache cleanup in `close(...)` to avoid stale per-node state after node deletion.
+  - Added tests covering cache reuse and close-time cache eviction.
+
+### Next suggested wave
+
+- **Wave 7 candidate: complex resource/deep-learning nodes**
+  - Prioritize nodes with custom lifecycle/resource ownership and migrate incrementally with focused tests.
+
+### Why these are deferred from simple-wave migrations
+
+- Resource/deep-learning nodes often own external handles/caches and may require custom close/init semantics beyond declarative slider-driven transforms.
+
+### Entry criteria for starting each deferred wave
+
+- Add focused tests for node-specific behavior first (interaction/state invariants).
+- Keep migration PRs isolated (one complex node per PR) to simplify regression triage.
+- Confirm async mode behavior with `pytest --use-cv2-stub` and a manual smoke check in the editor.

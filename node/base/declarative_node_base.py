@@ -26,8 +26,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        del callback
-
         tag_node_name = self._node_name(node_id)
         input_image_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
         input_image_value_tag = self._value_tag(input_image_tag)
@@ -75,7 +73,14 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 dpg.add_image(output_image_value_tag)
 
             for parameter in self.parameters:
-                self._add_parameter_ui(tag_node_name, parameter, small_window_w)
+                self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
+
+            self.build_custom_ui(
+                tag_node_name,
+                node_id,
+                small_window_w,
+                callback,
+            )
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -87,6 +92,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                         default_value='elapsed time(ms)',
                     )
 
+        self.on_node_added(tag_node_name)
         return tag_node_name
 
     def update(
@@ -113,13 +119,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         connection_info_src = ''
         self._sync_linked_parameters(connection_list)
 
-        for connection_info in connection_list:
-            connection_type = connection_info[0].split(':')[2]
+        for source_tag, _, connection_type in self._iter_connections(connection_list):
             if connection_type == self.TYPE_IMAGE:
-                connection_info_src = ':'.join(connection_info[0].split(':')[:2])
+                connection_info_src = self._extract_source_node_key(source_tag)
 
         frame = node_image_dict.get(connection_info_src, None)
         parameter_values = self._get_parameter_values(tag_node_name)
+        parameter_values = self.normalize_parameter_values(tag_node_name, parameter_values)
 
         start_time = None
         if frame is not None and use_pref_counter:
@@ -157,6 +163,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             )
             setting_dict[parameter_value_tag] = dpg_get_value(parameter_value_tag)
 
+        setting_dict.update(self.get_custom_setting_dict(tag_node_name, node_id))
+
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
@@ -171,26 +179,48 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
             dpg_set_value(parameter_value_tag, value)
 
+        self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
+
+        self.on_settings_applied(tag_node_name)
+
+    def build_custom_ui(self, tag_node_name, node_id, width, callback):
+        del tag_node_name, node_id, width, callback
+
+    def get_custom_setting_dict(self, tag_node_name, node_id):
+        del tag_node_name, node_id
+        return {}
+
+    def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
+        del tag_node_name, node_id, setting_dict
+
+    def on_node_added(self, tag_node_name):
+        del tag_node_name
+
+    def on_settings_applied(self, tag_node_name):
+        del tag_node_name
+
+    def normalize_parameter_values(self, tag_node_name, parameter_values):
+        del tag_node_name
+        return parameter_values
+
     @abstractmethod
     def process(self, frame, **parameter_values):
         pass
 
     def _sync_linked_parameters(self, connection_list):
-        for connection_info in connection_list:
-            connection_type = connection_info[0].split(':')[2]
-            parameter = self._find_parameter_by_type(connection_type)
+        for source_tag, destination_tag, connection_type in self._iter_connections(connection_list):
+            destination_port = self._extract_port_name(destination_tag)
+            parameter = self._find_parameter(connection_type, destination_port)
             if parameter is None:
                 continue
 
-            source_tag = connection_info[0] + 'Value'
-            destination_tag = connection_info[1] + 'Value'
-            source_value = dpg_get_value(source_tag)
+            source_value = dpg_get_value(self._value_tag(source_tag))
             if source_value is None:
                 continue
 
             value = self._cast_parameter_value(parameter, source_value)
             value = self._clamp_parameter_value(parameter, value)
-            dpg_set_value(destination_tag, value)
+            dpg_set_value(self._value_tag(destination_tag), value)
 
     def _get_parameter_values(self, tag_node_name):
         values = {}
@@ -204,13 +234,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             values[parameter['name']] = value
         return values
 
-    def _add_parameter_ui(self, tag_node_name, parameter, width):
+    def _add_parameter_ui(self, tag_node_name, parameter, width, callback):
         port_tag = self._port_tag(tag_node_name, parameter['type'], parameter['port'])
         value_tag = self._value_tag(port_tag)
 
         with dpg.node_attribute(
             tag=port_tag,
-            attribute_type=dpg.mvNode_Attr_Input,
+            attribute_type=parameter.get('attribute_type', dpg.mvNode_Attr_Input),
         ):
             if parameter['widget'] == 'slider_int':
                 dpg.add_slider_int(
@@ -232,23 +262,57 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     max_value=parameter['max'],
                     callback=None,
                 )
+            elif parameter['widget'] == 'input_int':
+                dpg.add_input_int(
+                    tag=value_tag,
+                    label=parameter['label'],
+                    width=width - 64,
+                    default_value=parameter['default'],
+                    callback=callback,
+                )
+            elif parameter['widget'] == 'checkbox':
+                dpg.add_checkbox(
+                    tag=value_tag,
+                    label=parameter['label'],
+                    default_value=parameter['default'],
+                    callback=parameter.get('callback', None),
+                    user_data=parameter.get('user_data', None),
+                )
+            elif parameter['widget'] == 'combo':
+                items = parameter['items']
+                dpg.add_combo(
+                    items,
+                    default_value=parameter.get('default', items[0]),
+                    width=width - 40,
+                    label=parameter['label'],
+                    tag=value_tag,
+                )
 
-    def _find_parameter_by_type(self, value_type):
+    def _find_parameter(self, value_type, port_name):
         for parameter in self.parameters:
-            if parameter['type'] == value_type:
+            if parameter['type'] == value_type and parameter['port'] == port_name:
                 return parameter
         return None
 
     def _cast_parameter_value(self, parameter, value):
+        if value is None:
+            return parameter.get('default', value)
+
         cast = parameter.get('cast', None)
-        if cast is int:
-            return int(value)
-        if cast is float:
-            value = float(value)
-            precision = parameter.get('precision', None)
-            if precision is not None:
-                value = round(value, precision)
-            return value
+        try:
+            if cast is int:
+                return int(value)
+            if cast is float:
+                value = float(value)
+                precision = parameter.get('precision', None)
+                if precision is not None:
+                    value = round(value, precision)
+                return value
+            if cast is bool:
+                return bool(value)
+        except (TypeError, ValueError):
+            return parameter.get('default', value)
+
         return value
 
     def _clamp_parameter_value(self, parameter, value):
@@ -260,6 +324,34 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         if max_value is not None:
             value = min(max_value, value)
         return value
+
+    def _iter_connections(self, connection_list):
+        for connection_info in connection_list:
+            if not isinstance(connection_info, (list, tuple)) or len(connection_info) < 2:
+                continue
+
+            source_tag, destination_tag = connection_info[0], connection_info[1]
+            if not isinstance(source_tag, str) or not isinstance(destination_tag, str):
+                continue
+
+            source_tokens = source_tag.split(':')
+            if len(source_tokens) < 4:
+                continue
+
+            connection_type = source_tokens[2]
+            yield source_tag, destination_tag, connection_type
+
+    def _extract_source_node_key(self, source_tag):
+        source_tokens = source_tag.split(':')
+        if len(source_tokens) < 2:
+            return ''
+        return ':'.join(source_tokens[:2])
+
+    def _extract_port_name(self, tag):
+        tag_tokens = tag.split(':')
+        if len(tag_tokens) < 4:
+            return ''
+        return tag_tokens[3]
 
     def _node_name(self, node_id):
         return str(node_id) + ':' + self.node_tag

@@ -200,7 +200,7 @@ This addresses your idea directly: most nodes can become declarations + core pro
   - Base class introduced at `node/base/declarative_node_base.py`.
   - Pilot nodes migrated: `Brightness`, `Contrast`, `Blur`.
 
-- **Wave 2 (this update)**
+- **Wave 2 (completed)**
   - Additional simple process nodes migrated to declarative base:
     - `Grayscale`
     - `EqualizeHist`
@@ -241,16 +241,20 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - adopted shared image I/O and elapsed-time output behavior from base class
     - persisted/restored curve points via declarative custom-settings hooks
 
+- **Wave 6 (completed)**
+  - Migrated `OmnidirectionalViewer` to declarative base while preserving stateful map caching semantics.
+  - Kept expensive `phi/theta` map generation cached per node id and recomputed only when viewpoint parameters change.
+  - Added explicit cache cleanup in `close(...)` to avoid stale per-node state after node deletion.
+  - Added tests covering cache reuse and close-time cache eviction.
+
 ### Next suggested wave
 
-- **Wave 6 candidate: `OmnidirectionalViewer` (stateful migration)**
-  - Preserve the node-local internal map cache (`phi/theta`) optimization because recomputation is expensive.
-  - Review lifecycle/state cleanup (`close`) and per-node cache invalidation behavior under delete/import races.
-  - Adopt declarative base incrementally after cache/lifecycle semantics are explicitly covered by tests.
+- **Wave 7 candidate: complex resource/deep-learning nodes**
+  - Prioritize nodes with custom lifecycle/resource ownership and migrate incrementally with focused tests.
 
 ### Why these are deferred from simple-wave migrations
 
-- `OmnidirectionalViewer` has non-trivial internal state/caching semantics beyond declarative slider-driven transforms.
+- Resource/deep-learning nodes often own external handles/caches and may require custom close/init semantics beyond declarative slider-driven transforms.
 
 ### Entry criteria for starting each deferred wave
 

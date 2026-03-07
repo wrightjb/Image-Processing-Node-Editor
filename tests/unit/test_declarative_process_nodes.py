@@ -13,6 +13,7 @@ import node.process_node.node_gaussian_blur as gaussian_blur_module
 import node.process_node.node_crop as crop_module
 import node.process_node.node_simple_filter as simple_filter_module
 import node.process_node.node_curves as curves_module
+import node.process_node.node_omnidirectional_viewer as omni_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -25,6 +26,7 @@ GaussianBlurNode = gaussian_blur_module.Node
 CropNode = crop_module.Node
 SimpleFilterNode = simple_filter_module.Node
 CurvesNode = curves_module.Node
+OmniNode = omni_module.Node
 
 
 class DpgStub:
@@ -457,3 +459,60 @@ def test_curves_node_settings_include_points(monkeypatch):
     assert setting['ver'] == node._ver
     assert setting['pos'] == [10, 20]
     assert setting['points'] == [[0, 0], [64, 80], [255, 255]]
+
+
+def test_omnidirectional_viewer_reuses_cached_maps(monkeypatch):
+    node = OmniNode()
+    _prepare_node(node)
+
+    values = {
+        '95:OmnidirectionalViewer:Int:Input02Value': 10,
+        '95:OmnidirectionalViewer:Int:Input03Value': 20,
+        '95:OmnidirectionalViewer:Int:Input04Value': 30,
+        '95:OmnidirectionalViewer:Float:Input05Value': 0.2,
+    }
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+
+    calls = {'calc': 0}
+
+    monkeypatch.setattr(omni_module, 'create_rotation_matrix', lambda roll, pitch, yaw: 'rotation')
+
+    def _calc_stub(*args, **kwargs):
+        calls['calc'] += 1
+        return np.zeros((2, 2)), np.ones((2, 2))
+
+    monkeypatch.setattr(omni_module, 'calculate_phi_and_theta', _calc_stub)
+    monkeypatch.setattr(omni_module, 'image_process', lambda image, phi, theta: image)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    node.update(
+        95,
+        [
+            ['1:ImageSource:Image:Output01', '95:OmnidirectionalViewer:Image:Input01'],
+        ],
+        {'1:ImageSource': frame},
+        {},
+    )
+    node.update(
+        95,
+        [
+            ['1:ImageSource:Image:Output01', '95:OmnidirectionalViewer:Image:Input01'],
+        ],
+        {'1:ImageSource': frame},
+        {},
+    )
+
+    assert calls['calc'] == 1
+
+
+def test_omnidirectional_viewer_close_clears_cache():
+    node = OmniNode()
+    node._params[96] = [0, 0, 0, 0.0, np.zeros((1, 1)), np.zeros((1, 1))]
+
+    node.close(96)
+
+    assert 96 not in node._params

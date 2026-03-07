@@ -75,6 +75,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             for parameter in self.parameters:
                 self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
 
+            self.build_custom_ui(
+                tag_node_name,
+                node_id,
+                small_window_w,
+                callback,
+            )
+
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
                     tag=elapsed_tag,
@@ -156,6 +163,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             )
             setting_dict[parameter_value_tag] = dpg_get_value(parameter_value_tag)
 
+        setting_dict.update(self.get_custom_setting_dict(tag_node_name, node_id))
+
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
@@ -170,7 +179,19 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
             dpg_set_value(parameter_value_tag, value)
 
+        self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
+
         self.on_settings_applied(tag_node_name)
+
+    def build_custom_ui(self, tag_node_name, node_id, width, callback):
+        del tag_node_name, node_id, width, callback
+
+    def get_custom_setting_dict(self, tag_node_name, node_id):
+        del tag_node_name, node_id
+        return {}
+
+    def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
+        del tag_node_name, node_id, setting_dict
 
     def on_node_added(self, tag_node_name):
         del tag_node_name

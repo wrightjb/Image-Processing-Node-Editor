@@ -218,6 +218,7 @@ This addresses your idea directly: most nodes can become declarations + core pro
   - Additional process nodes migrated to declarative base:
     - `GaussianBlur`
     - `Canny`
+    - `Curves`
     - `Resize`
   - Base class enhanced with small extensibility hooks:
     - `normalize_parameter_values(...)` for per-node defensive normalization in `update()`

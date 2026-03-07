@@ -12,6 +12,7 @@ import node.process_node.node_resize as resize_module
 import node.process_node.node_gaussian_blur as gaussian_blur_module
 import node.process_node.node_crop as crop_module
 import node.process_node.node_simple_filter as simple_filter_module
+import node.process_node.node_curves as curves_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -23,6 +24,7 @@ ResizeNode = resize_module.Node
 GaussianBlurNode = gaussian_blur_module.Node
 CropNode = crop_module.Node
 SimpleFilterNode = simple_filter_module.Node
+CurvesNode = curves_module.Node
 
 
 class DpgStub:
@@ -409,3 +411,49 @@ def test_simple_filter_linked_k_value_uses_k_range(monkeypatch):
     )
 
     assert writes['80:SimpleFilter:Float:Input11Value'] == 10.0
+
+
+def test_curves_node_uses_custom_points_in_process(monkeypatch):
+    node = CurvesNode()
+    _prepare_node(node)
+
+    monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [128, 200], [255, 255]])
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: None)
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+
+    captured = {}
+
+    def _lut_stub(image, points):
+        captured['points'] = points
+        return image
+
+    monkeypatch.setattr(curves_module, 'image_process', _lut_stub)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    out_frame, result = node.update(
+        91,
+        [
+            ['3:ImageSource:Image:Output01', '91:Curves:Image:Input01'],
+        ],
+        {'3:ImageSource': frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert captured['points'] == [[0, 0], [128, 200], [255, 255]]
+
+
+def test_curves_node_settings_include_points(monkeypatch):
+    node = CurvesNode()
+
+    monkeypatch.setattr(base_module, 'dpg', DpgStub())
+    monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [64, 80], [255, 255]])
+
+    setting = node.get_setting_dict(92)
+
+    assert setting['ver'] == node._ver
+    assert setting['pos'] == [10, 20]
+    assert setting['points'] == [[0, 0], [64, 80], [255, 255]]

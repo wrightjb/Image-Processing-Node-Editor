@@ -236,5 +236,23 @@ This addresses your idea directly: most nodes can become declarations + core pro
 
 ### Next suggested wave
 
-- `Curves` (keep drag-point UI custom; migrate only shared image/update/settings scaffolding if beneficial).
-- `Crop`, `Flip`, and similar nodes already migrated can be used as templates for remaining medium-complexity process nodes.
+- **Wave 5 candidate: `Curves` (hybrid migration)**
+  - Keep drag-point plot UI and callbacks as node-local custom code.
+  - Adopt declarative base only for shared image I/O, timing output, and common settings shell where useful.
+  - Add async-safety hardening in update-reachable paths (prefer guarded DPG helpers and defensive parsing).
+
+- **Wave 6 candidate: `OmnidirectionalViewer` (stateful migration)**
+  - Preserve the node-local internal map cache (`phi/theta`) optimization because recomputation is expensive.
+  - Review lifecycle/state cleanup (`close`) and per-node cache invalidation behavior under delete/import races.
+  - Adopt declarative base incrementally after cache/lifecycle semantics are explicitly covered by tests.
+
+### Why these are deferred from simple-wave migrations
+
+- `Curves` has bespoke interactive plot behavior (drag points, hit-testing, add/delete callbacks) that is intentionally not generalized into the base today.
+- `OmnidirectionalViewer` has non-trivial internal state/caching semantics beyond declarative slider-driven transforms.
+
+### Entry criteria for starting each deferred wave
+
+- Add focused tests for node-specific behavior first (interaction/state invariants).
+- Keep migration PRs isolated (one complex node per PR) to simplify regression triage.
+- Confirm async mode behavior with `pytest --use-cv2-stub` and a manual smoke check in the editor.

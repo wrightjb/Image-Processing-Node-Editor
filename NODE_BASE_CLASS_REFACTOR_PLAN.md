@@ -191,3 +191,30 @@ class Node(DeclarativeNodeBase):
 ```
 
 This addresses your idea directly: most nodes can become declarations + core processing logic, while one-off nodes can override hooks or stay custom.
+
+## Implementation progress (ongoing)
+
+### Completed waves
+
+- **Wave 1 (already completed)**
+  - Base class introduced at `node/base/declarative_node_base.py`.
+  - Pilot nodes migrated: `Brightness`, `Contrast`, `Blur`.
+
+- **Wave 2 (this update)**
+  - Additional simple process nodes migrated to declarative base:
+    - `Grayscale`
+    - `EqualizeHist`
+    - `GammaCorrection`
+    - `Flip`
+    - `ApplyColorMap`
+    - `Threshold`
+  - Base class hardened for async GUI race resilience guidance:
+    - defensive connection parsing for malformed/stale links
+    - per-port parameter matching (avoids cross-updating same-typed controls)
+    - safe default fallback when UI values are missing/invalid during async races
+  - Declarative test coverage expanded for new behaviors.
+
+### Next suggested wave
+
+- `GaussianBlur` (requires small custom hook for Auto Sigma checkbox behavior).
+- `SimpleFilter`, `Canny`, `Resize` (with defensive parsing retained for async safety).

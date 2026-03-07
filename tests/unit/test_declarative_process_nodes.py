@@ -6,12 +6,18 @@ import node.process_node.node_brightness as brightness_module
 import node.process_node.node_contrast as contrast_module
 import node.process_node.node_flip as flip_module
 import node.process_node.node_threshold as threshold_module
+import node.process_node.node_canny as canny_module
+import node.process_node.node_resize as resize_module
+import node.process_node.node_gaussian_blur as gaussian_blur_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
 ContrastNode = contrast_module.Node
 FlipNode = flip_module.Node
 ThresholdNode = threshold_module.Node
+CannyNode = canny_module.Node
+ResizeNode = resize_module.Node
+GaussianBlurNode = gaussian_blur_module.Node
 
 
 class DpgStub:
@@ -93,6 +99,7 @@ def test_contrast_node_clamps_and_rounds_linked_float(monkeypatch):
 
     monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
     monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(canny_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
     monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
     monkeypatch.setattr(contrast_module.cv2, 'convertScaleAbs', lambda f, alpha, beta: f, raising=False)
 
@@ -183,3 +190,115 @@ def test_threshold_node_uses_default_on_missing_combo_value(monkeypatch):
     assert out_frame.shape == frame.shape
     assert calls['binary_threshold'] == 127
     assert calls['threshold_type'] == threshold_module.Node._threshold_types['THRESH_BINARY']
+
+
+def test_canny_node_normalizes_crossed_thresholds(monkeypatch):
+    node = CannyNode()
+    _prepare_node(node)
+
+    values = {
+        '31:Canny:Int:Input02Value': 210,
+        '31:Canny:Int:Input03Value': 100,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(canny_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(canny_module.cv2, 'cvtColor', lambda image, code: image, raising=False)
+    monkeypatch.setattr(canny_module.cv2, 'Canny', lambda image, min_v, max_v: image, raising=False)
+    monkeypatch.setattr(canny_module.cv2, 'COLOR_BGR2GRAY', 0, raising=False)
+    monkeypatch.setattr(canny_module.cv2, 'COLOR_GRAY2BGR', 1, raising=False)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    node.update(
+        31,
+        [
+            ['1:ImageSource:Image:Output01', '31:Canny:Image:Input01'],
+        ],
+        {'1:ImageSource': frame},
+        {},
+    )
+
+    assert writes['31:Canny:Int:Input02Value'] == 99
+    assert writes['31:Canny:Int:Input03Value'] == 211
+
+
+def test_resize_node_fallbacks_invalid_values(monkeypatch):
+    node = ResizeNode()
+    _prepare_node(node)
+
+    values = {
+        '42:Resize:Int:Input02Value': 'bad',
+        '42:Resize:Int:Input03Value': -5,
+        '42:Resize:Text:Input04Value': 'UNKNOWN',
+    }
+    writes = {}
+    calls = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(resize_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+
+    def _resize_stub(image, dsize, interpolation):
+        calls['dsize'] = dsize
+        calls['interpolation'] = interpolation
+        return image
+
+    monkeypatch.setattr(resize_module.cv2, 'resize', _resize_stub, raising=False)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    node.update(
+        42,
+        [
+            ['5:ImageSource:Image:Output01', '42:Resize:Image:Input01'],
+        ],
+        {'5:ImageSource': frame},
+        {},
+    )
+
+    assert writes['42:Resize:Int:Input02Value'] == 960
+    assert writes['42:Resize:Int:Input03Value'] == 1
+    assert writes['42:Resize:Text:Input04Value'] == 'INTER_LINEAR'
+    assert calls['dsize'] == (960, 1)
+
+
+def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
+    node = GaussianBlurNode()
+    _prepare_node(node)
+
+    values = {
+        '52:GaussianBlur:Int:Input02Value': 4,
+        '52:GaussianBlur:Int:Input04Value': True,
+        '52:GaussianBlur:Float:Input03Value': 3.2,
+    }
+    calls = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+
+    def _gaussian_stub(image, kernel, sigma):
+        calls['kernel'] = kernel
+        calls['sigma'] = sigma
+        return image
+
+    monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    node.update(
+        52,
+        [
+            ['9:ImageSource:Image:Output01', '52:GaussianBlur:Image:Input01'],
+        ],
+        {'9:ImageSource': frame},
+        {},
+    )
+
+    assert calls['kernel'] == (5, 5)
+    assert calls['sigma'] == 0.0

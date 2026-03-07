@@ -214,7 +214,17 @@ This addresses your idea directly: most nodes can become declarations + core pro
     - safe default fallback when UI values are missing/invalid during async races
   - Declarative test coverage expanded for new behaviors.
 
+- **Wave 3 (this update)**
+  - Additional process nodes migrated to declarative base:
+    - `GaussianBlur`
+    - `Canny`
+    - `Resize`
+  - Base class enhanced with small extensibility hooks:
+    - `normalize_parameter_values(...)` for per-node defensive normalization in `update()`
+    - `on_node_added(...)` / `on_settings_applied(...)` for UI-only post setup (e.g., `Auto Sigma` enable/disable)
+    - declarative `input_int` widget support
+
 ### Next suggested wave
 
-- `GaussianBlur` (requires small custom hook for Auto Sigma checkbox behavior).
-- `SimpleFilter`, `Canny`, `Resize` (with defensive parsing retained for async safety).
+- `SimpleFilter` (many parameters; good candidate once bulk parameter declarations are finalized).
+- `Crop`, `Flip`, and similar nodes already migrated can be used as templates for remaining medium-complexity process nodes.

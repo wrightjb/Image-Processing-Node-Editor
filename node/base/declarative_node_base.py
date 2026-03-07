@@ -26,8 +26,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        del callback
-
         tag_node_name = self._node_name(node_id)
         input_image_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
         input_image_value_tag = self._value_tag(input_image_tag)
@@ -75,7 +73,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 dpg.add_image(output_image_value_tag)
 
             for parameter in self.parameters:
-                self._add_parameter_ui(tag_node_name, parameter, small_window_w)
+                self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -87,6 +85,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                         default_value='elapsed time(ms)',
                     )
 
+        self.on_node_added(tag_node_name)
         return tag_node_name
 
     def update(
@@ -119,6 +118,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
         frame = node_image_dict.get(connection_info_src, None)
         parameter_values = self._get_parameter_values(tag_node_name)
+        parameter_values = self.normalize_parameter_values(tag_node_name, parameter_values)
 
         start_time = None
         if frame is not None and use_pref_counter:
@@ -170,6 +170,18 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
             dpg_set_value(parameter_value_tag, value)
 
+        self.on_settings_applied(tag_node_name)
+
+    def on_node_added(self, tag_node_name):
+        del tag_node_name
+
+    def on_settings_applied(self, tag_node_name):
+        del tag_node_name
+
+    def normalize_parameter_values(self, tag_node_name, parameter_values):
+        del tag_node_name
+        return parameter_values
+
     @abstractmethod
     def process(self, frame, **parameter_values):
         pass
@@ -201,13 +213,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             values[parameter['name']] = value
         return values
 
-    def _add_parameter_ui(self, tag_node_name, parameter, width):
+    def _add_parameter_ui(self, tag_node_name, parameter, width, callback):
         port_tag = self._port_tag(tag_node_name, parameter['type'], parameter['port'])
         value_tag = self._value_tag(port_tag)
 
         with dpg.node_attribute(
             tag=port_tag,
-            attribute_type=dpg.mvNode_Attr_Input,
+            attribute_type=parameter.get('attribute_type', dpg.mvNode_Attr_Input),
         ):
             if parameter['widget'] == 'slider_int':
                 dpg.add_slider_int(
@@ -229,12 +241,21 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     max_value=parameter['max'],
                     callback=None,
                 )
+            elif parameter['widget'] == 'input_int':
+                dpg.add_input_int(
+                    tag=value_tag,
+                    label=parameter['label'],
+                    width=width - 64,
+                    default_value=parameter['default'],
+                    callback=callback,
+                )
             elif parameter['widget'] == 'checkbox':
                 dpg.add_checkbox(
                     tag=value_tag,
                     label=parameter['label'],
                     default_value=parameter['default'],
-                    callback=None,
+                    callback=parameter.get('callback', None),
+                    user_data=parameter.get('user_data', None),
                 )
             elif parameter['widget'] == 'combo':
                 items = parameter['items']

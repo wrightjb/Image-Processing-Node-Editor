@@ -2,6 +2,26 @@
 
 This review covers the 28 node modules that still inherit directly from `DpgNodeABC`.
 
+## Current helper-adoption snapshot (as of this branch)
+
+`DpgNodeABC` now includes shared helpers for tag generation and connection parsing:
+
+- `_node_name(node_id)`
+- `_port_tag(node_name, value_type, port_name)`
+- `_value_tag(port_tag)`
+- `_iter_connections(connection_list)`
+- `_extract_source_node_key(source_tag)`
+- `_extract_port_name(tag)`
+
+Adoption status across node modules (`node/**/node_*.py`, excluding base files):
+
+- **44 total node modules**
+- **16 nodes** inherit `DeclarativeImageProcessNodeBase` (and therefore use the shared helpers through that base)
+- **2 nodes** (`Int Value`, `Float Value`) now call the helpers directly
+- **26 nodes** still use legacy manual tag/connection string handling and are pending mechanical refactor
+
+So, helper centralization is in place in `DpgNodeABC`; the remaining work is migration/adoption in legacy nodes.
+
 ## Recommendation summary
 
 ### Good candidates for `DeclarativeImageProcessNodeBase` with small base extensions
@@ -59,24 +79,55 @@ A separate mix-in layer was likely unnecessary because `DeclarativeImageProcessN
 
 In short, the current base is already acting as a “composed behavior surface.” For this specific set of converted process nodes, mix-ins would add class hierarchy complexity with little functional gain.
 
-## Suggested next step order
-
-1. Add a small **source/capture base** and migrate `still_image` first (lowest risk), then `video_input`/`webcam_input`.
-2. Add a **dynamic-slot base** and migrate `image_concat` and `fps` together.
-3. Add a **model inference base** and migrate one DL node (`semantic_segmentation` or `classification`) as template.
-4. Re-evaluate whether explicit mix-ins are still needed after those three bases; likely still optional.
-
 ## Concrete standardization approach (recommended)
 
 If the goal is to standardize **all** nodes around tag generation and connection parsing, the safest approach is:
 
-1. Put tag/connection helpers in `DpgNodeABC` (single source of truth):
-   - `_node_name(node_id)`
-   - `_port_tag(node_name, value_type, port_name)`
-   - `_value_tag(port_tag)`
-   - `_iter_connections(connection_list)`
-   - `_extract_source_node_key(source_tag)` / `_extract_port_name(tag)`
-2. Keep `DeclarativeImageProcessNodeBase` focused on the simple image-process workflow, but rely on those shared helpers from `DpgNodeABC`.
+1. Keep tag/connection helpers in `DpgNodeABC` as the single source of truth.
+2. Keep `DeclarativeImageProcessNodeBase` focused on the simple image-process workflow, while relying on those shared helpers.
 3. Migrate legacy nodes incrementally as “mechanical refactors” (replace string concatenation/split logic first, behavior unchanged).
 
 This gives you consistency across every node without forcing all node types into a single base class too early.
+
+## Refactor plan for remaining helper adoption (26 legacy modules)
+
+### Phase 1 (low risk, quick wins) — 8 modules
+
+- `node/draw_node/node_result_image.py`
+- `node/draw_node/node_result_large_image.py`
+- `node/draw_node/node_draw_information.py`
+- `node/other_node/node_on_off_switch.py`
+- `node/analysis_node/node_rgb_histgram.py`
+- `node/analysis_node/node_BRISQUE.py`
+- `node/input_node/node_still_image.py`
+- `node/preview_release_node/node_code_exec.py`
+
+Goal: adopt `_node_name/_port_tag/_value_tag` + `_extract_source_node_key` where applicable, no functional change.
+
+### Phase 2 (moderate complexity) — 10 modules
+
+- `node/input_node/node_webcam_input.py`
+- `node/input_node/node_video_input.py`
+- `node/input_node/node_video_set_frame_pos_input.py`
+- `node/input_node/node_rtsp_input.py`
+- `node/other_node/node_video_writer.py`
+- `node/draw_node/node_puttext.py`
+- `node/draw_node/node_image_alpha_blend.py`
+- `node/draw_node/node_image_concat.py`
+- `node/analysis_node/node_fps.py`
+- `node/preview_release_node/node_screen_capture.py`
+
+Goal: same helper adoption plus normalizing connection iteration to `_iter_connections` where safe.
+
+### Phase 3 (highest complexity) — 8 modules
+
+- `node/deep_learning_node/node_classification.py`
+- `node/deep_learning_node/node_object_detection.py`
+- `node/deep_learning_node/node_semantic_segmentation.py`
+- `node/deep_learning_node/node_face_detection.py`
+- `node/deep_learning_node/node_pose_estimation.py`
+- `node/deep_learning_node/node_monocular_depth_estimation.py`
+- `node/deep_learning_node/node_low_light_image_enhancement.py`
+- `node/preview_release_node/node_mot.py`
+
+Goal: helper adoption while preserving model/provider/runtime behavior and existing result dict contracts.

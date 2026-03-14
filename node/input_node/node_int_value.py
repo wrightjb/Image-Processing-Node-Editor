@@ -25,9 +25,9 @@ class Node(DpgNodeABC):
         callback=None,
     ):
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_INT + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_INT + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Output01')
+        tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
         # 設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -68,8 +68,10 @@ class Node(DpgNodeABC):
         pass
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        output_value_tag = tag_node_name + ':' + self.TYPE_INT + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        output_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_INT, 'Output01')
+        )
 
         output_value = round((dpg_get_value(output_value_tag)), 3)
 
@@ -83,8 +85,10 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        output_value_tag = tag_node_name + ':' + self.TYPE_INT + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        output_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_INT, 'Output01')
+        )
 
         output_value = float(setting_dict[output_value_tag])
 

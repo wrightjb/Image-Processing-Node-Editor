@@ -95,7 +95,7 @@ This gives you consistency across every node without forcing all node types into
 
 - ✅ **Phase 1** helper adoption completed (8/8 modules).
 - ✅ **Phase 2** helper adoption completed (10/10 modules).
-- 🔄 Remaining legacy set is now the original **Phase 3** modules (8 modules).
+- ✅ **Phase 3** helper adoption completed (8/8 modules).
 
 ### Phase 1 (low risk, quick wins) — 8 modules **(completed)**
 
@@ -127,7 +127,7 @@ Goal: same helper adoption plus normalizing connection iteration to `_iter_conne
 
 Result: migrated to `_node_name/_port_tag/_value_tag` and standardized connection iteration with `_iter_connections` / `_extract_source_node_key` in these modules while preserving behavior.
 
-### Phase 3 (highest complexity) — 8 modules
+### Phase 3 (highest complexity) — 8 modules **(completed)**
 
 - `node/deep_learning_node/node_classification.py`
 - `node/deep_learning_node/node_object_detection.py`
@@ -139,3 +139,5 @@ Result: migrated to `_node_name/_port_tag/_value_tag` and standardized connectio
 - `node/preview_release_node/node_mot.py`
 
 Goal: helper adoption while preserving model/provider/runtime behavior and existing result dict contracts.
+
+Result: migrated these modules to helper-based tag generation and standardized `_iter_connections` parsing while keeping existing inference/result contracts intact.

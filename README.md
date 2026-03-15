@@ -25,6 +25,17 @@ If your environment cannot import OpenCV (for example `libGL.so.1` is missing), 
 python -m pytest --use-cv2-stub
 ```
 
+
+## Node base refactor notes / ノード基底クラス整理メモ
+
+**English**
+
+- The canonical status/design notes for node base/helper refactoring are maintained in [`docs/NODE_BASE_CLASS_REFACTOR.md`](docs/NODE_BASE_CLASS_REFACTOR.md).
+
+**日本語**
+
+- ノード基底クラス/ヘルパー整理の状況と設計メモは [`docs/NODE_BASE_CLASS_REFACTOR.md`](docs/NODE_BASE_CLASS_REFACTOR.md) を参照してください。
+
 ## Async update-loop safety / 非同期更新ループの安全性
 
 **English**

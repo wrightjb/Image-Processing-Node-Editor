@@ -39,14 +39,18 @@ class Node(DpgNodeABC):
         callback=None,
     ):
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01'
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01Value'
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
+                                               'Input01')
+        tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
+                                                'Output01')
+        tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
-        tag_switch_select_name = tag_node_name + ':' + self.TYPE_TEXT + ':Switch'
-        tag_switch_select_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':SwitchValue'
+        tag_switch_select_name = self._port_tag(tag_node_name, self.TYPE_TEXT,
+                                             'Switch')
+        tag_switch_select_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Switch'))
 
         # OpenCV向け設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -114,20 +118,24 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        output_value01_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        output_value01_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
-        tag_switch_select_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':SwitchValue'
+        tag_switch_select_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Switch'))
 
         small_window_w = int(self._opencv_setting_dict['process_width'] / 2)
         small_window_h = int(self._opencv_setting_dict['process_height'] / 2)
 
         # 画像取得元のノード名(ID付き)を取得する
         connection_info_src = ''
-        for connection_info in connection_list:
-            connection_info_src = connection_info[0]
-            connection_info_src = connection_info_src.split(':')[:2]
-            connection_info_src = ':'.join(connection_info_src)
+        for source_tag, _, connection_type in self._iter_connections(
+                connection_list):
+            if connection_type != self.TYPE_IMAGE:
+                continue
+
+            connection_info_src = self._extract_source_node_key(source_tag)
 
         # ON/OFF選択状態取得
         switch_status = dpg_get_value(tag_switch_select_value_name)
@@ -155,7 +163,7 @@ class Node(DpgNodeABC):
         pass
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
+        tag_node_name = self._node_name(node_id)
 
         pos = dpg.get_item_pos(tag_node_name)
 

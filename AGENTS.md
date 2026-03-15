@@ -8,6 +8,10 @@ This project is an image processing application built with DearPyGui. It allows 
 - `node/` – Collection of node modules grouped in subdirectories such as `input_node`, `process_node`, and `deep_learning_node`.
 - `docker/` – Example container image for running with GPU support.
 
+
+## Refactor reference
+- Node base/helper refactor canonical notes: `docs/NODE_BASE_CLASS_REFACTOR.md`.
+
 ## Coding style
 - Follow PEP 8 and the settings in `.editorconfig` (4‑space indentation for Python files).
 - New nodes should subclass `DpgNodeABC` and be placed in an appropriate subfolder inside `node/` using the naming pattern `node_<name>.py`.

@@ -69,17 +69,17 @@ class Node(DpgNodeABC):
         callback=None,
     ):
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01'
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01Value'
-        tag_node_input02_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input02'
-        tag_node_input02_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
-        tag_node_input03_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input03'
-        tag_node_input03_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input03Value'
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
+        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        tag_node_input03_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input03')
+        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input03'))
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
-        tag_color_edit_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ColorEditValue'
+        tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         # OpenCV向け設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -162,12 +162,12 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
-        input_value03_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input03Value'
-        output_value01_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        input_value03_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input03'))
+        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
-        tag_color_edit_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ColorEditValue'
+        tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
@@ -177,30 +177,28 @@ class Node(DpgNodeABC):
         node_name = ''
         connection_info_src = ''
         connect_elapsed_time_flag = False
-        for connection_info in connection_list:
-            connection_type = connection_info[0].split(':')[2]
+        for source_tag, destination_tag, connection_type in self._iter_connections(
+                connection_list):
             if connection_type == self.TYPE_TEXT:
                 # 接続タグ取得
-                source_tag = connection_info[0] + 'Value'
-                destination_tag = connection_info[1] + 'Value'
+                source_value_tag = self._value_tag(source_tag)
+                destination_value_tag = self._value_tag(destination_tag)
                 # 値更新
-                input_value = dpg_get_value(source_tag)
-                dpg_set_value(destination_tag, input_value)
+                input_value = dpg_get_value(source_value_tag)
+                dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_TIME_MS:
                 # 接続タグ取得
-                source_tag = connection_info[0] + 'Value'
-                destination_tag = connection_info[1] + 'Value'
+                source_value_tag = self._value_tag(source_tag)
+                destination_value_tag = self._value_tag(destination_tag)
                 # 値更新
-                input_value = (dpg_get_value(source_tag))
-                dpg_set_value(destination_tag, input_value)
+                input_value = dpg_get_value(source_value_tag)
+                dpg_set_value(destination_value_tag, input_value)
 
                 connect_elapsed_time_flag = True
             if connection_type == self.TYPE_IMAGE:
                 # 画像取得元のノード名(ID付き)を取得
-                connection_info_src = connection_info[0]
-                connection_info_src = connection_info_src.split(':')[:2]
-                node_name = connection_info_src[1]
-                connection_info_src = ':'.join(connection_info_src)
+                connection_info_src = self._extract_source_node_key(source_tag)
+                node_name = connection_info_src.split(':')[1]
 
         # 画像取得
         frame = node_image_dict.get(connection_info_src, None)
@@ -238,9 +236,9 @@ class Node(DpgNodeABC):
         pass
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
-        tag_color_edit_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ColorEditValue'
+        tag_node_name = self._node_name(node_id)
+        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         text = dpg_get_value(input_value02_tag)
         color = dpg_get_value(tag_color_edit_value_name)
@@ -256,9 +254,9 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value02_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input02Value'
-        tag_color_edit_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ColorEditValue'
+        tag_node_name = self._node_name(node_id)
+        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         text = setting_dict[input_value02_tag]
         color = setting_dict[tag_color_edit_value_name]

@@ -120,12 +120,12 @@ class Node(DpgNodeABC):
         self._value_history = {}
 
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input00_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input00'
-        tag_node_input01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01'
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input01Value'
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input00')
+        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
         # OpenCV向け設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -197,8 +197,8 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        output_value01_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
+        tag_node_name = self._node_name(node_id)
+        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
@@ -210,20 +210,18 @@ class Node(DpgNodeABC):
         node_name_dict = {}
         connection_info_src = ''
         connection_info_src_dict = {}
-        for connection_info in connection_list:
+        for source_tag, destination_tag, connection_type in self._iter_connections(
+                connection_list):
             # タグ名からスロットナンバー取得
-            slot_number = re.sub(r'\D', '', connection_info[1].split(':')[-1])
+            slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
 
-            connection_type = connection_info[0].split(':')[2]
             if connection_type == self.TYPE_IMAGE:
                 # 画像取得元のノード名(ID付き)を取得
-                connection_info_src = connection_info[0]
-                connection_info_src = connection_info_src.split(':')[:2]
-                node_name = connection_info_src[1]
-                connection_info_src = ':'.join(connection_info_src)
+                connection_info_src = self._extract_source_node_key(source_tag)
+                node_name = connection_info_src.split(':')[1]
 
                 node_name_dict[slot_number] = node_name
                 connection_info_src_dict[slot_number] = connection_info_src
@@ -265,7 +263,7 @@ class Node(DpgNodeABC):
         pass
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
+        tag_node_name = self._node_name(node_id)
 
         pos = dpg.get_item_pos(tag_node_name)
 
@@ -277,7 +275,7 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        tag_node_name = str(node_id) + ':' + self.node_tag
+        tag_node_name = self._node_name(node_id)
 
         slot_number = int(setting_dict['slot_id'])
         for _ in range(slot_number - 1):
@@ -290,14 +288,14 @@ class Node(DpgNodeABC):
             self._slot_id[tag_node_name] += 1
 
             # 挿入先タグ名生成
-            before_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Input'
+            before_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
             before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
 
             # 追加スロットのタグを生成
-            tag_node_inputXX_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input'
+            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
             tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
 
-            tag_node_inputXX_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Input'
+            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
             tag_node_inputXX_value_name += str(
                 self._slot_id[tag_node_name]).zfill(2) + 'Value'
 

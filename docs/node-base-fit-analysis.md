@@ -89,9 +89,15 @@ If the goal is to standardize **all** nodes around tag generation and connection
 
 This gives you consistency across every node without forcing all node types into a single base class too early.
 
-## Refactor plan for remaining helper adoption (26 legacy modules)
+## Refactor plan for remaining helper adoption
 
-### Phase 1 (low risk, quick wins) — 8 modules
+### Status update (as of this branch)
+
+- ✅ **Phase 1** helper adoption completed (8/8 modules).
+- ✅ **Phase 2** helper adoption completed (10/10 modules).
+- 🔄 Remaining legacy set is now the original **Phase 3** modules (8 modules).
+
+### Phase 1 (low risk, quick wins) — 8 modules **(completed)**
 
 - `node/draw_node/node_result_image.py`
 - `node/draw_node/node_result_large_image.py`
@@ -104,7 +110,7 @@ This gives you consistency across every node without forcing all node types into
 
 Goal: adopt `_node_name/_port_tag/_value_tag` + `_extract_source_node_key` where applicable, no functional change.
 
-### Phase 2 (moderate complexity) — 10 modules
+### Phase 2 (moderate complexity) — 10 modules **(completed)**
 
 - `node/input_node/node_webcam_input.py`
 - `node/input_node/node_video_input.py`
@@ -118,6 +124,8 @@ Goal: adopt `_node_name/_port_tag/_value_tag` + `_extract_source_node_key` where
 - `node/preview_release_node/node_screen_capture.py`
 
 Goal: same helper adoption plus normalizing connection iteration to `_iter_connections` where safe.
+
+Result: migrated to `_node_name/_port_tag/_value_tag` and standardized connection iteration with `_iter_connections` / `_extract_source_node_key` in these modules while preserving behavior.
 
 ### Phase 3 (highest complexity) — 8 modules
 

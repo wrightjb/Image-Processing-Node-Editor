@@ -63,16 +63,16 @@ class Node(DpgNodeABC):
         callback=None,
     ):
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input01_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input01'
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input01Value'
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
-        tag_node_output02_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02'
-        tag_node_output02_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
-        tag_node_button_name = tag_node_name + ':' + self.TYPE_TEXT + ':Button'
-        tag_node_button_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ButtonValue'
+        tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
+        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
         # OpenCV向け設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -153,10 +153,10 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        input_value01_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input01Value'
-        output_value01_tag = tag_node_name + ':' + self.TYPE_IMAGE + ':Output01Value'
-        output_value02_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
+        tag_node_name = self._node_name(node_id)
+        input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
+        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
@@ -229,8 +229,8 @@ class Node(DpgNodeABC):
                     self._process[rtsp_url].terminate()
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
 
         pos = dpg.get_item_pos(tag_node_name)
         rtsp_url = dpg_get_value(tag_node_input01_value_name)
@@ -243,8 +243,8 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Input01Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
 
         rtsp_url = setting_dict[tag_node_input01_value_name]
 
@@ -252,8 +252,8 @@ class Node(DpgNodeABC):
 
     def _button(self, sender, data, user_data):
         tag_node_name = user_data
-        input_value01_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Input01Value'
-        tag_node_button_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':ButtonValue'
+        input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
+        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
         label = dpg.get_item_label(tag_node_button_value_name)
 

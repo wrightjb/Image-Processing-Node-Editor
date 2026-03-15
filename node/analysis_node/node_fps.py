@@ -38,14 +38,14 @@ class Node(DpgNodeABC):
         self._value_history = {}
 
         # タグ名
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        tag_node_input00_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input00'
-        tag_node_input01_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input01'
-        tag_node_input01_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input01Value'
-        tag_node_output01_name = tag_node_name + ':' + self.TYPE_TEXT + ':Output01'
-        tag_node_output01_value_name = tag_node_name + ':' + self.TYPE_TEXT + ':Output01Value'
-        tag_node_output02_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02'
-        tag_node_output02_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
+        tag_node_name = self._node_name(node_id)
+        tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input00')
+        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input01')
+        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input01'))
+        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01')
+        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
+        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
         # OpenCV向け設定
         self._opencv_setting_dict = opencv_setting_dict
@@ -110,22 +110,22 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        tag_node_name = str(node_id) + ':' + self.node_tag
-        output_value01_tag = tag_node_name + ':' + self.TYPE_TEXT + ':Output01Value'
-        output_value02_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Output02Value'
+        tag_node_name = self._node_name(node_id)
+        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
+        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
         total_elapsed_time = 0
 
         # 画像取得元のノード名(ID付き)を取得する
-        for connection_info in connection_list:
-            connection_type = connection_info[0].split(':')[2]
+        for source_tag, destination_tag, connection_type in self._iter_connections(
+                connection_list):
             if connection_type == self.TYPE_TIME_MS:
                 # 接続タグ取得
-                source_tag = connection_info[0] + 'Value'
-                destination_tag = connection_info[1] + 'Value'
+                source_value_tag = self._value_tag(source_tag)
+                destination_value_tag = self._value_tag(destination_tag)
 
                 # 値更新
-                input_value = dpg_get_value(source_tag)
+                input_value = dpg_get_value(source_value_tag)
 
                 # 数値のみを抽出
                 input_value = re.sub(r'\D', '', input_value)
@@ -133,17 +133,17 @@ class Node(DpgNodeABC):
                     input_value = int(input_value)
 
                     # 取得した経過時間をキューに追加
-                    if source_tag not in self._value_history:
-                        self._value_history[source_tag] = deque(
+                    if source_value_tag not in self._value_history:
+                        self._value_history[source_value_tag] = deque(
                             maxlen=self._buffer_len)
-                        self._value_history[source_tag].append(input_value)
+                        self._value_history[source_value_tag].append(input_value)
                     else:
-                        self._value_history[source_tag].append(input_value)
+                        self._value_history[source_value_tag].append(input_value)
 
                     # 平均処理時間
                     average_elapsed_time = sum(
-                        self._value_history[source_tag]) / len(
-                            self._value_history[source_tag])
+                        self._value_history[source_value_tag]) / len(
+                            self._value_history[source_value_tag])
 
                     # FPS算出
                     fps = 0
@@ -161,7 +161,7 @@ class Node(DpgNodeABC):
                         4) + 'ms)'
 
                     # テキスト更新
-                    dpg_set_value(destination_tag, text)
+                    dpg_set_value(destination_value_tag, text)
 
                     # 全スロットの合計時間
                     total_elapsed_time += average_elapsed_time
@@ -189,7 +189,7 @@ class Node(DpgNodeABC):
         pass
 
     def get_setting_dict(self, node_id):
-        tag_node_name = str(node_id) + ':' + self.node_tag
+        tag_node_name = self._node_name(node_id)
 
         pos = dpg.get_item_pos(tag_node_name)
 
@@ -201,7 +201,7 @@ class Node(DpgNodeABC):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        tag_node_name = str(node_id) + ':' + self.node_tag
+        tag_node_name = self._node_name(node_id)
 
         slot_number = int(setting_dict['slot_id'])
         for _ in range(slot_number - 1):
@@ -214,14 +214,14 @@ class Node(DpgNodeABC):
             self._slot_id[tag_node_name] += 1
 
             # 挿入先タグ名生成
-            before_tag = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input'
+            before_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
             before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
 
             # 追加スロットのタグを生成
-            tag_node_inputXX_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input'
+            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
             tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
 
-            tag_node_inputXX_value_name = tag_node_name + ':' + self.TYPE_TIME_MS + ':Input'
+            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
             tag_node_inputXX_value_name += str(
                 self._slot_id[tag_node_name]).zfill(2) + 'Value'
 

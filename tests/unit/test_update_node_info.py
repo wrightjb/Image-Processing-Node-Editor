@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
-from main import update_node_info
+from node_editor.graph_runtime import update_node_info
 
 
 class FakeEditor:

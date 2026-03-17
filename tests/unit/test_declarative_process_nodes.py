@@ -14,6 +14,7 @@ import node.process_node.node_crop as crop_module
 import node.process_node.node_simple_filter as simple_filter_module
 import node.process_node.node_curves as curves_module
 import node.process_node.node_omnidirectional_viewer as omni_module
+import node.process_node.node_hue_rotation as hue_rotation_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -27,6 +28,7 @@ CropNode = crop_module.Node
 SimpleFilterNode = simple_filter_module.Node
 CurvesNode = curves_module.Node
 OmniNode = omni_module.Node
+HueRotationNode = hue_rotation_module.Node
 
 
 class DpgStub:
@@ -516,3 +518,40 @@ def test_omnidirectional_viewer_close_clears_cache():
     node.close(96)
 
     assert 96 not in node._params
+
+
+def test_hue_rotation_node_shifts_hue_and_preserves_alpha(monkeypatch):
+    node = HueRotationNode()
+
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_BGR2HSV', 1, raising=False)
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_HSV2BGR', 2, raising=False)
+
+    def _cvt_color_stub(image, code):
+        if code == hue_rotation_module.cv2.COLOR_BGR2HSV:
+            hsv = np.zeros_like(image)
+            hsv[:, :, 0] = 0
+            hsv[:, :, 1] = 255
+            hsv[:, :, 2] = 255
+            return hsv
+        bgr = np.zeros_like(image)
+        bgr[:, :, 0] = (image[:, :, 0] * 2) % 255
+        bgr[:, :, 1] = 220
+        bgr[:, :, 2] = 0
+        return bgr
+
+    monkeypatch.setattr(hue_rotation_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
+    monkeypatch.setattr(hue_rotation_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
+
+    bgr_pixel = np.array([[[0, 0, 255]]], dtype=np.uint8)
+    out_bgr, result = node.process(bgr_pixel, hue_shift_degrees=120)
+
+    assert result is None
+    assert out_bgr.shape == bgr_pixel.shape
+    assert out_bgr[0, 0, 0] == 120
+    assert out_bgr[0, 0, 1] == 220
+    assert out_bgr[0, 0, 2] == 0
+
+    bgra_pixel = np.array([[[0, 0, 255, 77]]], dtype=np.uint8)
+    out_bgra, _ = node.process(bgra_pixel, hue_shift_degrees=120)
+
+    assert out_bgra[0, 0, 3] == 77

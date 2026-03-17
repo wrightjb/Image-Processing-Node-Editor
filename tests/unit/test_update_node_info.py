@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
-from main import update_node_info
+from node_editor.graph_runtime import update_node_info
 
 
 class FakeEditor:
@@ -353,3 +353,47 @@ def test_update_node_info_skips_inactive_nodes_during_tick():
     update_node_info(editor, image_dict, result_dict, mode_async=False)
 
     node.update.assert_not_called()
+
+
+def test_update_node_info_can_disable_cache_via_policy_switch():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+        cache_enabled=False,
+    )
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+        cache_enabled=False,
+    )
+
+    assert process_node.update.call_count == 2
+    assert cache_dict == {}

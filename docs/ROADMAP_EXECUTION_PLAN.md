@@ -9,7 +9,8 @@ This document consolidates the feature ideas and architecture discussions into a
 - ✅ Phase A1 completed: graph runtime extraction into `node_editor/graph_runtime.py`.
 - ✅ Phase A2.A completed: app lifecycle/bootstrap extraction into `node_editor/app_lifecycle.py` (config load, camera/serial setup, DearPyGui setup, shutdown).
 - ✅ Phase A2.B completed: loop orchestration extraction into `node_editor/runtime_controller.py` (async worker + sync/async loop runners).
-- 🔜 Next recommended step: Phase A2.C extract menu/editor factory wiring into a dedicated composition helper.
+- ✅ Phase A2.C completed: menu/editor factory extraction into `node_editor/editor_factory.py` (default menu map, editor creation, startup import helper).
+- 🔜 Next recommended step: Phase B1 implement auto-reconnect when dropping onto an occupied input port.
 
 ## 1) Goals
 

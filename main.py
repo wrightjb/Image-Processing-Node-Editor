@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
-from collections import OrderedDict
 import os
 
 import dearpygui.dearpygui as dpg
 
 try:
-    from .node_editor.node_editor import DpgNodeEditor
     from .node_editor.graph_runtime import GraphRuntime, update_node_info
     from .node_editor.runtime_controller import run_editor_main_loop
     from .node_editor.app_lifecycle import (
@@ -17,8 +15,11 @@ try:
         setup_dearpygui,
         shutdown_runtime,
     )
+    from .node_editor.editor_factory import (
+        create_node_editor,
+        import_startup_json,
+    )
 except ImportError:
-    from node_editor.node_editor import DpgNodeEditor
     from node_editor.graph_runtime import GraphRuntime, update_node_info
     from node_editor.runtime_controller import run_editor_main_loop
     from node_editor.app_lifecycle import (
@@ -27,6 +28,10 @@ except ImportError:
         initialize_serial_resources,
         setup_dearpygui,
         shutdown_runtime,
+    )
+    from node_editor.editor_factory import (
+        create_node_editor,
+        import_startup_json,
     )
 
 
@@ -56,7 +61,6 @@ def get_args():
     return parser.parse_args()
 
 
-
 def main():
     args = get_args()
     setting = args.setting
@@ -84,35 +88,15 @@ def main():
     )
 
     print('**** Create NodeEditor ********')
-    menu_dict = OrderedDict({
-        'InputNode': 'input_node',
-        'ProcessNode': 'process_node',
-        # 'DeepLearningNode': 'deep_learning_node',
-        'AnalysisNode': 'analysis_node',
-        'DrawNode': 'draw_node',
-        'OtherNode': 'other_node',
-        # 'PreviewReleaseNode': 'preview_release_node'
-    })
-    node_editor = DpgNodeEditor(
-        width=editor_width - 15,
-        height=editor_height - 40,
+    node_editor = create_node_editor(
+        current_path=current_path,
+        editor_width=editor_width,
+        editor_height=editor_height,
         opencv_setting_dict=opencv_setting_dict,
-        menu_dict=menu_dict,
         use_debug_print=use_debug_print,
-        node_dir=os.path.join(current_path, 'node'),
     )
 
-    if import_json is not None:
-        print('**** Import JSON ********')
-        try:
-            node_editor.import_setting_file(import_json)
-        except Exception as e:
-            print('ERROR: failed to import startup JSON file')
-            print(f'\tpath                 : {import_json}')
-            print(f'\terror                : {type(e).__name__}: {e}')
-            import traceback
-            traceback.print_exc()
-            print()
+    import_startup_json(node_editor, import_json)
 
     dpg.show_viewport()
 

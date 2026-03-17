@@ -116,7 +116,7 @@ def image_process(image, hue_shift_degrees, color_space='HSV'):
 class Node(DeclarativeImageProcessNodeBase):
     _ver = '0.0.3'
 
-    node_label = 'HueRotation'
+    node_label = 'Hue Rotation'
     node_tag = 'HueRotation'
 
     parameters = [

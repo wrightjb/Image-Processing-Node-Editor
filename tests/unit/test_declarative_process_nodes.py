@@ -613,3 +613,55 @@ def test_hue_rotation_node_lab_mode_and_invalid_space_fallback(monkeypatch):
     assert calls['hsv'] == 1
     assert out_lab.shape == bgr_pixel.shape
     assert out_fallback[0, 0, 0] == 17
+
+
+def test_hue_rotation_node_luv_and_rgb_modes(monkeypatch):
+    node = HueRotationNode()
+
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_BGR2LUV', 5, raising=False)
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_LUV2BGR', 6, raising=False)
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_BGR2RGB', 7, raising=False)
+    monkeypatch.setattr(hue_rotation_module.cv2, 'COLOR_RGB2BGR', 8, raising=False)
+
+    calls = {'luv': 0, 'rgb': 0}
+
+    def _cvt_color_stub(image, code):
+        if code == hue_rotation_module.cv2.COLOR_BGR2LUV:
+            calls['luv'] += 1
+            luv = np.zeros_like(image)
+            luv[:, :, 0] = 60
+            luv[:, :, 1] = 144
+            luv[:, :, 2] = 112
+            return luv
+        if code == hue_rotation_module.cv2.COLOR_LUV2BGR:
+            out = np.zeros_like(image)
+            out[:, :, 0] = image[:, :, 2]
+            out[:, :, 1] = image[:, :, 1]
+            out[:, :, 2] = image[:, :, 0]
+            return out
+        if code == hue_rotation_module.cv2.COLOR_BGR2RGB:
+            calls['rgb'] += 1
+            return image[:, :, ::-1]
+        if code == hue_rotation_module.cv2.COLOR_RGB2BGR:
+            return image[:, :, ::-1]
+        return image
+
+    monkeypatch.setattr(hue_rotation_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
+
+    bgr_pixel = np.array([[[10, 20, 200]]], dtype=np.uint8)
+
+    out_luv, _ = node.process(
+        bgr_pixel,
+        hue_shift_degrees=45,
+        color_space='LUV',
+    )
+    out_rgb, _ = node.process(
+        bgr_pixel,
+        hue_shift_degrees=60,
+        color_space='RGB',
+    )
+
+    assert calls['luv'] == 1
+    assert calls['rgb'] == 1
+    assert out_luv.shape == bgr_pixel.shape
+    assert out_rgb.shape == bgr_pixel.shape

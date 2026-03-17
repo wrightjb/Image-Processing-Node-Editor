@@ -8,10 +8,12 @@ import pickle
 class GraphRuntime:
     """Owns graph update state (images/results/cache) and executes update ticks."""
 
-    def __init__(self):
+    def __init__(self, cache_enabled=True, cache_source_nodes=False):
         self.node_image_dict = {}
         self.node_result_dict = {}
         self.node_cache_dict = {}
+        self.cache_enabled = cache_enabled
+        self.cache_source_nodes = cache_source_nodes
 
     def step(self, node_editor, mode_async=True):
         update_node_info(
@@ -20,6 +22,8 @@ class GraphRuntime:
             self.node_result_dict,
             node_cache_dict=self.node_cache_dict,
             mode_async=mode_async,
+            cache_enabled=self.cache_enabled,
+            cache_source_nodes=self.cache_source_nodes,
         )
 
 
@@ -97,19 +101,24 @@ def update_node_info(
     node_result_dict,
     node_cache_dict=None,
     mode_async=True,
+    cache_enabled=True,
+    cache_source_nodes=False,
 ):
     """
     Update all nodes in topological order with optional in-memory caching.
 
-    Cache path (connected nodes):
+    Cache path (enabled nodes):
       1) build a signature from upstream outputs + node settings
       2) if signature matches previous run, reuse cached output and skip update()
 
-    Non-cache path (source nodes without inbound links):
+    Non-cache path:
       always run update() so UI/callback-driven state changes are picked up.
     """
     if node_cache_dict is None:
         node_cache_dict = {}
+
+    if not cache_enabled and node_cache_dict:
+        node_cache_dict.clear()
 
     def _is_valid_connection(connection_info, valid_nodes):
         if len(connection_info) != 2:
@@ -170,7 +179,9 @@ def update_node_info(
             continue
 
         cache_signature = None
-        use_cache = len(connection_list) > 0
+        use_cache = cache_enabled and (
+            len(connection_list) > 0 or cache_source_nodes
+        )
         node_setting = {}
         if use_cache and hasattr(node_instance, 'get_setting_dict'):
             if mode_async:

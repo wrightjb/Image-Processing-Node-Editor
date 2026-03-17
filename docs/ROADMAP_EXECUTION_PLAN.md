@@ -6,10 +6,16 @@ This document consolidates the feature ideas and architecture discussions into a
 
 ## Progress update / 進捗
 
-- ✅ Phase A1 completed: graph runtime extraction into `node_editor/graph_runtime.py`.
-- ✅ Phase A2.A completed: app lifecycle/bootstrap extraction into `node_editor/app_lifecycle.py` (config load, camera/serial setup, DearPyGui setup, shutdown).
-- ✅ Phase A2.B completed: loop orchestration extraction into `node_editor/runtime_controller.py` (async worker + sync/async loop runners).
-- ✅ Phase A2.C completed: menu/editor factory extraction into `node_editor/editor_factory.py` (default menu map, editor creation, startup import helper).
+### Epic A canonical status
+- ✅ A1 completed: graph runtime extraction into `node_editor/graph_runtime.py`.
+- ✅ A2 completed: parity test coverage for runtime behavior.
+- ✅ A3 completed: runtime policy switches added (`cache_enabled`, `cache_source_nodes`) and tested.
+
+### Epic A extraction sub-steps (historical detail)
+- ✅ A2.A completed: app lifecycle/bootstrap extraction into `node_editor/app_lifecycle.py` (config load, camera/serial setup, DearPyGui setup, shutdown).
+- ✅ A2.B completed: loop orchestration extraction into `node_editor/runtime_controller.py` (async worker + sync/async loop runners).
+- ✅ A2.C completed: menu/editor factory extraction into `node_editor/editor_factory.py` (default menu map, editor creation, startup import helper).
+
 - 🔜 Next recommended step: Phase B1 implement auto-reconnect when dropping onto an occupied input port.
 
 ## 1) Goals
@@ -184,26 +190,26 @@ Use this template in local markdown files to track work:
 - Estimate: M
 - Depends on: none
 - Acceptance:
-  - [ ] Runtime logic moved out of `main.py`
-  - [ ] Existing update behavior preserved
-  - [ ] No node API changes required
+  - [x] Runtime logic moved out of `main.py`
+  - [x] Existing update behavior preserved
+  - [x] No node API changes required
 
 ### A2. Runtime behavior parity tests
 - Priority: P0
 - Estimate: M
 - Depends on: A1
 - Acceptance:
-  - [ ] Cache hit/miss parity tests pass
-  - [ ] Deleted-node cleanup tested
-  - [ ] Async exception behavior tested
+  - [x] Cache hit/miss parity tests pass
+  - [x] Deleted-node cleanup tested
+  - [x] Async exception behavior tested
 
 ### A3. Runtime policy switches (optional)
 - Priority: P1
 - Estimate: S
 - Depends on: A1
 - Acceptance:
-  - [ ] Configurable cache enable/disable
-  - [ ] Source-node cache policy explicit
+  - [x] Configurable cache enable/disable
+  - [x] Source-node cache policy explicit
 
 ---
 

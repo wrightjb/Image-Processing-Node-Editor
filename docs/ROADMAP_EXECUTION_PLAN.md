@@ -4,6 +4,12 @@ This document consolidates the feature ideas and architecture discussions into a
 
 ---
 
+## Progress update / 進捗
+
+- ✅ Phase A1 completed: graph runtime extraction into `node_editor/graph_runtime.py`.
+- ✅ Phase A2.A completed: app lifecycle/bootstrap extraction into `node_editor/app_lifecycle.py` (config load, camera/serial setup, DearPyGui setup, shutdown).
+- 🔜 Next recommended step: Phase A2.B split loop orchestration into a dedicated runtime controller module.
+
 ## 1) Goals
 
 ### Product goals

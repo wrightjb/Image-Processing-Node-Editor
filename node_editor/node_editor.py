@@ -241,6 +241,12 @@ class DpgNodeEditor(object):
                         user_data='Menu_File_Import',
                     )
                 self._vw_create_node_menus()
+            dpg.add_text(
+                default_value='',
+                tag=self._link_feedback_tag,
+                color=(255, 180, 80, 255),
+                wrap=0,
+            )
             with dpg.node_editor(
                     tag=self._node_editor_tag,
                     callback=self._cntrl_link,
@@ -248,13 +254,6 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
-            dpg.add_separator()
-            dpg.add_text(
-                default_value='',
-                tag=self._link_feedback_tag,
-                color=(255, 180, 80, 255),
-                wrap=0,
-            )
         dpg.set_primary_window(self._window_tag, True)
 
     def _vw_create_node_menus(self):
@@ -310,6 +309,10 @@ class DpgNodeEditor(object):
 
     def _vw_set_link_feedback(self, message):
         dpg.set_value(self._link_feedback_tag, message)
+        window_label = self._node_editor_label
+        if message:
+            window_label = f'{self._node_editor_label} | {message}'
+        dpg.configure_item(self._window_tag, label=window_label)
 
     # -------------------------------------------------------------------------
     # Controller functions

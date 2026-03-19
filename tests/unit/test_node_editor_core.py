@@ -50,6 +50,7 @@ def editor_and_dpg():
         dpg.get_selected_links.return_value = []
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
+        dpg.configure_item = Mock()
         dpg.delete_item = Mock()
         dpg.set_value = Mock()
 
@@ -133,6 +134,9 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     dpg.add_node_link.assert_any_call(103, 102, parent='NodeEditor')
     dpg.delete_item.assert_called_once_with('link-1')
     assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
+    assert dpg.configure_item.call_args_list[-1].kwargs == {
+        'label': 'Node editor'
+    }
 
 
 def test_link_mismatched_type_ignored(editor_and_dpg):
@@ -147,6 +151,10 @@ def test_link_mismatched_type_ignored(editor_and_dpg):
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
         'Link rejected: Int output cannot connect to Float input.',
+    )
+    dpg.configure_item.assert_called_with(
+        'NodeEditorWindow',
+        label='Node editor | Link rejected: Int output cannot connect to Float input.',
     )
 
 
@@ -167,6 +175,10 @@ def test_link_duplicate_same_source_sets_feedback(editor_and_dpg):
         'NodeEditorLinkFeedback',
         'Link rejected: input is already connected to that source.',
     )
+    dpg.configure_item.assert_called_with(
+        'NodeEditorWindow',
+        label='Node editor | Link rejected: input is already connected to that source.',
+    )
 
 
 def test_link_invalid_payload_sets_feedback(editor_and_dpg):
@@ -178,6 +190,10 @@ def test_link_invalid_payload_sets_feedback(editor_and_dpg):
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
         'Link rejected: invalid link data from DearPyGui.',
+    )
+    dpg.configure_item.assert_called_with(
+        'NodeEditorWindow',
+        label='Node editor | Link rejected: invalid link data from DearPyGui.',
     )
 
 

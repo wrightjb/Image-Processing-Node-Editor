@@ -15,6 +15,7 @@ import node.process_node.node_simple_filter as simple_filter_module
 import node.process_node.node_curves as curves_module
 import node.process_node.node_omnidirectional_viewer as omni_module
 import node.process_node.node_hue_rotation as hue_rotation_module
+import node.process_node.node_warmth_tint as warmth_tint_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -29,6 +30,7 @@ SimpleFilterNode = simple_filter_module.Node
 CurvesNode = curves_module.Node
 OmniNode = omni_module.Node
 HueRotationNode = hue_rotation_module.Node
+WarmthTintNode = warmth_tint_module.Node
 
 
 class DpgStub:
@@ -665,3 +667,111 @@ def test_hue_rotation_node_luv_and_rgb_modes(monkeypatch):
     assert calls['rgb'] == 1
     assert out_luv.shape == bgr_pixel.shape
     assert out_rgb.shape == bgr_pixel.shape
+
+
+def test_warmth_tint_node_get_set_settings(monkeypatch):
+    node = WarmthTintNode()
+
+    values = {
+        '101:WarmthTint:Int:Input02Value': 15,
+        '101:WarmthTint:Int:Input03Value': -12,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'dpg', DpgStub())
+
+    setting = node.get_setting_dict(101)
+
+    assert setting['ver'] == node._ver
+    assert setting['pos'] == [10, 20]
+    assert setting['101:WarmthTint:Int:Input02Value'] == 15
+    assert setting['101:WarmthTint:Int:Input03Value'] == -12
+
+    node.set_setting_dict(101, {
+        '101:WarmthTint:Int:Input02Value': 24,
+        '101:WarmthTint:Int:Input03Value': -18,
+    })
+
+    assert writes['101:WarmthTint:Int:Input02Value'] == 24
+    assert writes['101:WarmthTint:Int:Input03Value'] == -18
+
+
+def test_warmth_tint_node_process_adjusts_lab_and_preserves_alpha(monkeypatch):
+    node = WarmthTintNode()
+
+    monkeypatch.setattr(warmth_tint_module.cv2, 'COLOR_BGR2LAB', 11, raising=False)
+    monkeypatch.setattr(warmth_tint_module.cv2, 'COLOR_LAB2BGR', 12, raising=False)
+
+    calls = []
+
+    def _cvt_color_stub(image, code):
+        calls.append(code)
+        if code == warmth_tint_module.cv2.COLOR_BGR2LAB:
+            lab = np.zeros_like(image)
+            lab[:, :, 0] = 40
+            lab[:, :, 1] = 128
+            lab[:, :, 2] = 128
+            return lab
+
+        out = np.zeros_like(image)
+        out[:, :, 0] = image[:, :, 2]
+        out[:, :, 1] = image[:, :, 1]
+        out[:, :, 2] = image[:, :, 0]
+        return out
+
+    monkeypatch.setattr(warmth_tint_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
+    monkeypatch.setattr(warmth_tint_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
+
+    bgr_pixel = np.array([[[10, 20, 30]]], dtype=np.uint8)
+    out_bgr, result = node.process(bgr_pixel, warmth=25, tint=-15)
+
+    assert result is None
+    assert calls == [11, 12]
+    assert out_bgr.shape == bgr_pixel.shape
+    assert out_bgr[0, 0, 0] == 153
+    assert out_bgr[0, 0, 1] == 113
+    assert out_bgr[0, 0, 2] == 40
+
+    bgra_pixel = np.array([[[10, 20, 30, 99]]], dtype=np.uint8)
+    out_bgra, _ = node.process(bgra_pixel, warmth=25, tint=-15)
+
+    assert out_bgra.shape == bgra_pixel.shape
+    assert out_bgra[0, 0, 3] == 99
+
+
+def test_warmth_tint_node_update_clamps_linked_values(monkeypatch):
+    node = WarmthTintNode()
+    _prepare_node(node)
+
+    values = {
+        '201:IntValue:Int:Output01Value': 130,
+        '202:IntValue:Int:Output01Value': -150,
+        '301:WarmthTint:Int:Input02Value': 0,
+        '301:WarmthTint:Int:Input03Value': 0,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(warmth_tint_module, 'image_process', lambda frame, warmth, tint: frame)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    out_frame, result = node.update(
+        301,
+        [
+            ['1:ImageSource:Image:Output01', '301:WarmthTint:Image:Input01'],
+            ['201:IntValue:Int:Output01', '301:WarmthTint:Int:Input02'],
+            ['202:IntValue:Int:Output01', '301:WarmthTint:Int:Input03'],
+        ],
+        {'1:ImageSource': frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert writes['301:WarmthTint:Int:Input02Value'] == 100
+    assert writes['301:WarmthTint:Int:Input03Value'] == -100

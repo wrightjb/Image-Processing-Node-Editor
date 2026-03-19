@@ -11,12 +11,16 @@ This document consolidates the feature ideas and architecture discussions into a
 - ✅ A2 completed: parity test coverage for runtime behavior.
 - ✅ A3 completed: runtime policy switches added (`cache_enabled`, `cache_source_nodes`) and tested.
 
+### Epic B canonical status
+- ✅ B1 completed: occupied-input auto-reconnect replaces the existing link when a new source is dropped onto an input.
+- ✅ B3 completed: rejected-link attempts now surface actionable feedback in the editor UI.
+
 ### Epic A extraction sub-steps (historical detail)
 - ✅ A2.A completed: app lifecycle/bootstrap extraction into `node_editor/app_lifecycle.py` (config load, camera/serial setup, DearPyGui setup, shutdown).
 - ✅ A2.B completed: loop orchestration extraction into `node_editor/runtime_controller.py` (async worker + sync/async loop runners).
 - ✅ A2.C completed: menu/editor factory extraction into `node_editor/editor_factory.py` (default menu map, editor creation, startup import helper).
 
-- 🔜 Next recommended step: Phase B1 implement auto-reconnect when dropping onto an occupied input port.
+- 🔜 Next recommended step: Phase B2 implement insert-node-into-link from a selected link.
 
 ## 1) Goals
 
@@ -77,13 +81,13 @@ Extract update/caching orchestration from `main.py` into a dedicated graph runti
 Make connecting and modifying pipelines faster and less error-prone.
 
 ### Candidate features (MVP first)
-1. **Auto-reconnect on occupied input**
+1. **Auto-reconnect on occupied input** ✅
    - Drop a new source onto an already-connected input to replace old link.
 2. **Insert node into link**
    - Select link, choose node type, auto-wire source → new node → destination.
 3. **Quick reconnect interaction**
    - Light-weight connect mode for reduced drag precision.
-4. **Actionable link feedback**
+4. **Actionable link feedback** ✅
    - Surface reason for rejected link attempts.
 
 ### Stretch goals
@@ -219,6 +223,7 @@ Use this template in local markdown files to track work:
 - Priority: P0
 - Estimate: M
 - Depends on: A1 preferred
+- Status: Done
 
 ### B2. Insert-node-into-link action
 - Priority: P1
@@ -229,6 +234,7 @@ Use this template in local markdown files to track work:
 - Priority: P1
 - Estimate: S
 - Depends on: none
+- Status: Done
 
 ### B4. Safe node-type replace workflow
 - Priority: P2
@@ -302,10 +308,10 @@ Use this template in local markdown files to track work:
 ## 6) Milestone plan (example)
 
 ### Milestone 1 (2–3 weeks)
-- A1, A2, B1, C1, C2
+- A1, A2, B1, B3, C1, C2
 
 ### Milestone 2 (2–3 weeks)
-- B2, B3, C3, C4, D1
+- B2, C3, C4, D1
 
 ### Milestone 3 (3–4 weeks)
 - D2, D3, E1 prototype

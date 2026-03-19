@@ -51,6 +51,7 @@ def editor_and_dpg():
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
         dpg.delete_item = Mock()
+        dpg.set_value = Mock()
 
         # load DummyNode from patched import
         mock_glob.return_value = ['node/test_node/test_node.py']
@@ -131,6 +132,8 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     dpg.add_node_link.assert_any_call(101, 102, parent='NodeEditor')
     dpg.add_node_link.assert_any_call(103, 102, parent='NodeEditor')
     dpg.delete_item.assert_called_once_with('link-1')
+    assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
+
 
 def test_link_mismatched_type_ignored(editor_and_dpg):
     editor, dpg = editor_and_dpg
@@ -141,6 +144,41 @@ def test_link_mismatched_type_ignored(editor_and_dpg):
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_link('NodeEditor', [101, 102])
     assert editor._node_link_list == []
+    dpg.set_value.assert_called_with(
+        'NodeEditorLinkFeedback',
+        'Link rejected: Int output cannot connect to Float input.',
+    )
+
+
+def test_link_duplicate_same_source_sets_feedback(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }.get
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_link('NodeEditor', [101, 102])
+    editor._cntrl_link('NodeEditor', [101, 102])
+
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    dpg.set_value.assert_called_with(
+        'NodeEditorLinkFeedback',
+        'Link rejected: input is already connected to that source.',
+    )
+
+
+def test_link_invalid_payload_sets_feedback(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+
+    editor._cntrl_link('NodeEditor', [101])
+
+    assert editor._node_link_list == []
+    dpg.set_value.assert_called_with(
+        'NodeEditorLinkFeedback',
+        'Link rejected: invalid link data from DearPyGui.',
+    )
 
 
 def test_close_window(editor_and_dpg):

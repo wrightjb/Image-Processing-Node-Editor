@@ -18,6 +18,7 @@ class DpgNodeEditor(object):
     _node_editor_tag = 'NodeEditor'
     _node_editor_label = 'Node editor'
     _window_tag = _node_editor_tag + 'Window'
+    _link_feedback_tag = _node_editor_tag + 'LinkFeedback'
 
     _node_id = 0
     _node_instance_list = {}
@@ -247,6 +248,13 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
+            dpg.add_separator()
+            dpg.add_text(
+                default_value='',
+                tag=self._link_feedback_tag,
+                color=(255, 180, 80, 255),
+                wrap=0,
+            )
         dpg.set_primary_window(self._window_tag, True)
 
     def _vw_create_node_menus(self):
@@ -299,6 +307,9 @@ class DpgNodeEditor(object):
 
     def _vw_show_file_import(self):
         dpg.show_item('file_import')
+
+    def _vw_set_link_feedback(self, message):
+        dpg.set_value(self._link_feedback_tag, message)
 
     # -------------------------------------------------------------------------
     # Controller functions
@@ -362,18 +373,45 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_link(self, sender, data):
+        if not isinstance(data, (list, tuple)) or len(data) != 2:
+            self._vw_set_link_feedback(
+                'Link rejected: invalid link data from DearPyGui.'
+            )
+            return
+
         source_dpg_id, dest_dpg_id = data
         source_tag = dpg.get_item_alias(source_dpg_id)
         dest_tag = dpg.get_item_alias(dest_dpg_id)
-        source_type = source_tag.split(':')[2]
-        dest_type = dest_tag.split(':')[2]
+        if source_tag is None or dest_tag is None:
+            self._vw_set_link_feedback(
+                'Link rejected: unable to resolve source or destination port.'
+            )
+            return
+
+        source_parts = source_tag.split(':')
+        dest_parts = dest_tag.split(':')
+        if len(source_parts) < 4 or len(dest_parts) < 4:
+            self._vw_set_link_feedback(
+                'Link rejected: invalid port tag format.'
+            )
+            return
+
+        source_type = source_parts[2]
+        dest_type = dest_parts[2]
 
         if source_type != dest_type:
+            self._vw_set_link_feedback(
+                f'Link rejected: {source_type} output cannot connect to '
+                f'{dest_type} input.'
+            )
             return
 
         existing_link = self._mdl_get_link_by_destination(dest_tag)
         if existing_link is not None:
             if existing_link[0] == source_tag:
+                self._vw_set_link_feedback(
+                    'Link rejected: input is already connected to that source.'
+                )
                 self._mdl_sort_node_graph()
                 return
             self._mdl_delete_link(existing_link)
@@ -382,6 +420,7 @@ class DpgNodeEditor(object):
         if self._mdl_add_link(source_tag, dest_tag):
             link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
             self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+            self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
 
         if self._use_debug_print:

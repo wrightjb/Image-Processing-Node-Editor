@@ -23,6 +23,7 @@ class DpgNodeEditor(object):
     _node_instance_list = {}
     _node_list = []
     _node_link_list = []
+    _link_view_id_map = {}
 
     _last_pos = None
 
@@ -53,6 +54,7 @@ class DpgNodeEditor(object):
         self._node_instance_list = {}
         self._node_list = []
         self._node_link_list = []
+        self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
@@ -68,6 +70,12 @@ class DpgNodeEditor(object):
             return False
         self._node_link_list.append([source_tag, dest_tag])
         return True
+
+    def _mdl_get_link_by_destination(self, dest_tag):
+        for link in self._node_link_list:
+            if link[1] == dest_tag:
+                return link
+        return None
 
     def _mdl_get_export_settings(self):
         setting_dict = {}
@@ -262,7 +270,26 @@ class DpgNodeEditor(object):
         )
 
     def _vw_add_link(self, source, destination):
-        dpg.add_node_link(source, destination, parent=self._node_editor_tag)
+        return dpg.add_node_link(source, destination, parent=self._node_editor_tag)
+
+    def _vw_register_link(self, source_tag, dest_tag, link_dpg_id):
+        self._link_view_id_map[(source_tag, dest_tag)] = link_dpg_id
+
+    def _vw_delete_link(self, source_tag, dest_tag):
+        link_dpg_id = self._link_view_id_map.pop((source_tag, dest_tag), None)
+        if link_dpg_id is not None:
+            self._vw_delete_item(link_dpg_id)
+
+    def _vw_delete_links_for_node(self, node_id_name):
+        delete_targets = []
+        for source_tag, dest_tag in self._link_view_id_map:
+            source_node = ':'.join(source_tag.split(':')[:2])
+            dest_node = ':'.join(dest_tag.split(':')[:2])
+            if source_node == node_id_name or dest_node == node_id_name:
+                delete_targets.append((source_tag, dest_tag))
+
+        for source_tag, dest_tag in delete_targets:
+            self._vw_delete_link(source_tag, dest_tag)
 
     def _vw_delete_item(self, item_id):
         dpg.delete_item(item_id)
@@ -343,8 +370,18 @@ class DpgNodeEditor(object):
 
         if source_type != dest_type:
             return
+
+        existing_link = self._mdl_get_link_by_destination(dest_tag)
+        if existing_link is not None:
+            if existing_link[0] == source_tag:
+                self._mdl_sort_node_graph()
+                return
+            self._mdl_delete_link(existing_link)
+            self._vw_delete_link(*existing_link)
+
         if self._mdl_add_link(source_tag, dest_tag):
-            self._vw_add_link(source_dpg_id, dest_dpg_id)
+            link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
+            self._vw_register_link(source_tag, dest_tag, link_dpg_id)
         self._mdl_sort_node_graph()
 
         if self._use_debug_print:
@@ -438,7 +475,8 @@ class DpgNodeEditor(object):
                 dest_parts[0] = id_map[dest_parts[0]]
                 new_source = ':'.join(source_parts)
                 new_destination = ':'.join(dest_parts)
-                self._vw_add_link(new_source, new_destination)
+                link_dpg_id = self._vw_add_link(new_source, new_destination)
+                self._vw_register_link(new_source, new_destination, link_dpg_id)
                 new_link_list.append([new_source, new_destination])
 
         self._node_link_list.extend(new_link_list)
@@ -466,6 +504,7 @@ class DpgNodeEditor(object):
         for node_dpg_id in selected_nodes:
             node_tag = dpg.get_item_alias(node_dpg_id)
             self._mdl_delete_node(node_tag)
+            self._vw_delete_links_for_node(node_tag)
             self._vw_delete_item(node_dpg_id)
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -476,6 +515,7 @@ class DpgNodeEditor(object):
                 dpg.get_item_alias(link_dpg_config['attr_2'])
             ]
             self._mdl_delete_link(link)
+            self._link_view_id_map.pop(tuple(link), None)
             self._vw_delete_item(link_dpg_id)
 
         if self._use_debug_print:

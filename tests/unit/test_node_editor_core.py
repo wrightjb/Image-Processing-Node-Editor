@@ -107,6 +107,31 @@ def test_link_prevents_duplicate_dest(editor_and_dpg):
     assert len(editor._node_link_list) == 1
 
 
+def test_link_replaces_existing_dest(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    alias_map = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+        103: '3:TestNode:Int:Output01',
+    }
+    dpg.get_item_alias.side_effect = alias_map.get
+    dpg.add_node_link.side_effect = ['link-1', 'link-2']
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_link('NodeEditor', [101, 102])
+    editor._cntrl_link('NodeEditor', [103, 102])
+
+    assert editor._node_link_list == [['3:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert editor._link_view_id_map == {
+        ('3:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'link-2'
+    }
+    dpg.add_node_link.assert_any_call(101, 102, parent='NodeEditor')
+    dpg.add_node_link.assert_any_call(103, 102, parent='NodeEditor')
+    dpg.delete_item.assert_called_once_with('link-1')
+
 def test_link_mismatched_type_ignored(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_item_alias.side_effect = {

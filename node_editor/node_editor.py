@@ -354,7 +354,6 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
-        self._vw_clamp_insert_link_popup_position(pos)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.show_item(self._insert_link_popup_tag)
         dpg.focus_item(self._insert_link_popup_tag)
@@ -364,14 +363,6 @@ class DpgNodeEditor(object):
         if dpg.is_item_shown(self._insert_link_popup_tag):
             dpg.hide_item(self._insert_link_popup_tag)
         self._insert_link_popup_open = False
-
-    def _vw_clamp_insert_link_popup_position(self, pos):
-        viewport_w = dpg.get_viewport_client_width()
-        viewport_h = dpg.get_viewport_client_height()
-        popup_w = 340
-        popup_h = 420
-        pos[0] = max(0, min(pos[0], max(0, viewport_w - popup_w)))
-        pos[1] = max(0, min(pos[1], max(0, viewport_h - popup_h)))
 
     # -------------------------------------------------------------------------
     # Controller functions
@@ -454,7 +445,7 @@ class DpgNodeEditor(object):
         link_dpg_id = self._cntrl_get_target_link_for_context_insert()
         self._pending_insert_link_dpg_id = link_dpg_id
         if link_dpg_id is not None:
-            mouse_pos = dpg.get_mouse_pos(local=False)
+            mouse_pos = dpg.get_mouse_pos(local=True)
             self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
         else:
             self._vw_hide_insert_link_popup()

@@ -187,6 +187,11 @@ class Node(DeclarativeImageProcessNodeBase):
             )
             dpg.configure_item(slider_tag, callback=self._slider_touched_callback, user_data=node_id)
 
+
+    def _slider_touched_callback(self, sender, app_data, user_data):
+        del app_data
+        self._last_touched_slider_tag_by_node[user_data] = dpg.get_item_alias(sender)
+
     def _nudge_slider(self, sender, app_data, user_data):
         del sender, app_data
         step = int(user_data)

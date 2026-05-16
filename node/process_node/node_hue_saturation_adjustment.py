@@ -33,8 +33,6 @@ def _build_band_weight_lut():
 
 
 _BAND_WEIGHT_LUT = _build_band_weight_lut()
-_HUE_BAND_INDEX_LUT = np.argmax(_BAND_WEIGHT_LUT, axis=1).astype(np.int16)
-
 
 def _active_adjustments(adjustments):
     active = []
@@ -47,7 +45,7 @@ def _active_adjustments(adjustments):
     return active
 
 
-def image_process(image, hue_blend=1.0, **adjustments):
+def image_process(image, blend=1.0, **adjustments):
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return image
 
@@ -78,18 +76,18 @@ def image_process(image, hue_blend=1.0, **adjustments):
         saturation_delta_by_band[index] = saturation_delta / 100.0
         soft_saturation_scale += band_weight * saturation_delta_by_band[index]
 
-    hue_band_indices = _HUE_BAND_INDEX_LUT[hue_indices]
-    hard_hue_shift = hue_delta_by_band[hue_band_indices]
+    blend = float(np.clip(blend, 0.0, 1.0))
+    sharpness = 1.0 + (1.0 - blend) * 255.0
+    sharpened_weights = np.power(weights, sharpness)
+    sharpened_sum = np.sum(sharpened_weights, axis=2, keepdims=True)
+    sharpened_sum[sharpened_sum == 0.0] = 1.0
+    blend_weights = sharpened_weights / sharpened_sum
 
-    soft_hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
-    for index, _, _ in active_adjustments:
-        soft_hue_shift += weights[:, :, index] * hue_delta_by_band[index]
-
-    hard_saturation_scale = 1.0 + saturation_delta_by_band[hue_band_indices]
-
-    hue_blend = float(np.clip(hue_blend, 0.0, 1.0))
-    hue_shift = (hue_blend * soft_hue_shift) + ((1.0 - hue_blend) * hard_hue_shift)
-    saturation_scale = (hue_blend * soft_saturation_scale) + ((1.0 - hue_blend) * hard_saturation_scale)
+    hue_shift = np.sum(blend_weights * hue_delta_by_band[None, None, :], axis=2)
+    saturation_scale = 1.0 + np.sum(
+        blend_weights * saturation_delta_by_band[None, None, :],
+        axis=2,
+    )
 
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)
@@ -119,11 +117,11 @@ class Node(DeclarativeImageProcessNodeBase):
 
     parameters = [
         {
-            'name': 'hue_blend',
+            'name': 'blend',
             'type': DeclarativeImageProcessNodeBase.TYPE_FLOAT,
             'port': 'Input02',
             'widget': 'slider_float',
-            'label': 'hue blend',
+            'label': 'blend',
             'default': 1.0,
             'min': 0.0,
             'max': 1.0,

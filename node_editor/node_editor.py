@@ -21,7 +21,6 @@ class DpgNodeEditor(object):
     _link_feedback_tag = _node_editor_tag + 'LinkFeedback'
     _insert_link_popup_tag = _node_editor_tag + 'InsertLinkPopup'
     _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
-    _insert_link_popup_child_tag = _insert_link_popup_tag + 'Child'
 
     _node_id = 0
     _node_instance_list = {}
@@ -285,7 +284,7 @@ class DpgNodeEditor(object):
 
     def _vw_create_insert_link_menu(self):
         with dpg.menu(label='Edit'):
-            with dpg.menu(label='Insert Into Selected Link'):
+            with dpg.menu(label='Insert'):
                 for menu_label, nodes in self._menu_nodes.items():
                     with dpg.menu(label=menu_label):
                         for node_info in nodes:
@@ -297,7 +296,7 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        with dpg.menu(label='Insert Into Selected Link'):
+        with dpg.menu(label='Insert'):
             for menu_label, nodes in self._menu_nodes.items():
                 with dpg.menu(label=menu_label):
                     for node_info in nodes:
@@ -470,8 +469,7 @@ class DpgNodeEditor(object):
         if not self._insert_link_popup_open:
             return
         popup_hovered = dpg.is_item_hovered(self._insert_link_popup_tag)
-        child_hovered = dpg.is_item_hovered(self._insert_link_popup_child_tag)
-        if not popup_hovered and not child_hovered:
+        if not popup_hovered:
             self._vw_hide_insert_link_popup()
 
     def _cntrl_close_insert_link_popup_on_escape(self, sender, data):

@@ -13,7 +13,7 @@ This document consolidates the feature ideas and architecture discussions into a
 
 ### Epic B canonical status
 - ✅ B1 completed: occupied-input auto-reconnect replaces the existing link when a new source is dropped onto an input.
-- ✅ B2 completed: selected links can be replaced by an inserted node with automatic rewiring (menu + right-click shortcut).
+- ✅ B2 completed: selected links can be replaced by an inserted node with automatic rewiring (menu + right-click context popup).
 - ✅ B3 completed: rejected-link attempts now surface actionable feedback in the editor UI.
 
 ### Epic A extraction sub-steps (historical detail)

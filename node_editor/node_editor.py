@@ -256,15 +256,10 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
-            with dpg.window(
+            with dpg.popup(
+                    parent=self._node_editor_tag,
+                    mousebutton=dpg.mvMouseButton_Right,
                     tag=self._insert_link_popup_tag,
-                    label='Insert Into Selected Link',
-                    show=False,
-                    no_title_bar=True,
-                    no_move=True,
-                    no_resize=True,
-                    no_collapse=True,
-                    autosize=True,
             ):
                 self._vw_create_insert_link_popup_menu()
         dpg.set_primary_window(self._window_tag, True)
@@ -294,16 +289,16 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        for menu_label, nodes in self._menu_nodes.items():
-            dpg.add_text(default_value=menu_label)
-            for node_info in nodes:
-                dpg.add_button(
-                    tag='Popup_InsertLink_' + node_info['tag'],
-                    label=node_info['label'],
-                    callback=self._cntrl_insert_node_into_selected_link,
-                    user_data=node_info['tag'],
-                )
-            dpg.add_separator()
+        with dpg.menu(label='Insert Into Selected Link'):
+            for menu_label, nodes in self._menu_nodes.items():
+                with dpg.menu(label=menu_label):
+                    for node_info in nodes:
+                        dpg.add_menu_item(
+                            tag='Popup_InsertLink_' + node_info['tag'],
+                            label=node_info['label'],
+                            callback=self._cntrl_insert_node_into_selected_link,
+                            user_data=node_info['tag'],
+                        )
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
@@ -352,24 +347,12 @@ class DpgNodeEditor(object):
             window_label = f'{self._node_editor_label} | {message}'
         dpg.configure_item(self._window_tag, label=window_label)
 
-    def _vw_show_insert_link_popup(self, pos):
-        dpg.set_item_pos(self._insert_link_popup_tag, pos)
-        dpg.show_item(self._insert_link_popup_tag)
-
-    def _vw_hide_insert_link_popup(self):
-        if dpg.is_item_shown(self._insert_link_popup_tag):
-            dpg.hide_item(self._insert_link_popup_tag)
-
     # -------------------------------------------------------------------------
     # Controller functions
     def _cntrl_init(self, node_dir, menu_dict):
         self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
-            dpg.add_mouse_click_handler(
-                button=dpg.mvMouseButton_Right,
-                callback=self._cntrl_open_insert_link_popup,
-            )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
                 callback=self._cntrl_delete_selected,
@@ -432,15 +415,6 @@ class DpgNodeEditor(object):
             dpg.get_item_alias(link_dpg_config['attr_2']),
         ]
 
-    def _cntrl_open_insert_link_popup(self, sender, data):
-        del sender, data
-        selected_links = dpg.get_selected_links(self._node_editor_tag)
-        if len(selected_links) == 1:
-            mouse_pos = dpg.get_mouse_pos(local=False)
-            self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
-        else:
-            self._vw_hide_insert_link_popup()
-
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
         dest_node = ':'.join(dest_tag.split(':')[:2])
@@ -463,7 +437,6 @@ class DpgNodeEditor(object):
 
     def _cntrl_insert_node_into_selected_link(self, sender, data, user_data):
         del sender, data
-        self._vw_hide_insert_link_popup()
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         if len(selected_links) != 1:

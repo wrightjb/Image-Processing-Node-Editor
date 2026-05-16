@@ -48,17 +48,12 @@ def editor_and_dpg():
         dpg.get_item_alias.side_effect = lambda x: x
         dpg.get_selected_nodes.return_value = []
         dpg.get_selected_links.return_value = []
-        dpg.get_mouse_pos.return_value = [0, 0]
         dpg.does_item_exist.return_value = False
-        dpg.is_item_shown.return_value = False
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
         dpg.configure_item = Mock()
         dpg.delete_item = Mock()
-        dpg.set_item_pos = Mock()
         dpg.set_value = Mock()
-        dpg.show_item = Mock()
-        dpg.hide_item = Mock()
 
         # load DummyNode from patched import
         mock_glob.return_value = ['node/test_node/test_node.py']
@@ -265,27 +260,6 @@ def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
         'NodeEditorLinkFeedback',
         'Insert into link requires exactly one selected link.',
     )
-
-
-def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_dpg):
-    editor, dpg = editor_and_dpg
-    dpg.get_selected_links.return_value = ['existing-link']
-    dpg.get_mouse_pos.return_value = [128.3, 255.9]
-
-    editor._cntrl_open_insert_link_popup(None, None)
-
-    dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopup', [128, 255])
-    dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
-
-
-def test_open_insert_link_popup_hides_when_selection_invalid(editor_and_dpg):
-    editor, dpg = editor_and_dpg
-    dpg.get_selected_links.return_value = []
-    dpg.is_item_shown.return_value = True
-
-    editor._cntrl_open_insert_link_popup(None, None)
-
-    dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
 
 
 def test_insert_node_into_selected_link_rejects_incompatible_node(editor_and_dpg):

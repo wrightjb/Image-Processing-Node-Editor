@@ -257,7 +257,7 @@ class DpgNodeEditor(object):
             ):
                 pass
             with dpg.popup(
-                    parent=self._node_editor_tag,
+                    self._node_editor_tag,
                     mousebutton=dpg.mvMouseButton_Right,
                     tag=self._insert_link_popup_tag,
             ):

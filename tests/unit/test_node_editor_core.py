@@ -54,7 +54,6 @@ def editor_and_dpg():
         dpg.does_item_exist.return_value = False
         dpg.is_item_hovered.return_value = False
         dpg.is_item_shown.return_value = False
-        dpg.get_item_state.return_value = {'hovered': False}
         dpg.get_item_configuration.return_value = {}
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
@@ -337,20 +336,20 @@ def test_open_insert_link_popup_hides_when_selection_invalid(editor_and_dpg):
 def test_insert_link_popup_closes_on_outside_left_click(editor_and_dpg):
     editor, dpg = editor_and_dpg
     editor._insert_link_popup_open = True
-    dpg.get_item_state.return_value = {'hovered': False}
+    dpg.is_item_hovered.return_value = False
     dpg.is_item_shown.return_value = True
     editor._pending_insert_link_dpg_id = 'existing-link'
 
     editor._cntrl_close_insert_link_popup_on_left_click(None, None)
 
-    assert editor._pending_insert_link_dpg_id is None
+    assert editor._pending_insert_link_dpg_id == 'existing-link'
     dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
 
 
 def test_insert_link_popup_stays_open_on_inside_left_click(editor_and_dpg):
     editor, dpg = editor_and_dpg
     editor._insert_link_popup_open = True
-    dpg.get_item_state.return_value = {'hovered': True}
+    dpg.is_item_hovered.side_effect = lambda tag: tag == 'NodeEditorInsertLinkPopupChild'
 
     editor._cntrl_close_insert_link_popup_on_left_click(None, None)
 

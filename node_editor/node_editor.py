@@ -36,6 +36,7 @@ class DpgNodeEditor(object):
 
     _use_debug_print = False
     _insert_link_popup_open = False
+    _insert_link_popup_category_tags = []
 
     def __init__(
         self,
@@ -62,6 +63,7 @@ class DpgNodeEditor(object):
         self._node_connection_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
         self._insert_link_popup_open = False
+        self._insert_link_popup_category_tags = []
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -300,12 +302,18 @@ class DpgNodeEditor(object):
     def _vw_create_insert_link_popup_menu(self):
         with dpg.child_window(
                 tag=self._insert_link_popup_child_tag,
-                height=360,
+                height=180,
                 width=320,
                 border=False,
         ):
             for menu_label, nodes in self._menu_nodes.items():
-                with dpg.tree_node(label=menu_label, default_open=False):
+                tree_tag = f'{self._insert_link_popup_tag}:Category:{menu_label}'
+                self._insert_link_popup_category_tags.append(tree_tag)
+                with dpg.tree_node(
+                        tag=tree_tag,
+                        label=menu_label,
+                        default_open=False,
+                ):
                     for node_info in nodes:
                         dpg.add_menu_item(
                             tag='Popup_InsertLink_' + node_info['tag'],
@@ -362,6 +370,8 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
+        for tree_tag in self._insert_link_popup_category_tags:
+            dpg.set_value(tree_tag, False)
         self._vw_clamp_insert_link_popup_position(pos)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.show_item(self._insert_link_popup_tag)
@@ -479,9 +489,9 @@ class DpgNodeEditor(object):
         del sender, data
         if not self._insert_link_popup_open:
             return
-        popup_state = dpg.get_item_state(self._insert_link_popup_tag)
-        if not popup_state.get('hovered', False):
-            self._pending_insert_link_dpg_id = None
+        popup_hovered = dpg.is_item_hovered(self._insert_link_popup_tag)
+        child_hovered = dpg.is_item_hovered(self._insert_link_popup_child_tag)
+        if not popup_hovered and not child_hovered:
             self._vw_hide_insert_link_popup()
 
     def _cntrl_close_insert_link_popup_on_escape(self, sender, data):

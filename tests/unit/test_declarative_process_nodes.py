@@ -802,6 +802,34 @@ def test_hue_saturation_adjustment_uses_only_active_band_weights(monkeypatch):
     assert out[0, 0, 2] == 200
 
 
+
+
+def test_hue_saturation_adjustment_hue_uses_single_band_without_neighbor_bleed(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'COLOR_BGR2HSV', 21, raising=False)
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'COLOR_HSV2BGR', 22, raising=False)
+
+    def _cvt_color_stub(image, code):
+        if code == hue_saturation_adjustment_module.cv2.COLOR_BGR2HSV:
+            hsv = np.zeros_like(image)
+            hsv[:, :, 0] = 0
+            hsv[:, :, 1] = 180
+            hsv[:, :, 2] = 200
+            return hsv
+        return image
+
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
+
+    params = {parameter['name']: 0 for parameter in node.parameters}
+    params['yellow_hue_shift'] = 120
+    params['magenta_hue_shift'] = -120
+
+    out, _ = node.process(np.array([[[3, 4, 5]]], dtype=np.uint8), **params)
+
+    assert out[0, 0, 0] == 0
+    assert out[0, 0, 1] == 180
+    assert out[0, 0, 2] == 200
 def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
     node = HueSaturationAdjustmentNode()
     _prepare_node(node)

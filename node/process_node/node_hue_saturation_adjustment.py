@@ -32,6 +32,7 @@ def _build_band_weight_lut():
 
 
 _BAND_WEIGHT_LUT = _build_band_weight_lut()
+_HUE_BAND_INDEX_LUT = np.argmax(_BAND_WEIGHT_LUT, axis=1).astype(np.int16)
 
 
 def _active_adjustments(adjustments):
@@ -67,10 +68,15 @@ def image_process(image, **adjustments):
     hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
     saturation_scale = np.ones_like(sat_channel, dtype=np.float32)
 
+    hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
+
     for index, hue_delta_degrees, saturation_delta in active_adjustments:
         band_weight = weights[:, :, index]
-        hue_shift += band_weight * (hue_delta_degrees / 2.0)
+        hue_delta_by_band[index] = hue_delta_degrees / 2.0
         saturation_scale += band_weight * (saturation_delta / 100.0)
+
+    hue_band_indices = _HUE_BAND_INDEX_LUT[hue_indices]
+    hue_shift = hue_delta_by_band[hue_band_indices]
 
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)

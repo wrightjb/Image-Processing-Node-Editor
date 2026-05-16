@@ -445,8 +445,13 @@ class DpgNodeEditor(object):
         link_dpg_id = self._cntrl_get_target_link_for_context_insert()
         self._pending_insert_link_dpg_id = link_dpg_id
         if link_dpg_id is not None:
-            mouse_pos = dpg.get_mouse_pos(local=True)
-            self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
+            mouse_pos = dpg.get_mouse_pos(local=False)
+            window_pos = dpg.get_item_pos(self._window_tag)
+            popup_pos = [
+                int(mouse_pos[0] - window_pos[0]),
+                int(mouse_pos[1] - window_pos[1]),
+            ]
+            self._vw_show_insert_link_popup(popup_pos)
         else:
             self._vw_hide_insert_link_popup()
 

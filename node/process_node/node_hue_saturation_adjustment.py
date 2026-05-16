@@ -67,14 +67,16 @@ def image_process(image, hue_blend=1.0, **adjustments):
     weights = _BAND_WEIGHT_LUT[hue_indices]
 
     hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
-    saturation_scale = np.ones_like(sat_channel, dtype=np.float32)
+    soft_saturation_scale = np.ones_like(sat_channel, dtype=np.float32)
 
     hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
+    saturation_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
 
     for index, hue_delta_degrees, saturation_delta in active_adjustments:
         band_weight = weights[:, :, index]
         hue_delta_by_band[index] = hue_delta_degrees / 2.0
-        saturation_scale += band_weight * (saturation_delta / 100.0)
+        saturation_delta_by_band[index] = saturation_delta / 100.0
+        soft_saturation_scale += band_weight * saturation_delta_by_band[index]
 
     hue_band_indices = _HUE_BAND_INDEX_LUT[hue_indices]
     hard_hue_shift = hue_delta_by_band[hue_band_indices]
@@ -83,8 +85,11 @@ def image_process(image, hue_blend=1.0, **adjustments):
     for index, _, _ in active_adjustments:
         soft_hue_shift += weights[:, :, index] * hue_delta_by_band[index]
 
+    hard_saturation_scale = 1.0 + saturation_delta_by_band[hue_band_indices]
+
     hue_blend = float(np.clip(hue_blend, 0.0, 1.0))
     hue_shift = (hue_blend * soft_hue_shift) + ((1.0 - hue_blend) * hard_hue_shift)
+    saturation_scale = (hue_blend * soft_saturation_scale) + ((1.0 - hue_blend) * hard_saturation_scale)
 
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)
@@ -180,14 +185,7 @@ class Node(DeclarativeImageProcessNodeBase):
             slider_tag = self._value_tag(
                 self._port_tag(tag_node_name, parameter['type'], parameter['port'])
             )
-            with dpg.item_handler_registry() as handler_id:
-                dpg.add_item_clicked_handler(callback=self._remember_last_slider, user_data=node_id)
-            dpg.bind_item_handler_registry(slider_tag, handler_id)
-
-    def _remember_last_slider(self, sender, app_data, user_data):
-        del sender, app_data
-        active_item = dpg.get_active_item()
-        self._last_touched_slider_tag_by_node[user_data] = dpg.get_item_alias(active_item)
+            dpg.configure_item(slider_tag, callback=self._slider_touched_callback, user_data=node_id)
 
     def _nudge_slider(self, sender, app_data, user_data):
         del sender, app_data

@@ -250,7 +250,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     default_value=parameter['default'],
                     min_value=parameter['min'],
                     max_value=parameter['max'],
-                    callback=None,
+                    callback=parameter.get('callback', callback),
                 )
             elif parameter['widget'] == 'slider_float':
                 dpg.add_slider_float(
@@ -260,7 +260,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     default_value=parameter['default'],
                     min_value=parameter['min'],
                     max_value=parameter['max'],
-                    callback=None,
+                    callback=parameter.get('callback', callback),
                 )
             elif parameter['widget'] == 'input_int':
                 dpg.add_input_int(

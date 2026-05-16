@@ -15,28 +15,42 @@ _BANDS = (
     ('magenta', 150.0),
 )
 _BAND_HALF_WIDTH = 30.0
+_BAND_NAME_TO_INDEX = {band_name: index for index, (band_name, _) in enumerate(_BANDS)}
 
 
-def _circular_hue_distance(hue_channel, center):
-    delta = np.abs(hue_channel - center)
-    return np.minimum(delta, 180.0 - delta)
+def _build_band_weight_lut():
+    hue_values = np.arange(180, dtype=np.float32)[:, None]
+    centers = np.array([center for _, center in _BANDS], dtype=np.float32)[None, :]
 
+    delta = np.abs(hue_values - centers)
+    distance = np.minimum(delta, 180.0 - delta)
+    weights = np.clip(1.0 - (distance / _BAND_HALF_WIDTH), 0.0, 1.0)
 
-def _build_band_weights(hue_channel):
-    weights = []
-    for _, center in _BANDS:
-        distance = _circular_hue_distance(hue_channel, center)
-        weight = np.clip(1.0 - (distance / _BAND_HALF_WIDTH), 0.0, 1.0)
-        weights.append(weight)
-
-    weights = np.stack(weights, axis=2)
-    total = np.sum(weights, axis=2, keepdims=True)
+    total = np.sum(weights, axis=1, keepdims=True)
     total[total == 0.0] = 1.0
     return weights / total
 
 
+_BAND_WEIGHT_LUT = _build_band_weight_lut()
+
+
+def _active_adjustments(adjustments):
+    active = []
+    for band_name, index in _BAND_NAME_TO_INDEX.items():
+        hue_delta_degrees = float(adjustments.get(f'{band_name}_hue_shift', 0))
+        saturation_delta = float(adjustments.get(f'{band_name}_saturation', 0))
+        if hue_delta_degrees == 0.0 and saturation_delta == 0.0:
+            continue
+        active.append((index, hue_delta_degrees, saturation_delta))
+    return active
+
+
 def image_process(image, **adjustments):
     if image is None or image.ndim != 3 or image.shape[2] < 3:
+        return image
+
+    active_adjustments = _active_adjustments(adjustments)
+    if not active_adjustments:
         return image
 
     bgr_image = image[:, :, :3]
@@ -47,17 +61,16 @@ def image_process(image, **adjustments):
     hue_channel = hsv_image[:, :, 0]
     sat_channel = hsv_image[:, :, 1]
 
-    weights = _build_band_weights(hue_channel)
+    hue_indices = np.clip(hue_channel.astype(np.int16), 0, 179)
+    weights = _BAND_WEIGHT_LUT[hue_indices]
 
     hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
     saturation_scale = np.ones_like(sat_channel, dtype=np.float32)
 
-    for index, (band_name, _) in enumerate(_BANDS):
-        hue_delta_degrees = float(adjustments.get(f'{band_name}_hue_shift', 0))
-        saturation_delta = float(adjustments.get(f'{band_name}_saturation', 0))
-
-        hue_shift += weights[:, :, index] * (hue_delta_degrees / 2.0)
-        saturation_scale += weights[:, :, index] * (saturation_delta / 100.0)
+    for index, hue_delta_degrees, saturation_delta in active_adjustments:
+        band_weight = weights[:, :, index]
+        hue_shift += band_weight * (hue_delta_degrees / 2.0)
+        saturation_scale += band_weight * (saturation_delta / 100.0)
 
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)

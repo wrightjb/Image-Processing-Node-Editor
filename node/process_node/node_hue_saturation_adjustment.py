@@ -33,6 +33,26 @@ def _build_band_weight_lut():
 
 
 _BAND_WEIGHT_LUT = _build_band_weight_lut()
+_BLEND_WEIGHT_LUT_CACHE = {}
+
+
+def _get_blend_weight_lut(blend):
+    blend = float(np.clip(blend, 0.0, 1.0))
+    key = int(round(blend * 200.0))
+    if key in _BLEND_WEIGHT_LUT_CACHE:
+        return _BLEND_WEIGHT_LUT_CACHE[key]
+
+    blend_quantized = key / 200.0
+    hardness = (1.0 - blend_quantized) ** 2
+    gamma = 1.0 + (31.0 * hardness)
+
+    weights = np.power(_BAND_WEIGHT_LUT, gamma)
+    total = np.sum(weights, axis=1, keepdims=True)
+    total[total == 0.0] = 1.0
+    weights = (weights / total).astype(np.float32)
+
+    _BLEND_WEIGHT_LUT_CACHE[key] = weights
+    return weights
 
 def _active_adjustments(adjustments):
     active = []
@@ -64,24 +84,14 @@ def image_process(image, blend=1.0, **adjustments):
     hue_indices = np.clip(hue_channel.astype(np.int16), 0, 179)
     weights = _BAND_WEIGHT_LUT[hue_indices]
 
-    hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
-    soft_saturation_scale = np.ones_like(sat_channel, dtype=np.float32)
-
     hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
     saturation_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
 
     for index, hue_delta_degrees, saturation_delta in active_adjustments:
-        band_weight = weights[:, :, index]
         hue_delta_by_band[index] = hue_delta_degrees / 2.0
         saturation_delta_by_band[index] = saturation_delta / 100.0
-        soft_saturation_scale += band_weight * saturation_delta_by_band[index]
 
-    blend = float(np.clip(blend, 0.0, 1.0))
-    sharpness = 1.0 + (1.0 - blend) * 255.0
-    sharpened_weights = np.power(weights, sharpness)
-    sharpened_sum = np.sum(sharpened_weights, axis=2, keepdims=True)
-    sharpened_sum[sharpened_sum == 0.0] = 1.0
-    blend_weights = sharpened_weights / sharpened_sum
+    blend_weights = _get_blend_weight_lut(blend)[hue_indices]
 
     hue_shift = np.sum(blend_weights * hue_delta_by_band[None, None, :], axis=2)
     saturation_scale = 1.0 + np.sum(

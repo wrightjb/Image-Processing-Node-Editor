@@ -50,6 +50,7 @@ def editor_and_dpg():
         dpg.get_selected_links.return_value = []
         dpg.get_mouse_pos.return_value = [0, 0]
         dpg.does_item_exist.return_value = False
+        dpg.is_item_hovered.return_value = False
         dpg.is_item_shown.return_value = False
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
@@ -263,7 +264,7 @@ def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
 
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
-        'Insert into link requires exactly one selected link.',
+        'Insert into link requires a selected or hovered link.',
     )
 
 
@@ -276,6 +277,45 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
 
     dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopup', [128, 255])
     dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
+
+
+def test_open_insert_link_popup_on_hovered_link(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._link_view_id_map = {
+        ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'link-1'
+    }
+    dpg.get_selected_links.return_value = []
+    dpg.is_item_hovered.side_effect = lambda item: item == 'link-1'
+    dpg.get_mouse_pos.return_value = [10, 20]
+
+    editor._cntrl_open_insert_link_popup(None, None)
+
+    dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
+
+
+def test_insert_node_into_selected_link_uses_pending_hovered_link(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }.get
+    dpg.get_item_configuration.return_value = {'attr_1': 101, 'attr_2': 102}
+    dpg.get_item_pos.side_effect = {'1:TestNode': [0, 0], '2:TestNode': [100, 0]}.get
+    dpg.does_item_exist.side_effect = lambda tag: tag in {
+        '3:TestNode:Int:Input01', '3:TestNode:Int:Output01'
+    }
+    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2']
+    editor._pending_insert_link_dpg_id = 'existing-link'
+    editor._node_link_list = [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    editor._link_view_id_map = {
+        ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'existing-link'
+    }
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+
+    assert editor._pending_insert_link_dpg_id is None
 
 
 def test_open_insert_link_popup_hides_when_selection_invalid(editor_and_dpg):

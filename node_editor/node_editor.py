@@ -58,6 +58,7 @@ class DpgNodeEditor(object):
         self._node_link_list = []
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
+        self._pending_insert_link_dpg_id = None
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -294,16 +295,16 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        for menu_label, nodes in self._menu_nodes.items():
-            dpg.add_text(default_value=menu_label)
-            for node_info in nodes:
-                dpg.add_button(
-                    tag='Popup_InsertLink_' + node_info['tag'],
-                    label=node_info['label'],
-                    callback=self._cntrl_insert_node_into_selected_link,
-                    user_data=node_info['tag'],
-                )
-            dpg.add_separator()
+        with dpg.child_window(height=360, width=320, border=False):
+            for menu_label, nodes in self._menu_nodes.items():
+                with dpg.tree_node(label=menu_label, default_open=False):
+                    for node_info in nodes:
+                        dpg.add_menu_item(
+                            tag='Popup_InsertLink_' + node_info['tag'],
+                            label=node_info['label'],
+                            callback=self._cntrl_insert_node_into_selected_link,
+                            user_data=node_info['tag'],
+                        )
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
@@ -434,12 +435,23 @@ class DpgNodeEditor(object):
 
     def _cntrl_open_insert_link_popup(self, sender, data):
         del sender, data
-        selected_links = dpg.get_selected_links(self._node_editor_tag)
-        if len(selected_links) == 1:
+        link_dpg_id = self._cntrl_get_target_link_for_context_insert()
+        self._pending_insert_link_dpg_id = link_dpg_id
+        if link_dpg_id is not None:
             mouse_pos = dpg.get_mouse_pos(local=False)
             self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
         else:
             self._vw_hide_insert_link_popup()
+
+    def _cntrl_get_target_link_for_context_insert(self):
+        selected_links = dpg.get_selected_links(self._node_editor_tag)
+        if len(selected_links) == 1:
+            return selected_links[0]
+
+        for link_dpg_id in self._link_view_id_map.values():
+            if dpg.is_item_hovered(link_dpg_id):
+                return link_dpg_id
+        return None
 
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
@@ -464,15 +476,19 @@ class DpgNodeEditor(object):
     def _cntrl_insert_node_into_selected_link(self, sender, data, user_data):
         del sender, data
         self._vw_hide_insert_link_popup()
-
         selected_links = dpg.get_selected_links(self._node_editor_tag)
-        if len(selected_links) != 1:
+        selected_link_dpg_id = None
+        if len(selected_links) == 1:
+            selected_link_dpg_id = selected_links[0]
+        elif self._pending_insert_link_dpg_id is not None:
+            selected_link_dpg_id = self._pending_insert_link_dpg_id
+
+        self._pending_insert_link_dpg_id = None
+        if selected_link_dpg_id is None:
             self._vw_set_link_feedback(
-                'Insert into link requires exactly one selected link.'
+                'Insert into link requires a selected or hovered link.'
             )
             return
-
-        selected_link_dpg_id = selected_links[0]
         source_tag, dest_tag = self._cntrl_get_link_from_dpg_id(
             selected_link_dpg_id
         )

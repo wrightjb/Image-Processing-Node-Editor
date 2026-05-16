@@ -296,16 +296,15 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        with dpg.menu(label='Insert'):
-            for menu_label, nodes in self._menu_nodes.items():
-                with dpg.menu(label=menu_label):
-                    for node_info in nodes:
-                        dpg.add_menu_item(
-                            tag='Popup_InsertLink_' + node_info['tag'],
-                            label=node_info['label'],
-                            callback=self._cntrl_insert_node_into_selected_link,
-                            user_data=node_info['tag'],
-                        )
+        for menu_label, nodes in self._menu_nodes.items():
+            with dpg.menu(label=menu_label):
+                for node_info in nodes:
+                    dpg.add_menu_item(
+                        tag='Popup_InsertLink_' + node_info['tag'],
+                        label=node_info['label'],
+                        callback=self._cntrl_insert_node_into_selected_link,
+                        user_data=node_info['tag'],
+                    )
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
@@ -384,10 +383,6 @@ class DpgNodeEditor(object):
                 button=dpg.mvMouseButton_Right,
                 callback=self._cntrl_open_insert_link_popup,
             )
-            dpg.add_mouse_click_handler(
-                button=dpg.mvMouseButton_Left,
-                callback=self._cntrl_close_insert_link_popup_on_left_click,
-            )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
                 callback=self._cntrl_delete_selected,
@@ -462,14 +457,6 @@ class DpgNodeEditor(object):
             mouse_pos = dpg.get_mouse_pos(local=False)
             self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
         else:
-            self._vw_hide_insert_link_popup()
-
-    def _cntrl_close_insert_link_popup_on_left_click(self, sender, data):
-        del sender, data
-        if not self._insert_link_popup_open:
-            return
-        popup_hovered = dpg.is_item_hovered(self._insert_link_popup_tag)
-        if not popup_hovered:
             self._vw_hide_insert_link_popup()
 
     def _cntrl_close_insert_link_popup_on_escape(self, sender, data):

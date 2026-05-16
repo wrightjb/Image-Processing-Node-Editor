@@ -20,6 +20,7 @@ class DpgNodeEditor(object):
     _window_tag = _node_editor_tag + 'Window'
     _link_feedback_tag = _node_editor_tag + 'LinkFeedback'
     _insert_link_popup_tag = _node_editor_tag + 'InsertLinkPopup'
+    _insert_link_popup_child_tag = _insert_link_popup_tag + 'Child'
 
     _node_id = 0
     _node_instance_list = {}
@@ -34,6 +35,7 @@ class DpgNodeEditor(object):
     _opencv_setting_dict = None
 
     _use_debug_print = False
+    _insert_link_popup_open = False
 
     def __init__(
         self,
@@ -59,6 +61,7 @@ class DpgNodeEditor(object):
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
+        self._insert_link_popup_open = False
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -262,7 +265,7 @@ class DpgNodeEditor(object):
                     label='Insert Into Selected Link',
                     show=False,
                     no_title_bar=True,
-                    no_move=True,
+                    no_move=False,
                     no_resize=True,
                     no_collapse=True,
                     autosize=True,
@@ -295,7 +298,12 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        with dpg.child_window(height=360, width=320, border=False):
+        with dpg.child_window(
+                tag=self._insert_link_popup_child_tag,
+                height=360,
+                width=320,
+                border=False,
+        ):
             for menu_label, nodes in self._menu_nodes.items():
                 with dpg.tree_node(label=menu_label, default_open=False):
                     for node_info in nodes:
@@ -354,12 +362,28 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
+        self._vw_clamp_insert_link_popup_position(pos)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.show_item(self._insert_link_popup_tag)
+        dpg.focus_item(self._insert_link_popup_tag)
+        self._insert_link_popup_open = True
 
     def _vw_hide_insert_link_popup(self):
         if dpg.is_item_shown(self._insert_link_popup_tag):
             dpg.hide_item(self._insert_link_popup_tag)
+        self._insert_link_popup_open = False
+
+    def _vw_clamp_insert_link_popup_position(self, pos):
+        viewport_w = dpg.get_viewport_client_width()
+        viewport_h = dpg.get_viewport_client_height()
+        popup_w = 340
+        popup_h = 420
+        if dpg.does_item_exist(self._insert_link_popup_child_tag):
+            config = dpg.get_item_configuration(self._insert_link_popup_child_tag)
+            popup_w = int(config.get('width', popup_w)) + 20
+            popup_h = int(config.get('height', popup_h)) + 20
+        pos[0] = max(0, min(pos[0], max(0, viewport_w - popup_w)))
+        pos[1] = max(0, min(pos[1], max(0, viewport_h - popup_h)))
 
     # -------------------------------------------------------------------------
     # Controller functions
@@ -371,9 +395,17 @@ class DpgNodeEditor(object):
                 button=dpg.mvMouseButton_Right,
                 callback=self._cntrl_open_insert_link_popup,
             )
+            dpg.add_mouse_click_handler(
+                button=dpg.mvMouseButton_Left,
+                callback=self._cntrl_close_insert_link_popup_on_left_click,
+            )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
                 callback=self._cntrl_delete_selected,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_Escape,
+                callback=self._cntrl_close_insert_link_popup_on_escape,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -441,6 +473,21 @@ class DpgNodeEditor(object):
             mouse_pos = dpg.get_mouse_pos(local=False)
             self._vw_show_insert_link_popup([int(mouse_pos[0]), int(mouse_pos[1])])
         else:
+            self._vw_hide_insert_link_popup()
+
+    def _cntrl_close_insert_link_popup_on_left_click(self, sender, data):
+        del sender, data
+        if not self._insert_link_popup_open:
+            return
+        popup_state = dpg.get_item_state(self._insert_link_popup_tag)
+        if not popup_state.get('hovered', False):
+            self._pending_insert_link_dpg_id = None
+            self._vw_hide_insert_link_popup()
+
+    def _cntrl_close_insert_link_popup_on_escape(self, sender, data):
+        del sender, data
+        if self._insert_link_popup_open:
+            self._pending_insert_link_dpg_id = None
             self._vw_hide_insert_link_popup()
 
     def _cntrl_get_target_link_for_context_insert(self):

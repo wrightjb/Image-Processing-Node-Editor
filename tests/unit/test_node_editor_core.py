@@ -49,13 +49,18 @@ def editor_and_dpg():
         dpg.get_selected_nodes.return_value = []
         dpg.get_selected_links.return_value = []
         dpg.get_mouse_pos.return_value = [0, 0]
+        dpg.get_viewport_client_width.return_value = 1280
+        dpg.get_viewport_client_height.return_value = 720
         dpg.does_item_exist.return_value = False
         dpg.is_item_hovered.return_value = False
         dpg.is_item_shown.return_value = False
+        dpg.get_item_state.return_value = {'hovered': False}
+        dpg.get_item_configuration.return_value = {}
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
         dpg.configure_item = Mock()
         dpg.delete_item = Mock()
+        dpg.focus_item = Mock()
         dpg.set_item_pos = Mock()
         dpg.set_value = Mock()
         dpg.show_item = Mock()
@@ -277,6 +282,7 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
 
     dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopup', [128, 255])
     dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
+    dpg.focus_item.assert_called_with('NodeEditorInsertLinkPopup')
 
 
 def test_open_insert_link_popup_on_hovered_link(editor_and_dpg):
@@ -325,6 +331,41 @@ def test_open_insert_link_popup_hides_when_selection_invalid(editor_and_dpg):
 
     editor._cntrl_open_insert_link_popup(None, None)
 
+    dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
+
+
+def test_insert_link_popup_closes_on_outside_left_click(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._insert_link_popup_open = True
+    dpg.get_item_state.return_value = {'hovered': False}
+    dpg.is_item_shown.return_value = True
+    editor._pending_insert_link_dpg_id = 'existing-link'
+
+    editor._cntrl_close_insert_link_popup_on_left_click(None, None)
+
+    assert editor._pending_insert_link_dpg_id is None
+    dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
+
+
+def test_insert_link_popup_stays_open_on_inside_left_click(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._insert_link_popup_open = True
+    dpg.get_item_state.return_value = {'hovered': True}
+
+    editor._cntrl_close_insert_link_popup_on_left_click(None, None)
+
+    dpg.hide_item.assert_not_called()
+
+
+def test_insert_link_popup_closes_on_escape(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._insert_link_popup_open = True
+    dpg.is_item_shown.return_value = True
+    editor._pending_insert_link_dpg_id = 'existing-link'
+
+    editor._cntrl_close_insert_link_popup_on_escape(None, None)
+
+    assert editor._pending_insert_link_dpg_id is None
     dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
 
 

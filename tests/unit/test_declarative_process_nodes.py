@@ -15,6 +15,7 @@ import node.process_node.node_simple_filter as simple_filter_module
 import node.process_node.node_curves as curves_module
 import node.process_node.node_omnidirectional_viewer as omni_module
 import node.process_node.node_hue_rotation as hue_rotation_module
+import node.process_node.node_hue_saturation_adjustment as hue_saturation_adjustment_module
 import node.process_node.node_warmth_tint as warmth_tint_module
 
 BlurNode = blur_module.Node
@@ -30,6 +31,7 @@ SimpleFilterNode = simple_filter_module.Node
 CurvesNode = curves_module.Node
 OmniNode = omni_module.Node
 HueRotationNode = hue_rotation_module.Node
+HueSaturationAdjustmentNode = hue_saturation_adjustment_module.Node
 WarmthTintNode = warmth_tint_module.Node
 
 
@@ -667,6 +669,123 @@ def test_hue_rotation_node_luv_and_rgb_modes(monkeypatch):
     assert calls['rgb'] == 1
     assert out_luv.shape == bgr_pixel.shape
     assert out_rgb.shape == bgr_pixel.shape
+
+
+def test_hue_saturation_adjustment_node_get_set_settings(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+
+    values = {
+        '111:HueSaturationAdjustment:Int:Input02Value': 45,
+        '111:HueSaturationAdjustment:Int:Input03Value': 20,
+        '111:HueSaturationAdjustment:Int:Input04Value': -30,
+        '111:HueSaturationAdjustment:Int:Input05Value': 10,
+        '111:HueSaturationAdjustment:Int:Input06Value': 0,
+        '111:HueSaturationAdjustment:Int:Input07Value': 0,
+        '111:HueSaturationAdjustment:Int:Input08Value': 0,
+        '111:HueSaturationAdjustment:Int:Input09Value': 0,
+        '111:HueSaturationAdjustment:Int:Input10Value': 0,
+        '111:HueSaturationAdjustment:Int:Input11Value': 0,
+        '111:HueSaturationAdjustment:Int:Input12Value': 0,
+        '111:HueSaturationAdjustment:Int:Input13Value': 0,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'dpg', DpgStub())
+
+    setting = node.get_setting_dict(111)
+
+    assert setting['ver'] == node._ver
+    assert setting['pos'] == [10, 20]
+    assert setting['111:HueSaturationAdjustment:Int:Input02Value'] == 45
+    assert setting['111:HueSaturationAdjustment:Int:Input03Value'] == 20
+
+    node.set_setting_dict(111, {
+        '111:HueSaturationAdjustment:Int:Input02Value': -60,
+        '111:HueSaturationAdjustment:Int:Input03Value': -40,
+        '111:HueSaturationAdjustment:Int:Input12Value': 75,
+        '111:HueSaturationAdjustment:Int:Input13Value': 55,
+    })
+
+    assert writes['111:HueSaturationAdjustment:Int:Input02Value'] == -60
+    assert writes['111:HueSaturationAdjustment:Int:Input03Value'] == -40
+    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 75
+    assert writes['111:HueSaturationAdjustment:Int:Input13Value'] == 55
+
+
+def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'COLOR_BGR2HSV', 21, raising=False)
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'COLOR_HSV2BGR', 22, raising=False)
+
+    def _cvt_color_stub(image, code):
+        if code == hue_saturation_adjustment_module.cv2.COLOR_BGR2HSV:
+            hsv = np.zeros_like(image)
+            hsv[:, :, 0] = 0
+            hsv[:, :, 1] = 100
+            hsv[:, :, 2] = 200
+            return hsv
+        return image
+
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
+    monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
+
+    params = {parameter['name']: 0 for parameter in node.parameters}
+    params['red_hue_shift'] = 60
+    params['red_saturation'] = 50
+
+    bgr_pixel = np.array([[[10, 20, 30]]], dtype=np.uint8)
+    out_bgr, result = node.process(bgr_pixel, **params)
+
+    assert result is None
+    assert out_bgr.shape == bgr_pixel.shape
+    assert out_bgr[0, 0, 0] == 30
+    assert out_bgr[0, 0, 1] == 150
+    assert out_bgr[0, 0, 2] == 200
+
+    bgra_pixel = np.array([[[10, 20, 30, 77]]], dtype=np.uint8)
+    out_bgra, _ = node.process(bgra_pixel, **params)
+
+    assert out_bgra.shape == bgra_pixel.shape
+    assert out_bgra[0, 0, 3] == 77
+
+
+def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+    _prepare_node(node)
+
+    values = {
+        '501:IntValue:Int:Output01Value': 999,
+        '502:IntValue:Int:Output01Value': -180,
+        '601:HueSaturationAdjustment:Int:Input02Value': 0,
+        '601:HueSaturationAdjustment:Int:Input03Value': 0,
+    }
+    writes = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: writes.setdefault(tag, value))
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(hue_saturation_adjustment_module, 'image_process', lambda frame, **kwargs: frame)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    out_frame, result = node.update(
+        601,
+        [
+            ['1:ImageSource:Image:Output01', '601:HueSaturationAdjustment:Image:Input01'],
+            ['501:IntValue:Int:Output01', '601:HueSaturationAdjustment:Int:Input02'],
+            ['502:IntValue:Int:Output01', '601:HueSaturationAdjustment:Int:Input03'],
+        ],
+        {'1:ImageSource': frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert writes['601:HueSaturationAdjustment:Int:Input02Value'] == 180
+    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == -100
 
 
 def test_warmth_tint_node_get_set_settings(monkeypatch):

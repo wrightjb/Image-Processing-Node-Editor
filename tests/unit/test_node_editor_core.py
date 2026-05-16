@@ -48,6 +48,7 @@ def editor_and_dpg():
         dpg.get_item_alias.side_effect = lambda x: x
         dpg.get_selected_nodes.return_value = []
         dpg.get_selected_links.return_value = []
+        dpg.does_item_exist.return_value = False
         dpg.get_item_pos.return_value = [0, 0]
         dpg.add_node_link = Mock()
         dpg.configure_item = Mock()
@@ -194,6 +195,99 @@ def test_link_invalid_payload_sets_feedback(editor_and_dpg):
     dpg.configure_item.assert_called_with(
         'NodeEditorWindow',
         label='Node editor | Link rejected: invalid link data from DearPyGui.',
+    )
+
+
+def test_insert_node_into_selected_link(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }.get
+    dpg.get_selected_links.return_value = ['existing-link']
+    dpg.get_item_configuration.return_value = {'attr_1': 101, 'attr_2': 102}
+    dpg.get_item_pos.side_effect = {
+        '1:TestNode': [0, 0],
+        '2:TestNode': [120, 60],
+    }.get
+    dpg.does_item_exist.side_effect = (
+        lambda tag: tag in {
+            '3:TestNode:Int:Input01',
+            '3:TestNode:Int:Output01',
+        }
+    )
+    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2']
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._node_link_list = [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    editor._link_view_id_map = {
+        ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'existing-link'
+    }
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+
+    assert editor._node_list == ['1:TestNode', '2:TestNode', '3:TestNode']
+    assert editor._node_link_list == [
+        ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
+        ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
+    ]
+    assert editor._link_view_id_map == {
+        ('1:TestNode:Int:Output01', '3:TestNode:Int:Input01'): 'new-link-1',
+        ('3:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'new-link-2',
+    }
+    dpg.add_node_link.assert_any_call(
+        '1:TestNode:Int:Output01',
+        '3:TestNode:Int:Input01',
+        parent='NodeEditor',
+    )
+    dpg.add_node_link.assert_any_call(
+        '3:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+        parent='NodeEditor',
+    )
+    dpg.delete_item.assert_called_once_with('existing-link')
+    assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
+
+
+def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_selected_links.return_value = []
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+
+    dpg.set_value.assert_called_with(
+        'NodeEditorLinkFeedback',
+        'Insert into link requires exactly one selected link.',
+    )
+
+
+def test_insert_node_into_selected_link_rejects_incompatible_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }.get
+    dpg.get_selected_links.return_value = ['existing-link']
+    dpg.get_item_configuration.return_value = {'attr_1': 101, 'attr_2': 102}
+    dpg.get_item_pos.side_effect = {
+        '1:TestNode': [0, 0],
+        '2:TestNode': [120, 60],
+    }.get
+    dpg.does_item_exist.return_value = False
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._node_link_list = [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+
+    assert editor._node_list == ['1:TestNode', '2:TestNode']
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    dpg.delete_item.assert_called_once_with('3:TestNode')
+    dpg.set_value.assert_called_with(
+        'NodeEditorLinkFeedback',
+        'Cannot insert TestNode: it needs both Int input and output ports.',
     )
 
 

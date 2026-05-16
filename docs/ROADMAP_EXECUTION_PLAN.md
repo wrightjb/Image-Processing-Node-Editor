@@ -13,6 +13,7 @@ This document consolidates the feature ideas and architecture discussions into a
 
 ### Epic B canonical status
 - ✅ B1 completed: occupied-input auto-reconnect replaces the existing link when a new source is dropped onto an input.
+- ✅ B2 completed: selected links can be replaced by an inserted node with automatic rewiring.
 - ✅ B3 completed: rejected-link attempts now surface actionable feedback in the editor UI.
 
 ### Epic A extraction sub-steps (historical detail)
@@ -20,7 +21,7 @@ This document consolidates the feature ideas and architecture discussions into a
 - ✅ A2.B completed: loop orchestration extraction into `node_editor/runtime_controller.py` (async worker + sync/async loop runners).
 - ✅ A2.C completed: menu/editor factory extraction into `node_editor/editor_factory.py` (default menu map, editor creation, startup import helper).
 
-- 🔜 Next recommended step: Phase B2 implement insert-node-into-link from a selected link.
+- 🔜 Next recommended step: Phase C1 implement the Sharpen node.
 
 ## 1) Goals
 
@@ -83,7 +84,7 @@ Make connecting and modifying pipelines faster and less error-prone.
 ### Candidate features (MVP first)
 1. **Auto-reconnect on occupied input** ✅
    - Drop a new source onto an already-connected input to replace old link.
-2. **Insert node into link**
+2. **Insert node into link** ✅
    - Select link, choose node type, auto-wire source → new node → destination.
 3. **Quick reconnect interaction**
    - Light-weight connect mode for reduced drag precision.
@@ -229,6 +230,7 @@ Use this template in local markdown files to track work:
 - Priority: P1
 - Estimate: M
 - Depends on: B1
+- Status: Done
 
 ### B3. Rejected-link reason feedback
 - Priority: P1
@@ -308,10 +310,10 @@ Use this template in local markdown files to track work:
 ## 6) Milestone plan (example)
 
 ### Milestone 1 (2–3 weeks)
-- A1, A2, B1, B3, C1, C2
+- A1, A2, B1, B2, B3, C1, C2
 
 ### Milestone 2 (2–3 weeks)
-- B2, C3, C4, D1
+- C3, C4, D1
 
 ### Milestone 3 (3–4 weeks)
 - D2, D3, E1 prototype

@@ -279,7 +279,7 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
 
     editor._cntrl_open_insert_link_popup(None, None)
 
-    dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopup', [128, 255])
+    dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopupAnchor', [128, 255])
     dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
     dpg.focus_item.assert_called_with('NodeEditorInsertLinkPopup')
 
@@ -349,7 +349,7 @@ def test_insert_link_popup_closes_on_outside_left_click(editor_and_dpg):
 def test_insert_link_popup_stays_open_on_inside_left_click(editor_and_dpg):
     editor, dpg = editor_and_dpg
     editor._insert_link_popup_open = True
-    dpg.is_item_hovered.side_effect = lambda tag: tag == 'NodeEditorInsertLinkPopupChild'
+    dpg.is_item_hovered.side_effect = lambda tag: tag == 'NodeEditorInsertLinkPopup'
 
     editor._cntrl_close_insert_link_popup_on_left_click(None, None)
 

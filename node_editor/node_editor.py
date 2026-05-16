@@ -20,6 +20,7 @@ class DpgNodeEditor(object):
     _window_tag = _node_editor_tag + 'Window'
     _link_feedback_tag = _node_editor_tag + 'LinkFeedback'
     _insert_link_popup_tag = _node_editor_tag + 'InsertLinkPopup'
+    _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
     _insert_link_popup_child_tag = _insert_link_popup_tag + 'Child'
 
     _node_id = 0
@@ -262,15 +263,11 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
-            with dpg.window(
+            dpg.add_text(default_value='', tag=self._insert_link_popup_anchor_tag)
+            with dpg.popup(
+                    self._insert_link_popup_anchor_tag,
+                    mousebutton=dpg.mvMouseButton_Right,
                     tag=self._insert_link_popup_tag,
-                    label='Insert Into Selected Link',
-                    show=False,
-                    no_title_bar=True,
-                    no_move=False,
-                    no_resize=True,
-                    no_collapse=True,
-                    autosize=True,
             ):
                 self._vw_create_insert_link_popup_menu()
         dpg.set_primary_window(self._window_tag, True)
@@ -300,20 +297,9 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        with dpg.child_window(
-                tag=self._insert_link_popup_child_tag,
-                height=180,
-                width=320,
-                border=False,
-        ):
+        with dpg.menu(label='Insert Into Selected Link'):
             for menu_label, nodes in self._menu_nodes.items():
-                tree_tag = f'{self._insert_link_popup_tag}:Category:{menu_label}'
-                self._insert_link_popup_category_tags.append(tree_tag)
-                with dpg.tree_node(
-                        tag=tree_tag,
-                        label=menu_label,
-                        default_open=False,
-                ):
+                with dpg.menu(label=menu_label):
                     for node_info in nodes:
                         dpg.add_menu_item(
                             tag='Popup_InsertLink_' + node_info['tag'],
@@ -370,10 +356,8 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
-        for tree_tag in self._insert_link_popup_category_tags:
-            dpg.set_value(tree_tag, False)
         self._vw_clamp_insert_link_popup_position(pos)
-        dpg.set_item_pos(self._insert_link_popup_tag, pos)
+        dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.show_item(self._insert_link_popup_tag)
         dpg.focus_item(self._insert_link_popup_tag)
         self._insert_link_popup_open = True
@@ -388,10 +372,6 @@ class DpgNodeEditor(object):
         viewport_h = dpg.get_viewport_client_height()
         popup_w = 340
         popup_h = 420
-        if dpg.does_item_exist(self._insert_link_popup_child_tag):
-            config = dpg.get_item_configuration(self._insert_link_popup_child_tag)
-            popup_w = int(config.get('width', popup_w)) + 20
-            popup_h = int(config.get('height', popup_h)) + 20
         pos[0] = max(0, min(pos[0], max(0, viewport_w - popup_w)))
         pos[1] = max(0, min(pos[1], max(0, viewport_h - popup_h)))
 

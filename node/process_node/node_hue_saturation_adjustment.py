@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import cv2
+import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
@@ -46,7 +47,7 @@ def _active_adjustments(adjustments):
     return active
 
 
-def image_process(image, **adjustments):
+def image_process(image, hue_blend=1.0, **adjustments):
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return image
 
@@ -76,7 +77,14 @@ def image_process(image, **adjustments):
         saturation_scale += band_weight * (saturation_delta / 100.0)
 
     hue_band_indices = _HUE_BAND_INDEX_LUT[hue_indices]
-    hue_shift = hue_delta_by_band[hue_band_indices]
+    hard_hue_shift = hue_delta_by_band[hue_band_indices]
+
+    soft_hue_shift = np.zeros_like(hue_channel, dtype=np.float32)
+    for index, _, _ in active_adjustments:
+        soft_hue_shift += weights[:, :, index] * hue_delta_by_band[index]
+
+    hue_blend = float(np.clip(hue_blend, 0.0, 1.0))
+    hue_shift = (hue_blend * soft_hue_shift) + ((1.0 - hue_blend) * hard_hue_shift)
 
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)
@@ -97,18 +105,33 @@ def image_process(image, **adjustments):
 
 
 class Node(DeclarativeImageProcessNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.2'
 
     node_label = 'Hue/Saturation Adjustment'
     node_tag = 'HueSaturationAdjustment'
 
-    parameters = []
+    _last_touched_slider_tag_by_node = {}
+
+    parameters = [
+        {
+            'name': 'hue_blend',
+            'type': DeclarativeImageProcessNodeBase.TYPE_FLOAT,
+            'port': 'Input02',
+            'widget': 'slider_float',
+            'label': 'hue blend',
+            'default': 1.0,
+            'min': 0.0,
+            'max': 1.0,
+            'cast': float,
+            'precision': 2,
+        },
+    ]
     for index, (band_name, _) in enumerate(_BANDS):
         parameters.extend([
             {
                 'name': f'{band_name}_hue_shift',
                 'type': DeclarativeImageProcessNodeBase.TYPE_INT,
-                'port': f'Input{(index * 2) + 2:02d}',
+                'port': f'Input{(index * 2) + 3:02d}',
                 'widget': 'slider_int',
                 'label': f'{band_name[:3]} hue',
                 'default': 0,
@@ -119,7 +142,7 @@ class Node(DeclarativeImageProcessNodeBase):
             {
                 'name': f'{band_name}_saturation',
                 'type': DeclarativeImageProcessNodeBase.TYPE_INT,
-                'port': f'Input{(index * 2) + 3:02d}',
+                'port': f'Input{(index * 2) + 4:02d}',
                 'widget': 'slider_int',
                 'label': f'{band_name[:3]} sat',
                 'default': 0,
@@ -132,3 +155,61 @@ class Node(DeclarativeImageProcessNodeBase):
     def process(self, frame, **parameter_values):
         frame = image_process(frame, **parameter_values)
         return frame, None
+
+    def build_custom_ui(self, tag_node_name, node_id, width, callback):
+        del callback
+        with dpg.node_attribute(
+            tag=self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input99'),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            dpg.add_button(
+                label='Reset all',
+                width=width - 80,
+                callback=self._reset_all_callback,
+                user_data=node_id,
+            )
+
+    def on_node_added(self, tag_node_name):
+        node_id = int(tag_node_name.split(':')[0])
+        if not dpg.does_item_exist('_hsa_arrow_keys'):
+            with dpg.handler_registry(tag='_hsa_arrow_keys'):
+                dpg.add_key_press_handler(dpg.mvKey_Left, callback=self._nudge_slider, user_data=-1)
+                dpg.add_key_press_handler(dpg.mvKey_Right, callback=self._nudge_slider, user_data=1)
+
+        for parameter in self.parameters:
+            slider_tag = self._value_tag(
+                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            )
+            with dpg.item_handler_registry() as handler_id:
+                dpg.add_item_clicked_handler(callback=self._remember_last_slider, user_data=node_id)
+            dpg.bind_item_handler_registry(slider_tag, handler_id)
+
+    def _remember_last_slider(self, sender, app_data, user_data):
+        del sender, app_data
+        active_item = dpg.get_active_item()
+        self._last_touched_slider_tag_by_node[user_data] = dpg.get_item_alias(active_item)
+
+    def _nudge_slider(self, sender, app_data, user_data):
+        del sender, app_data
+        step = int(user_data)
+        for slider_tag in self._last_touched_slider_tag_by_node.values():
+            if not slider_tag or not dpg.does_item_exist(slider_tag):
+                continue
+            item_conf = dpg.get_item_configuration(slider_tag)
+            current = dpg.get_value(slider_tag)
+            if isinstance(current, float):
+                next_value = round(current + (0.01 * step), 2)
+            else:
+                next_value = int(current) + step
+            min_value = item_conf.get('min_value', next_value)
+            max_value = item_conf.get('max_value', next_value)
+            dpg.set_value(slider_tag, max(min_value, min(max_value, next_value)))
+
+    def _reset_all_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        tag_node_name = self._node_name(user_data)
+        for parameter in self.parameters:
+            parameter_value_tag = self._value_tag(
+                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            )
+            dpg.set_value(parameter_value_tag, parameter['default'])

@@ -362,9 +362,11 @@ class DpgNodeEditor(object):
     def _vw_show_insert_link_popup(self, pos):
         dpg.show_item(self._insert_link_popup_anchor_tag)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
+        dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.split_frame()
         dpg.show_item(self._insert_link_popup_tag)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
+        dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.split_frame()
         dpg.focus_item(self._insert_link_popup_tag)
         self._insert_link_popup_open = True

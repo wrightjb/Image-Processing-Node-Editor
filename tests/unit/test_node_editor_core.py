@@ -279,7 +279,7 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
 
     editor._cntrl_open_insert_link_popup(None, None)
 
-    dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopupAnchor', [128, 255])
+    dpg.set_item_pos.assert_any_call('NodeEditorInsertLinkPopupAnchor', [128, 255])
     dpg.show_item.assert_any_call('NodeEditorInsertLinkPopup')
     dpg.focus_item.assert_called_with('NodeEditorInsertLinkPopup')
 

@@ -280,7 +280,7 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
     editor._cntrl_open_insert_link_popup(None, None)
 
     dpg.set_item_pos.assert_called_with('NodeEditorInsertLinkPopupAnchor', [128, 255])
-    dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
+    dpg.show_item.assert_any_call('NodeEditorInsertLinkPopup')
     dpg.focus_item.assert_called_with('NodeEditorInsertLinkPopup')
 
 
@@ -295,7 +295,7 @@ def test_open_insert_link_popup_on_hovered_link(editor_and_dpg):
 
     editor._cntrl_open_insert_link_popup(None, None)
 
-    dpg.show_item.assert_called_with('NodeEditorInsertLinkPopup')
+    dpg.show_item.assert_any_call('NodeEditorInsertLinkPopup')
 
 
 def test_insert_node_into_selected_link_uses_pending_hovered_link(editor_and_dpg):
@@ -330,7 +330,7 @@ def test_open_insert_link_popup_hides_when_selection_invalid(editor_and_dpg):
 
     editor._cntrl_open_insert_link_popup(None, None)
 
-    dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
+    dpg.hide_item.assert_any_call('NodeEditorInsertLinkPopup')
 
 
 def test_insert_link_popup_closes_on_escape(editor_and_dpg):
@@ -342,7 +342,7 @@ def test_insert_link_popup_closes_on_escape(editor_and_dpg):
     editor._cntrl_close_insert_link_popup_on_escape(None, None)
 
     assert editor._pending_insert_link_dpg_id is None
-    dpg.hide_item.assert_called_with('NodeEditorInsertLinkPopup')
+    dpg.hide_item.assert_any_call('NodeEditorInsertLinkPopup')
 
 
 def test_insert_node_into_selected_link_rejects_incompatible_node(editor_and_dpg):

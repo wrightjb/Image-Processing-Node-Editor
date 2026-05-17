@@ -262,7 +262,13 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
-            dpg.add_text(default_value='', tag=self._insert_link_popup_anchor_tag)
+            dpg.add_button(
+                tag=self._insert_link_popup_anchor_tag,
+                label='',
+                width=1,
+                height=1,
+                show=False,
+            )
             with dpg.popup(
                     self._insert_link_popup_anchor_tag,
                     mousebutton=dpg.mvMouseButton_Right,
@@ -354,6 +360,7 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
+        dpg.show_item(self._insert_link_popup_anchor_tag)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.split_frame()
         dpg.show_item(self._insert_link_popup_tag)
@@ -365,6 +372,8 @@ class DpgNodeEditor(object):
     def _vw_hide_insert_link_popup(self):
         if dpg.is_item_shown(self._insert_link_popup_tag):
             dpg.hide_item(self._insert_link_popup_tag)
+        if dpg.is_item_shown(self._insert_link_popup_anchor_tag):
+            dpg.hide_item(self._insert_link_popup_anchor_tag)
         self._insert_link_popup_open = False
 
     # -------------------------------------------------------------------------

@@ -363,11 +363,8 @@ class DpgNodeEditor(object):
         dpg.show_item(self._insert_link_popup_anchor_tag)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
-        dpg.split_frame()
         dpg.show_item(self._insert_link_popup_tag)
-        dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
-        dpg.split_frame()
         dpg.focus_item(self._insert_link_popup_tag)
         self._insert_link_popup_open = True
 
@@ -460,31 +457,11 @@ class DpgNodeEditor(object):
         self._pending_insert_link_dpg_id = link_dpg_id
         if link_dpg_id is not None:
             mouse_pos = dpg.get_mouse_pos(local=False)
-            mouse_pos_local = dpg.get_mouse_pos(local=True)
             window_pos = dpg.get_item_pos(self._window_tag)
             popup_pos = [
                 int(mouse_pos[0] - window_pos[0]),
                 int(mouse_pos[1] - window_pos[1]),
             ]
-            if self._use_debug_print:
-                print('**** _cntrl_open_insert_link_popup ****')
-                print(f'\tlink_dpg_id                : {link_dpg_id}')
-                print(f'\tmouse_pos_global           : {mouse_pos}')
-                print(f'\tmouse_pos_local            : {mouse_pos_local}')
-                print(f'\twindow_pos                 : {window_pos}')
-                print(f'\tcomputed_popup_pos         : {popup_pos}')
-                print()
-
-            # First-open correction: if computed local coords collapse near origin
-            # while local mouse is valid, prefer local mouse coords.
-            if popup_pos[0] <= 2 and popup_pos[1] <= 2 and (
-                mouse_pos_local[0] > 2 or mouse_pos_local[1] > 2
-            ):
-                popup_pos = [int(mouse_pos_local[0]), int(mouse_pos_local[1])]
-                if self._use_debug_print:
-                    print('\tusing_local_mouse_fallback : True')
-                    print(f'\tfallback_popup_pos         : {popup_pos}')
-                    print()
             self._vw_show_insert_link_popup(popup_pos)
         else:
             self._vw_hide_insert_link_popup()

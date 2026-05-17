@@ -35,8 +35,6 @@ class DpgNodeEditor(object):
     _opencv_setting_dict = None
 
     _use_debug_print = False
-    _insert_link_popup_open = False
-    _insert_link_popup_category_tags = []
 
     def __init__(
         self,
@@ -62,8 +60,6 @@ class DpgNodeEditor(object):
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
-        self._insert_link_popup_open = False
-        self._insert_link_popup_category_tags = []
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -360,20 +356,15 @@ class DpgNodeEditor(object):
         dpg.configure_item(self._window_tag, label=window_label)
 
     def _vw_show_insert_link_popup(self, pos):
-        dpg.show_item(self._insert_link_popup_anchor_tag)
         dpg.set_item_pos(self._insert_link_popup_anchor_tag, pos)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.show_item(self._insert_link_popup_tag)
         dpg.set_item_pos(self._insert_link_popup_tag, pos)
         dpg.focus_item(self._insert_link_popup_tag)
-        self._insert_link_popup_open = True
 
     def _vw_hide_insert_link_popup(self):
         if dpg.is_item_shown(self._insert_link_popup_tag):
             dpg.hide_item(self._insert_link_popup_tag)
-        if dpg.is_item_shown(self._insert_link_popup_anchor_tag):
-            dpg.hide_item(self._insert_link_popup_anchor_tag)
-        self._insert_link_popup_open = False
 
     # -------------------------------------------------------------------------
     # Controller functions
@@ -468,7 +459,7 @@ class DpgNodeEditor(object):
 
     def _cntrl_close_insert_link_popup_on_escape(self, sender, data):
         del sender, data
-        if self._insert_link_popup_open:
+        if dpg.is_item_shown(self._insert_link_popup_tag):
             self._pending_insert_link_dpg_id = None
             self._vw_hide_insert_link_popup()
 

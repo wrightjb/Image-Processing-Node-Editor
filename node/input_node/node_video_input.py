@@ -23,6 +23,9 @@ class Node(DpgNodeABC):
     _movie_filepath = {}
     _prev_movie_filepath = {}
     _frame_count = {}
+    _playback_start_time = {}
+    _playback_start_frame = {}
+    _last_output_frame = {}
 
     _min_val = 1
     _max_val = 10
@@ -188,6 +191,9 @@ class Node(DpgNodeABC):
             self._video_capture[str(node_id)] = cv2.VideoCapture(movie_path)
             self._prev_movie_filepath[str(node_id)] = movie_path
             self._frame_count[str(node_id)] = 0
+            self._playback_start_time[str(node_id)] = time.perf_counter()
+            self._playback_start_frame[str(node_id)] = 0
+            self._last_output_frame.pop(str(node_id), None)
 
         video_capture = self._video_capture.get(str(node_id), None)
 
@@ -203,24 +209,42 @@ class Node(DpgNodeABC):
         # 画像取得
         frame = None
         if video_capture is not None:
-            while True:
-                ret, frame = video_capture.read()
-                if not ret:
-                    if loop_flag:
-                        video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        _, frame = video_capture.read()
-                    else:
-                        video_capture.release()
-                        video_capture = None
-                        self._movie_filepath.pop(str(node_id))
-                        self._prev_movie_filepath.pop(str(node_id))
-                        self._video_capture.pop(str(node_id))
+            total_frame = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            source_fps = float(video_capture.get(cv2.CAP_PROP_FPS))
+            if source_fps <= 0:
+                source_fps = 30.0
 
-                        break
+            now = time.perf_counter()
+            start_time = self._playback_start_time.get(str(node_id), now)
+            elapsed_sec = max(0.0, now - start_time)
+            elapsed_frame = int(elapsed_sec * source_fps)
+            target_frame_pos = elapsed_frame * skip_rate
 
-                self._frame_count[str(node_id)] += 1
-                if (self._frame_count[str(node_id)] % skip_rate) == 0:
-                    break
+            if total_frame > 0 and loop_flag:
+                target_frame_pos = target_frame_pos % total_frame
+            elif total_frame > 0:
+                target_frame_pos = min(target_frame_pos, total_frame - 1)
+
+            current_frame_pos = int(video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+            if target_frame_pos != current_frame_pos:
+                video_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame_pos)
+
+            ret, frame = video_capture.read()
+            if not ret:
+                if loop_flag:
+                    video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = video_capture.read()
+                    self._playback_start_time[str(node_id)] = now
+                    self._playback_start_frame[str(node_id)] = 0
+                    self._frame_count[str(node_id)] = 0
+                else:
+                    frame = self._last_output_frame.get(str(node_id), None)
+
+            if frame is not None:
+                self._frame_count[str(node_id)] = int(
+                    video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+                )
+                self._last_output_frame[str(node_id)] = frame.copy()
 
         # 計測終了
         if video_capture is not None and use_pref_counter:
@@ -241,7 +265,18 @@ class Node(DpgNodeABC):
         return frame, None
 
     def close(self, node_id):
-        pass
+        str_node_id = str(node_id)
+        video_capture = self._video_capture.get(str_node_id, None)
+        if video_capture is not None:
+            video_capture.release()
+
+        self._video_capture.pop(str_node_id, None)
+        self._movie_filepath.pop(str_node_id, None)
+        self._prev_movie_filepath.pop(str_node_id, None)
+        self._frame_count.pop(str_node_id, None)
+        self._playback_start_time.pop(str_node_id, None)
+        self._playback_start_frame.pop(str_node_id, None)
+        self._last_output_frame.pop(str_node_id, None)
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)

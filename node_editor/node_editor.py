@@ -18,11 +18,15 @@ class DpgNodeEditor(object):
     _node_editor_tag = 'NodeEditor'
     _node_editor_label = 'Node editor'
     _window_tag = _node_editor_tag + 'Window'
+    _link_feedback_tag = _node_editor_tag + 'LinkFeedback'
+    _insert_link_popup_tag = _node_editor_tag + 'InsertLinkPopup'
+    _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
 
     _node_id = 0
     _node_instance_list = {}
     _node_list = []
     _node_link_list = []
+    _link_view_id_map = {}
 
     _last_pos = None
 
@@ -53,7 +57,9 @@ class DpgNodeEditor(object):
         self._node_instance_list = {}
         self._node_list = []
         self._node_link_list = []
+        self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
+        self._pending_insert_link_dpg_id = None
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -68,6 +74,12 @@ class DpgNodeEditor(object):
             return False
         self._node_link_list.append([source_tag, dest_tag])
         return True
+
+    def _mdl_get_link_by_destination(self, dest_tag):
+        for link in self._node_link_list:
+            if link[1] == dest_tag:
+                return link
+        return None
 
     def _mdl_get_export_settings(self):
         setting_dict = {}
@@ -232,6 +244,13 @@ class DpgNodeEditor(object):
                         user_data='Menu_File_Import',
                     )
                 self._vw_create_node_menus()
+                self._vw_create_insert_link_menu()
+            dpg.add_text(
+                default_value='',
+                tag=self._link_feedback_tag,
+                color=(255, 180, 80, 255),
+                wrap=0,
+            )
             with dpg.node_editor(
                     tag=self._node_editor_tag,
                     callback=self._cntrl_link,
@@ -239,6 +258,19 @@ class DpgNodeEditor(object):
                     minimap_location=dpg.mvNodeMiniMap_Location_BottomRight,
             ):
                 pass
+            dpg.add_button(
+                tag=self._insert_link_popup_anchor_tag,
+                label='',
+                width=1,
+                height=1,
+                show=False,
+            )
+            with dpg.popup(
+                    self._insert_link_popup_anchor_tag,
+                    mousebutton=dpg.mvMouseButton_Right,
+                    tag=self._insert_link_popup_tag,
+            ):
+                self._vw_create_insert_link_popup_menu()
         dpg.set_primary_window(self._window_tag, True)
 
     def _vw_create_node_menus(self):
@@ -252,6 +284,30 @@ class DpgNodeEditor(object):
                         user_data=node_info['tag'],
                     )
 
+    def _vw_create_insert_link_menu(self):
+        with dpg.menu(label='Edit'):
+            with dpg.menu(label='Insert'):
+                for menu_label, nodes in self._menu_nodes.items():
+                    with dpg.menu(label=menu_label):
+                        for node_info in nodes:
+                            dpg.add_menu_item(
+                                tag='Menu_InsertLink_' + node_info['tag'],
+                                label=node_info['label'],
+                                callback=self._cntrl_insert_node_into_selected_link,
+                                user_data=node_info['tag'],
+                            )
+
+    def _vw_create_insert_link_popup_menu(self):
+        for menu_label, nodes in self._menu_nodes.items():
+            with dpg.menu(label=menu_label):
+                for node_info in nodes:
+                    dpg.add_menu_item(
+                        tag='Popup_InsertLink_' + node_info['tag'],
+                        label=node_info['label'],
+                        callback=self._cntrl_insert_node_into_selected_link,
+                        user_data=node_info['tag'],
+                    )
+
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
         node.add_node(
@@ -262,7 +318,26 @@ class DpgNodeEditor(object):
         )
 
     def _vw_add_link(self, source, destination):
-        dpg.add_node_link(source, destination, parent=self._node_editor_tag)
+        return dpg.add_node_link(source, destination, parent=self._node_editor_tag)
+
+    def _vw_register_link(self, source_tag, dest_tag, link_dpg_id):
+        self._link_view_id_map[(source_tag, dest_tag)] = link_dpg_id
+
+    def _vw_delete_link(self, source_tag, dest_tag):
+        link_dpg_id = self._link_view_id_map.pop((source_tag, dest_tag), None)
+        if link_dpg_id is not None:
+            self._vw_delete_item(link_dpg_id)
+
+    def _vw_delete_links_for_node(self, node_id_name):
+        delete_targets = []
+        for source_tag, dest_tag in self._link_view_id_map:
+            source_node = ':'.join(source_tag.split(':')[:2])
+            dest_node = ':'.join(dest_tag.split(':')[:2])
+            if source_node == node_id_name or dest_node == node_id_name:
+                delete_targets.append((source_tag, dest_tag))
+
+        for source_tag, dest_tag in delete_targets:
+            self._vw_delete_link(source_tag, dest_tag)
 
     def _vw_delete_item(self, item_id):
         dpg.delete_item(item_id)
@@ -273,15 +348,38 @@ class DpgNodeEditor(object):
     def _vw_show_file_import(self):
         dpg.show_item('file_import')
 
+    def _vw_set_link_feedback(self, message):
+        dpg.set_value(self._link_feedback_tag, message)
+        window_label = self._node_editor_label
+        if message:
+            window_label = f'{self._node_editor_label} | {message}'
+        dpg.configure_item(self._window_tag, label=window_label)
+
+    def _vw_show_insert_link_popup(self, pos):
+        dpg.set_item_pos(self._insert_link_popup_tag, pos)
+        dpg.show_item(self._insert_link_popup_tag)
+
+    def _vw_hide_insert_link_popup(self):
+        if dpg.is_item_shown(self._insert_link_popup_tag):
+            dpg.hide_item(self._insert_link_popup_tag)
+
     # -------------------------------------------------------------------------
     # Controller functions
     def _cntrl_init(self, node_dir, menu_dict):
         self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
+            dpg.add_mouse_click_handler(
+                button=dpg.mvMouseButton_Right,
+                callback=self._cntrl_open_insert_link_popup,
+            )
             dpg.add_key_press_handler(
                 dpg.mvKey_Delete,
                 callback=self._cntrl_delete_selected,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_Escape,
+                callback=self._cntrl_close_insert_link_popup_on_escape,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -334,17 +432,197 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
 
+    def _cntrl_get_link_from_dpg_id(self, link_dpg_id):
+        link_dpg_config = dpg.get_item_configuration(link_dpg_id)
+        return [
+            dpg.get_item_alias(link_dpg_config['attr_1']),
+            dpg.get_item_alias(link_dpg_config['attr_2']),
+        ]
+
+    def _cntrl_open_insert_link_popup(self, sender, data):
+        del sender, data
+        link_dpg_id = self._cntrl_get_target_link_for_context_insert()
+        self._pending_insert_link_dpg_id = link_dpg_id
+        if link_dpg_id is not None:
+            mouse_pos = dpg.get_mouse_pos(local=False)
+            window_pos = dpg.get_item_pos(self._window_tag)
+            popup_pos = [
+                int(mouse_pos[0] - window_pos[0]),
+                int(mouse_pos[1] - window_pos[1]),
+            ]
+            self._vw_show_insert_link_popup(popup_pos)
+        else:
+            self._vw_hide_insert_link_popup()
+
+    def _cntrl_close_insert_link_popup_on_escape(self, sender, data):
+        del sender, data
+        if dpg.is_item_shown(self._insert_link_popup_tag):
+            self._pending_insert_link_dpg_id = None
+            self._vw_hide_insert_link_popup()
+
+    def _cntrl_get_target_link_for_context_insert(self):
+        selected_links = dpg.get_selected_links(self._node_editor_tag)
+        if len(selected_links) == 1:
+            return selected_links[0]
+
+        for link_dpg_id in self._link_view_id_map.values():
+            if dpg.is_item_hovered(link_dpg_id):
+                return link_dpg_id
+        return None
+
+    def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
+        source_node = ':'.join(source_tag.split(':')[:2])
+        dest_node = ':'.join(dest_tag.split(':')[:2])
+        source_pos = dpg.get_item_pos(source_node)
+        dest_pos = dpg.get_item_pos(dest_node)
+
+        return [
+            int((source_pos[0] + dest_pos[0]) / 2),
+            int((source_pos[1] + dest_pos[1]) / 2),
+        ]
+
+    def _cntrl_find_node_port(self, node_id_name, port_type, port_prefix):
+        for index in range(100):
+            port_tag = (
+                f'{node_id_name}:{port_type}:{port_prefix}{index:02d}'
+            )
+            if dpg.does_item_exist(port_tag):
+                return port_tag
+        return None
+
+    def _cntrl_insert_node_into_selected_link(self, sender, data, user_data):
+        del sender, data
+        self._vw_hide_insert_link_popup()
+        selected_links = dpg.get_selected_links(self._node_editor_tag)
+        selected_link_dpg_id = None
+        if len(selected_links) == 1:
+            selected_link_dpg_id = selected_links[0]
+        elif self._pending_insert_link_dpg_id is not None:
+            selected_link_dpg_id = self._pending_insert_link_dpg_id
+
+        self._pending_insert_link_dpg_id = None
+        if selected_link_dpg_id is None:
+            self._vw_set_link_feedback(
+                'Insert into link requires a selected or hovered link.'
+            )
+            return
+        source_tag, dest_tag = self._cntrl_get_link_from_dpg_id(
+            selected_link_dpg_id
+        )
+        source_parts = source_tag.split(':')
+        dest_parts = dest_tag.split(':')
+        if len(source_parts) < 4 or len(dest_parts) < 4:
+            self._vw_set_link_feedback(
+                'Cannot insert node into link: invalid port tag format.'
+            )
+            return
+
+        link_type = source_parts[2]
+        if link_type != dest_parts[2]:
+            self._vw_set_link_feedback(
+                'Cannot insert node into link: source and destination '
+                'types do not match.'
+            )
+            return
+
+        new_id, new_node_id_name = self._mdl_add_node(user_data)
+        insert_pos = self._cntrl_get_insert_node_pos(source_tag, dest_tag)
+        self._vw_add_node(user_data, new_id, insert_pos)
+        self._node_list.append(new_node_id_name)
+
+        input_tag = self._cntrl_find_node_port(
+            new_node_id_name,
+            link_type,
+            'Input',
+        )
+        output_tag = self._cntrl_find_node_port(
+            new_node_id_name,
+            link_type,
+            'Output',
+        )
+
+        if input_tag is None or output_tag is None:
+            self._mdl_delete_node(new_node_id_name)
+            self._vw_delete_item(new_node_id_name)
+            self._vw_set_link_feedback(
+                f'Cannot insert {user_data}: it needs both {link_type} '
+                'input and output ports.'
+            )
+            return
+
+        original_link = [source_tag, dest_tag]
+        self._mdl_delete_link(original_link)
+        self._link_view_id_map.pop(tuple(original_link), None)
+        self._vw_delete_item(selected_link_dpg_id)
+
+        for new_source, new_dest in (
+            (source_tag, input_tag),
+            (output_tag, dest_tag),
+        ):
+            if self._mdl_add_link(new_source, new_dest):
+                link_dpg_id = self._vw_add_link(new_source, new_dest)
+                self._vw_register_link(new_source, new_dest, link_dpg_id)
+
+        self._mdl_sort_node_graph()
+        self._vw_set_link_feedback('')
+
+        if self._use_debug_print:
+            print('**** _cntrl_insert_node_into_selected_link ****')
+            print(f'\tselected_link_dpg_id      : {selected_link_dpg_id}')
+            print(f'\tinserted_node             : {new_node_id_name}')
+            print(f'\tself._node_list           : {self._node_list}')
+            print(f'\tself._node_link_list      : {self._node_link_list}')
+            print()
+
     def _cntrl_link(self, sender, data):
+        if not isinstance(data, (list, tuple)) or len(data) != 2:
+            self._vw_set_link_feedback(
+                'Link rejected: invalid link data from DearPyGui.'
+            )
+            return
+
         source_dpg_id, dest_dpg_id = data
         source_tag = dpg.get_item_alias(source_dpg_id)
         dest_tag = dpg.get_item_alias(dest_dpg_id)
-        source_type = source_tag.split(':')[2]
-        dest_type = dest_tag.split(':')[2]
+        if source_tag is None or dest_tag is None:
+            self._vw_set_link_feedback(
+                'Link rejected: unable to resolve source or destination port.'
+            )
+            return
+
+        source_parts = source_tag.split(':')
+        dest_parts = dest_tag.split(':')
+        if len(source_parts) < 4 or len(dest_parts) < 4:
+            self._vw_set_link_feedback(
+                'Link rejected: invalid port tag format.'
+            )
+            return
+
+        source_type = source_parts[2]
+        dest_type = dest_parts[2]
 
         if source_type != dest_type:
+            self._vw_set_link_feedback(
+                f'Link rejected: {source_type} output cannot connect to '
+                f'{dest_type} input.'
+            )
             return
+
+        existing_link = self._mdl_get_link_by_destination(dest_tag)
+        if existing_link is not None:
+            if existing_link[0] == source_tag:
+                self._vw_set_link_feedback(
+                    'Link rejected: input is already connected to that source.'
+                )
+                self._mdl_sort_node_graph()
+                return
+            self._mdl_delete_link(existing_link)
+            self._vw_delete_link(*existing_link)
+
         if self._mdl_add_link(source_tag, dest_tag):
-            self._vw_add_link(source_dpg_id, dest_dpg_id)
+            link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
+            self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+            self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
 
         if self._use_debug_print:
@@ -438,7 +716,8 @@ class DpgNodeEditor(object):
                 dest_parts[0] = id_map[dest_parts[0]]
                 new_source = ':'.join(source_parts)
                 new_destination = ':'.join(dest_parts)
-                self._vw_add_link(new_source, new_destination)
+                link_dpg_id = self._vw_add_link(new_source, new_destination)
+                self._vw_register_link(new_source, new_destination, link_dpg_id)
                 new_link_list.append([new_source, new_destination])
 
         self._node_link_list.extend(new_link_list)
@@ -466,16 +745,14 @@ class DpgNodeEditor(object):
         for node_dpg_id in selected_nodes:
             node_tag = dpg.get_item_alias(node_dpg_id)
             self._mdl_delete_node(node_tag)
+            self._vw_delete_links_for_node(node_tag)
             self._vw_delete_item(node_dpg_id)
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         for link_dpg_id in selected_links:
-            link_dpg_config = dpg.get_item_configuration(link_dpg_id)
-            link = [
-                dpg.get_item_alias(link_dpg_config['attr_1']),
-                dpg.get_item_alias(link_dpg_config['attr_2'])
-            ]
+            link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
             self._mdl_delete_link(link)
+            self._link_view_id_map.pop(tuple(link), None)
             self._vw_delete_item(link_dpg_id)
 
         if self._use_debug_print:

@@ -101,6 +101,39 @@ def _build_node_signature(
     return hashlib.sha1(payload_bytes).hexdigest()
 
 
+def _build_pipeline_signature_for_video(
+    node_id,
+    connection_list,
+    upstream_frame_tokens,
+    node_result_dict,
+    node_setting,
+):
+    """
+    Build a stable signature for video pipelines that is invariant to frame index.
+    """
+    upstream_result_values = []
+    for source_tag, _ in connection_list:
+        source_node_id_name = ':'.join(source_tag.split(':')[:2])
+        source_result = node_result_dict.get(source_node_id_name)
+        upstream_result_values.append((
+            source_tag,
+            _freeze_cache_value(_strip_cache_meta(source_result)),
+        ))
+
+    signature_payload = {
+        'node_id': node_id,
+        'connection_list': connection_list,
+        'upstream_result_values': upstream_result_values,
+        'upstream_stream_tokens': [
+            (source_tag, stream_id)
+            for source_tag, (stream_id, _) in upstream_frame_tokens
+        ],
+        'node_setting': _freeze_cache_value(node_setting),
+    }
+    payload_bytes = pickle.dumps(signature_payload)
+    return hashlib.sha1(payload_bytes).hexdigest()
+
+
 def _extract_frame_token(result):
     if not isinstance(result, dict):
         return None
@@ -209,6 +242,7 @@ def update_node_info(
             continue
 
         cache_signature = None
+        upstream_frame_tokens = []
         use_cache = cache_enabled and (
             len(connection_list) > 0 or cache_source_nodes
         )
@@ -230,6 +264,13 @@ def update_node_info(
                 node_setting = node_instance.get_setting_dict(node_id)
 
         if use_cache:
+            for source_tag, _ in connection_list:
+                source_node_id_name = ':'.join(source_tag.split(':')[:2])
+                source_result = node_result_dict.get(source_node_id_name)
+                frame_token = _extract_frame_token(source_result)
+                if frame_token is not None:
+                    upstream_frame_tokens.append((source_tag, frame_token))
+
             cache_signature = _build_node_signature(
                 node_id,
                 connection_list,
@@ -238,7 +279,30 @@ def update_node_info(
                 node_setting,
             )
             cached_result = node_cache_dict.get(node_id_name)
-            if (
+            if upstream_frame_tokens:
+                pipeline_signature = _build_pipeline_signature_for_video(
+                    node_id,
+                    connection_list,
+                    upstream_frame_tokens,
+                    node_result_dict,
+                    node_setting,
+                )
+                frame_key = tuple(upstream_frame_tokens)
+                if (
+                    cached_result is not None and
+                    cached_result.get('pipeline_signature') == pipeline_signature
+                ):
+                    cached_frame_results = cached_result.get('frame_results', {})
+                    frame_cached_result = cached_frame_results.get(frame_key)
+                    if frame_cached_result is not None:
+                        node_image_dict[node_id_name] = copy.deepcopy(
+                            frame_cached_result['image']
+                        )
+                        node_result_dict[node_id_name] = copy.deepcopy(
+                            frame_cached_result['result']
+                        )
+                        continue
+            elif (
                 cached_result is not None and
                 cached_result.get('signature') == cache_signature
             ):
@@ -277,11 +341,32 @@ def update_node_info(
         node_image_dict[node_id_name] = copy.deepcopy(image)
         node_result_dict[node_id_name] = copy.deepcopy(result)
         if use_cache:
-            node_cache_dict[node_id_name] = {
-                'signature': cache_signature,
-                'image': copy.deepcopy(image),
-                'result': copy.deepcopy(result),
-            }
+            if upstream_frame_tokens:
+                pipeline_signature = _build_pipeline_signature_for_video(
+                    node_id,
+                    connection_list,
+                    upstream_frame_tokens,
+                    node_result_dict,
+                    node_setting,
+                )
+                frame_key = tuple(upstream_frame_tokens)
+                cache_entry = node_cache_dict.get(node_id_name, {})
+                if cache_entry.get('pipeline_signature') != pipeline_signature:
+                    cache_entry = {
+                        'pipeline_signature': pipeline_signature,
+                        'frame_results': {},
+                    }
+                cache_entry['frame_results'][frame_key] = {
+                    'image': copy.deepcopy(image),
+                    'result': copy.deepcopy(result),
+                }
+                node_cache_dict[node_id_name] = cache_entry
+            else:
+                node_cache_dict[node_id_name] = {
+                    'signature': cache_signature,
+                    'image': copy.deepcopy(image),
+                    'result': copy.deepcopy(result),
+                }
         elif node_id_name in node_cache_dict:
             del node_cache_dict[node_id_name]
 

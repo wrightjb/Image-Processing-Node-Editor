@@ -48,6 +48,8 @@ class Node(DpgNodeABC):
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input03')
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
+        tag_node_input04_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
+        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
@@ -138,6 +140,17 @@ class Node(DpgNodeABC):
                     max_value=self._max_val,
                     callback=None,
                 )
+            # 再生モード
+            with dpg.node_attribute(
+                    tag=tag_node_input04_name,
+                    attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Natural FPS',
+                    tag=tag_node_input04_value_name,
+                    callback=None,
+                    default_value=True,
+                )
             # 処理時間
             if use_pref_counter:
                 with dpg.node_attribute(
@@ -161,6 +174,7 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
+        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
         output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
         output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
@@ -201,10 +215,12 @@ class Node(DpgNodeABC):
         loop_flag = dpg_get_value(tag_node_input02_value_name)
         # スキップ割合
         skip_rate = int(dpg_get_value(tag_node_input03_value_name))
+        natural_fps_mode = bool(dpg_get_value(tag_node_input04_value_name))
 
         # 計測開始
+        decode_start_time = None
         if video_capture is not None and use_pref_counter:
-            start_time = time.perf_counter()
+            decode_start_time = time.perf_counter()
 
         # 画像取得
         frame = None
@@ -214,31 +230,45 @@ class Node(DpgNodeABC):
             if source_fps <= 0:
                 source_fps = 30.0
 
-            now = time.perf_counter()
-            start_time = self._playback_start_time.get(str(node_id), now)
-            elapsed_sec = max(0.0, now - start_time)
-            elapsed_frame = int(elapsed_sec * source_fps)
-            target_frame_pos = elapsed_frame * skip_rate
+            if natural_fps_mode:
+                now = time.perf_counter()
+                playback_start_time = self._playback_start_time.get(str(node_id), now)
+                elapsed_sec = max(0.0, now - playback_start_time)
+                elapsed_frame = int(elapsed_sec * source_fps)
+                target_frame_pos = elapsed_frame * skip_rate
 
-            if total_frame > 0 and loop_flag:
-                target_frame_pos = target_frame_pos % total_frame
-            elif total_frame > 0:
-                target_frame_pos = min(target_frame_pos, total_frame - 1)
+                if total_frame > 0 and loop_flag:
+                    target_frame_pos = target_frame_pos % total_frame
+                elif total_frame > 0:
+                    target_frame_pos = min(target_frame_pos, total_frame - 1)
 
-            current_frame_pos = int(video_capture.get(cv2.CAP_PROP_POS_FRAMES))
-            if target_frame_pos != current_frame_pos:
-                video_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame_pos)
+                current_frame_pos = int(video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                if target_frame_pos != current_frame_pos:
+                    video_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame_pos)
 
-            ret, frame = video_capture.read()
-            if not ret:
-                if loop_flag:
-                    video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = video_capture.read()
+                if not ret:
+                    if loop_flag:
+                        video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = video_capture.read()
+                        self._playback_start_time[str(node_id)] = now
+                        self._frame_count[str(node_id)] = 0
+                    else:
+                        frame = self._last_output_frame.get(str(node_id), None)
+            else:
+                while True:
                     ret, frame = video_capture.read()
-                    self._playback_start_time[str(node_id)] = now
-                    self._playback_start_frame[str(node_id)] = 0
-                    self._frame_count[str(node_id)] = 0
-                else:
-                    frame = self._last_output_frame.get(str(node_id), None)
+                    if not ret:
+                        if loop_flag:
+                            video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            _, frame = video_capture.read()
+                        else:
+                            frame = self._last_output_frame.get(str(node_id), None)
+                        break
+
+                    self._frame_count[str(node_id)] += 1
+                    if (self._frame_count[str(node_id)] % skip_rate) == 0:
+                        break
 
             if frame is not None:
                 self._frame_count[str(node_id)] = int(
@@ -247,8 +277,8 @@ class Node(DpgNodeABC):
                 self._last_output_frame[str(node_id)] = frame.copy()
 
         # 計測終了
-        if video_capture is not None and use_pref_counter:
-            elapsed_time = time.perf_counter() - start_time
+        if video_capture is not None and use_pref_counter and decode_start_time is not None:
+            elapsed_time = time.perf_counter() - decode_start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
@@ -290,17 +320,20 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
+        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
 
         pos = dpg.get_item_pos(tag_node_name)
 
         loop_flag = dpg_get_value(tag_node_input02_value_name)
         skip_rate = int(dpg_get_value(tag_node_input03_value_name))
+        natural_fps_mode = bool(dpg_get_value(tag_node_input04_value_name))
 
         setting_dict = {}
         setting_dict['ver'] = self._ver
         setting_dict['pos'] = pos
         setting_dict[tag_node_input02_value_name] = loop_flag
         setting_dict[tag_node_input03_value_name] = skip_rate
+        setting_dict[tag_node_input04_value_name] = natural_fps_mode
 
         return setting_dict
 
@@ -308,12 +341,15 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
+        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
 
         loop_flag = setting_dict[tag_node_input02_value_name]
         skip_rate = int(setting_dict[tag_node_input03_value_name])
+        natural_fps_mode = setting_dict.get(tag_node_input04_value_name, True)
 
         dpg_set_value(tag_node_input02_value_name, loop_flag)
         dpg_set_value(tag_node_input03_value_name, skip_rate)
+        dpg_set_value(tag_node_input04_value_name, natural_fps_mode)
 
     def _callback_file_select(self, sender, data):
         if data['file_name'] != '.':

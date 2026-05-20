@@ -77,22 +77,52 @@ def _build_node_signature(
     node_setting,
 ):
     upstream_values = []
+    upstream_frame_tokens = []
     for source_tag, _ in connection_list:
         source_node_id_name = ':'.join(source_tag.split(':')[:2])
+        source_result = node_result_dict.get(source_node_id_name)
+        frame_token = _extract_frame_token(source_result)
+        if frame_token is not None:
+            upstream_frame_tokens.append((source_tag, frame_token))
         upstream_values.append((
             source_tag,
             _freeze_cache_value(node_image_dict.get(source_node_id_name)),
-            _freeze_cache_value(node_result_dict.get(source_node_id_name)),
+            _freeze_cache_value(_strip_cache_meta(source_result)),
         ))
 
     signature_payload = {
         'node_id': node_id,
         'connection_list': connection_list,
         'upstream_values': upstream_values,
+        'upstream_frame_tokens': upstream_frame_tokens,
         'node_setting': _freeze_cache_value(node_setting),
     }
     payload_bytes = pickle.dumps(signature_payload)
     return hashlib.sha1(payload_bytes).hexdigest()
+
+
+def _extract_frame_token(result):
+    if not isinstance(result, dict):
+        return None
+
+    if result.get('__cache_kind__') != 'video_frame':
+        return None
+
+    return (
+        result.get('__cache_stream__'),
+        result.get('__cache_frame__'),
+    )
+
+
+def _strip_cache_meta(result):
+    if not isinstance(result, dict):
+        return result
+
+    return {
+        key: value
+        for key, value in result.items()
+        if not str(key).startswith('__cache_')
+    }
 
 
 def update_node_info(

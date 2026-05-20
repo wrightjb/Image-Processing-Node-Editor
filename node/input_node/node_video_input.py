@@ -262,7 +262,15 @@ class Node(DpgNodeABC):
             )
             dpg_set_value(output_value01_tag, texture)
 
-        return frame, None
+        stream_id = self._movie_filepath.get(str(node_id), None)
+        frame_index = self._frame_count.get(str(node_id), 0)
+        result = {
+            '__cache_stream__': stream_id,
+            '__cache_frame__': frame_index,
+            '__cache_kind__': 'video_frame',
+        }
+
+        return frame, result
 
     def close(self, node_id):
         str_node_id = str(node_id)

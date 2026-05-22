@@ -32,20 +32,20 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
         tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['result_width']
         small_window_h = self._opencv_setting_dict['result_height']
         small_window_w *= self._ratio
         small_window_h *= self._ratio
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -53,7 +53,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -63,14 +63,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -86,17 +86,17 @@ class Node(DpgNodeABC):
         node_image_dict,
         node_result_dict,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         input_value01_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         small_window_w = self._opencv_setting_dict['result_width']
         small_window_h = self._opencv_setting_dict['result_height']
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         node_name = ''
         connection_info_src = ''
         for source_tag, _, connection_type in self._iter_connections(
@@ -107,10 +107,10 @@ class Node(DpgNodeABC):
             connection_info_src = self._extract_source_node_key(source_tag)
             node_name = self._extract_source_node_key(source_tag).split(':')[1]
 
-        # 画像取得
+        # Get image
         frame = node_image_dict.get(connection_info_src, None)
 
-        # 描画
+        # Draw
         if frame is not None:
             if draw_info_on_result and connection_info_src != '':
                 node_result = node_result_dict[connection_info_src]

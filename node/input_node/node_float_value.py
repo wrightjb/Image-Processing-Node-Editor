@@ -24,23 +24,23 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Output01')
         tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
-        # 設定
+        # Settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 浮動小数点入力
+            # Floating-point input
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,

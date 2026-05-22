@@ -19,11 +19,11 @@ class MultiClassNorfair(object):
         self.fps = fps
         self.max_distance_between_points = max_distance_between_points
 
-        # Norfair保持用Dict生成
+        # Translated from Japanese comment
         self.tracker_dict = {}
 
     def __call__(self, _, bboxes, scores, class_ids):
-        # 未トラッキングのクラスのトラッキングインスタンスを追加
+        # Translated from Japanese comment
         for class_id in np.unique(class_ids):
             if not int(class_id) in self.tracker_dict:
                 self.tracker_dict[int(class_id)] = NorfairTracker(
@@ -36,7 +36,7 @@ class MultiClassNorfair(object):
         t_scores = []
         t_class_ids = []
         for class_id in self.tracker_dict.keys():
-            # 対象クラス抽出
+            # Extract target classes
             target_index = np.in1d(class_ids, np.array(int(class_id)))
 
             if len(target_index) == 0:
@@ -45,7 +45,7 @@ class MultiClassNorfair(object):
             target_bboxes = np.array(bboxes)[target_index]
             target_scores = np.array(scores)[target_index]
 
-            # トラッカー用変数に格納
+            # Store in tracker variables
             detections = []
             for bbox, score in zip(target_bboxes, target_scores):
                 points = np.array([[bbox[0], bbox[1]], [bbox[2], bbox[3]]])
@@ -54,10 +54,10 @@ class MultiClassNorfair(object):
                 detection = Detection(points=points, scores=points_score)
                 detections.append(detection)
 
-            # トラッカー更新
+            # Update tracker
             results = self.tracker_dict[class_id].update(detections=detections)
 
-            # 結果格納
+            # Store result
             for result in results:
                 x1 = result.estimate[0][0]
                 y1 = result.estimate[0][1]

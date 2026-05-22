@@ -37,7 +37,7 @@ class MediaPipeFaceDetection(object):
             for detection in results.detections:
                 landmark_dict = {}
 
-                # 各キーポイント
+                # Each keypoint
                 for id, keypoint in enumerate(
                         detection.location_data.relative_keypoints):
                     x = min(int(keypoint.x * image_width), image_width - 1)
@@ -45,7 +45,7 @@ class MediaPipeFaceDetection(object):
                     visibility = detection.score[0]
                     landmark_dict[id] = [x, y, visibility]
 
-                # バウンディングボックス
+                # Bounding box
                 bbox = detection.location_data.relative_bounding_box
                 bbox_xmin = int(bbox.xmin * image_width)
                 bbox_ymin = int(bbox.ymin * image_height)
@@ -94,14 +94,14 @@ class MediaPipeFaceDetectionModel1(object):
 
 def draw_landmarks(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(6):
             if score_th > results[id][2]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # バウンディングボックス
+        # Bounding box
         bbox = results.get('bbox', None)
         if bbox is not None:
             image = cv.rectangle(

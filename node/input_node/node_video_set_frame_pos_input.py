@@ -43,7 +43,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input01')
         tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')
@@ -55,7 +55,7 @@ class Node(DpgNodeABC):
         tag_node_output03_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Output03')
         tag_node_output03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Output03'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_w = int(small_window_w * self._window_resize_rate)
@@ -63,7 +63,7 @@ class Node(DpgNodeABC):
         small_window_h = int(small_window_h * self._window_resize_rate)
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -71,7 +71,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -93,14 +93,14 @@ class Node(DpgNodeABC):
             dpg.add_file_extension('Movie (*.mp4 *.avi){.mp4,.avi}')
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # ファイル選択
+            # File selection
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -111,13 +111,13 @@ class Node(DpgNodeABC):
                     callback=lambda: dpg.show_item(
                         'movie_select:' + str(node_id), ),
                 )
-            # カメラ画像
+            # Camera image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # シーク
+            # Seek
             with dpg.node_attribute(
                     tag=tag_node_input02_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -132,7 +132,7 @@ class Node(DpgNodeABC):
                     format='',
                     callback=None,
                 )
-            # フレーム位置
+            # Frame position
             with dpg.node_attribute(
                     tag=tag_node_output03_name,
                     attribute_type=dpg.mvNode_Attr_Output,
@@ -141,7 +141,7 @@ class Node(DpgNodeABC):
                     '0',
                     tag=tag_node_output03_value_name,
                 )
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -173,19 +173,19 @@ class Node(DpgNodeABC):
         small_window_h = int(small_window_h * self._window_resize_rate)
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 接続情報確認
+        # Check connection info
         seek_input_value = None
         for source_tag, _, connection_type in self._iter_connections(
                 connection_list):
             if connection_type == self.TYPE_INT:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
-                # 値取得
+                # Get value
                 seek_input_value = int(dpg_get_value(source_value_tag))
                 seek_input_value = max([self._min_val, seek_input_value])
                 seek_input_value = min([self._max_val, seek_input_value])
 
-        # VideoCapture()インスタンス生成
+        # Create VideoCapture() instance
         update_flag = False
         movie_path = self._movie_filepath.get(str(node_id), None)
         prev_movie_path = self._prev_movie_filepath.get(str(node_id), None)
@@ -196,72 +196,72 @@ class Node(DpgNodeABC):
             self._video_capture[str(node_id)] = cv2.VideoCapture(movie_path)
             self._prev_movie_filepath[str(node_id)] = movie_path
 
-            # シーク位置リセット
+            # Reset seek position
             self._video_capture[str(node_id)].set(cv2.CAP_PROP_POS_FRAMES, 0)
-            # フレーム数リセット
+            # Reset frame count
             dpg_set_value(tag_node_input02_value_name, 0)
             dpg_set_value(output_value03_tag, str(0))
             update_flag = True
 
         video_capture = self._video_capture.get(str(node_id), None)
 
-        # シーク位置
+        # Seek position
         seek_value = int(dpg_get_value(tag_node_input02_value_name))
 
-        # 計測開始
+        # Measurement start
         if video_capture is not None and use_pref_counter:
             start_time = time.perf_counter()
 
-        # 画像取得
+        # Get image
         frame = None
         if video_capture is not None:
-            # シーク位置のフレーム数を算出
+            # Calculate frame number from seek position
             total_frame = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
             if seek_input_value is None:
                 frame_pos = int(total_frame * (seek_value / self._max_val))
             else:
                 frame_pos = seek_input_value
 
-            # 範囲チェック
+            # Range check
             if frame_pos < 0:
                 frame_pos = 0
             if total_frame <= frame_pos:
                 frame_pos = total_frame - 1
 
-            # シーク位置が他ノードから入力されていた場合はシークバーの位置を変更
+            # If seek position is input from another node, update seek bar position
             if seek_input_value is not None:
                 seek_set_value = int(self._max_val * (frame_pos / total_frame))
                 dpg_set_value(tag_node_input02_value_name, seek_set_value)
 
             if str(node_id) in self._prev_frame_pos:
-                # フレーム位置が変更されていたら画像を取得
+                # Get image if frame position changed
                 if self._prev_frame_pos[str(node_id)] != frame_pos:
                     update_flag = True
                 else:
                     frame = copy.deepcopy(self._prev_frame[str(node_id)])
             else:
-                # 初回画像取得
+                # Get first image
                 update_flag = True
 
             if update_flag:
-                # シーク
+                # Seek
                 video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-                # 画像取得
+                # Get image
                 _, frame = video_capture.read()
-                # 取得時の位置と画像を保持
+                # Store position and image when acquired
                 self._prev_frame_pos[str(node_id)] = frame_pos
                 self._prev_frame[str(node_id)] = copy.deepcopy(frame)
-                # フレーム数表示
+                # Frame count display
                 dpg_set_value(output_value03_tag, str(frame_pos))
 
-        # 計測終了
+        # Measurement end
         if video_capture is not None and use_pref_counter:
             elapsed_time = time.perf_counter() - start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

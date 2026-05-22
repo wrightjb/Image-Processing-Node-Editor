@@ -1,15 +1,15 @@
 # Dockerfile
 
-ベースとなる環境
+Base environment
 
 - Python3.8
 - Docker (Tested on NVIDIA-Docker2)
-- Webカメラ（/dev/video0に接続）
-- デスクトップPC (Intel CPU + NVIDIA RTX2080Ti)
+- Webcam (connected to /dev/video0)
+- Desktop PC (Intel CPU + NVIDIA RTX2080Ti)
 
 <br>
 
-## 構築
+## Build
 
 ```bash
 git clone https://github.com/Kazuhito00/Image-Processing-Node-Editor.git
@@ -19,21 +19,21 @@ docker build docker/nvidia-gpu -t ipn_editor
 
 <br>
 
-## 実行
+## Run
 
-以下のコマンドで実行できました。一度終了すると、キャッシュは全て削除されるため、任意の外部フォルダをマウントしてください。
+The following command worked. If you stop the container, caches are removed, so mount any external folder as needed.
 
 ```bash
 # cd /path-to-Image-Processing-Node-Editor
 xhost +
 docker run --rm -it --privileged --device /dev/video0:/dev/video0:mwr -e DISPLAY=$DISPLAY -v $(pwd):/workspace --gpus all -v /tmp/.X11-unix:/tmp/.X11-unix ipn_editor
-# 勝手にウィンドウが開きます
+# A window opens automatically
 ```
 
-### 使用したオプションについて
+### About the options used
 
-- `--device /dev/video0:/dev/video0:mwr`: Webカメラを接続しない場合は取り除けます。
-- `--gpus all`: NVIDIA GPUでない場合は使用しないでください。
-- `-v $(pwd):/workspace`: [Image-Processing-Node-Editor](https://github.com/Kazuhito00/Image-Processing-Node-Editor)のマウント先です。
-  - オプションは、`Image-Processing-Node-Editor`ディレクトリ内で実行した場合です。
-  - マウント先は`/workspace`となります。
+- `--device /dev/video0:/dev/video0:mwr`: Remove this if you do not connect a webcam.
+- `--gpus all`: Do not use this option on non-NVIDIA GPUs.
+- `-v $(pwd):/workspace`: [Image-Processing-Node-Editor](https://github.com/Kazuhito00/Image-Processing-Node-Editor) mount destination.
+  - These options assume execution from inside the `Image-Processing-Node-Editor` directory.
+  - The mount target is `/workspace`.

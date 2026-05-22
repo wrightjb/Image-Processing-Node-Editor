@@ -76,7 +76,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
@@ -90,13 +90,13 @@ class Node(DpgNodeABC):
                                                 'Output02')
         tag_node_output02_value_name = self._value_tag(tag_node_output02_name)
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = int(self._opencv_setting_dict['process_width'] * 2.5)
         small_window_h = int(self._opencv_setting_dict['process_height'] * 2.5)
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -104,7 +104,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -114,14 +114,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 入力端子
+            # Input port
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -130,13 +130,13 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_value_name,
                     default_value='Input BGR image',
                 )
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # コード
+            # Code
             with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static, ):
                 dpg.add_input_text(
                     tag=tag_node_input02_value_name,
@@ -147,7 +147,7 @@ class Node(DpgNodeABC):
                     height=int((small_window_h / 3) * 2),
                     tab_input=True,
                 )
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -179,7 +179,7 @@ class Node(DpgNodeABC):
         small_window_h = int(self._opencv_setting_dict['process_height'] * 2.5)
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         src_node_result = None
         connection_info_src = ''
         for source_tag, _, connection_type in self._iter_connections(
@@ -191,28 +191,28 @@ class Node(DpgNodeABC):
                 src_node_result = node_result_dict.get(connection_info_src,
                                                        None)
 
-        # 画像取得
+        # Get image
         frame = node_image_dict.get(connection_info_src, None)
 
-        # コード取得
+        # Get code
         code = dpg_get_value(input_value02_tag)
 
-        # 計測開始
+        # Measurement start
         if frame is not None and use_pref_counter:
             start_time = time.perf_counter()
 
-        # コード実行
+        # Execute code
         if frame is not None:
             frame = image_process(frame, src_node_result, code)
 
-        # 計測終了
+        # Measurement end
         if frame is not None and use_pref_counter:
             elapsed_time = time.perf_counter() - start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

@@ -26,14 +26,14 @@ class YOLOX(object):
         ],
     ):
 
-        # 閾値
+        # Threshold
         self.class_score_th = class_score_th
         self.nms_th = nms_th
         self.nms_score_th = nms_score_th
 
         self.with_p6 = with_p6
 
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -43,23 +43,23 @@ class YOLOX(object):
         self.input_name = self.input_detail.name
         self.output_name = self.onnx_session.get_outputs()[0].name
 
-        # 各種設定
+        # Various settings
         self.input_shape = self.input_detail.shape[2:]
 
     def __call__(self, image):
         temp_image = copy.deepcopy(image)
         image_height, image_width = image.shape[0], image.shape[1]
 
-        # 前処理
+        # Pre-processing
         image, ratio = self._preprocess(temp_image, self.input_shape)
 
-        # 推論実施
+        # Run inference
         results = self.onnx_session.run(
             None,
             {self.input_name: image[None, :, :, :]},
         )
 
-        # 後処理
+        # Post-processing
         bboxes, scores, class_ids = self._postprocess(
             results[0],
             self.input_shape,
@@ -278,7 +278,7 @@ class YOLOX(object):
 
             color = self._get_color(class_id)
 
-            # バウンディングボックス
+            # Bounding box
             debug_image = cv2.rectangle(
                 debug_image,
                 (x1, y1),
@@ -287,7 +287,7 @@ class YOLOX(object):
                 thickness=thickness,
             )
 
-            # クラスID、スコア
+            # Class ID and score
             score = '%.2f' % score
             text = '%s:%s' % (str(coco_classes[int(class_id)]), score)
             debug_image = cv2.putText(

@@ -40,7 +40,7 @@ class MediaPipePose(object):
         if results.pose_landmarks is not None:
             landmark_dict = {}
 
-            # 各キーポイント
+            # Each keypoint
             for id, landmark in enumerate(results.pose_landmarks.landmark):
                 x = min(int(landmark.x * image_width), image_width - 1)
                 y = min(int(landmark.y * image_height), image_height - 1)
@@ -112,7 +112,7 @@ class MediaPipePoseComplexity2(object):
 
 def draw_landmarks(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(33):
             landmark_x, landmark_y = results[id][0], results[id][1]
             visibility = results[id][3]
@@ -121,40 +121,40 @@ def draw_landmarks(image, results_list, score_th):
                 continue
             cv.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # 接続線
-        # 右目
+        # Connection lines
+        # Right eye
         if results[1][3] > score_th and results[2][3] > score_th:
             cv.line(image, results[1][:2], results[2][:2], (0, 255, 0), 2)
         if results[2][3] > score_th and results[3][3] > score_th:
             cv.line(image, results[2][:2], results[3][:2], (0, 255, 0), 2)
 
-        # 左目
+        # Left eye
         if results[4][3] > score_th and results[5][3] > score_th:
             cv.line(image, results[4][:2], results[5][:2], (0, 255, 0), 2)
         if results[5][3] > score_th and results[6][3] > score_th:
             cv.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
 
-        # 口
+        # Mouth
         if results[9][3] > score_th and results[10][3] > score_th:
             cv.line(image, results[9][:2], results[10][:2], (0, 255, 0), 2)
 
-        # 肩
+        # Shoulders
         if results[11][3] > score_th and results[12][3] > score_th:
             cv.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
 
-        # 右腕
+        # Right arm
         if results[11][3] > score_th and results[13][3] > score_th:
             cv.line(image, results[11][:2], results[13][:2], (0, 255, 0), 2)
         if results[13][3] > score_th and results[15][3] > score_th:
             cv.line(image, results[13][:2], results[15][:2], (0, 255, 0), 2)
 
-        # 左腕
+        # Left arm
         if results[12][3] > score_th and results[14][3] > score_th:
             cv.line(image, results[12][:2], results[14][:2], (0, 255, 0), 2)
         if results[14][3] > score_th and results[16][3] > score_th:
             cv.line(image, results[14][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 右手
+        # Right hand
         if results[15][3] > score_th and results[17][3] > score_th:
             cv.line(image, results[15][:2], results[17][:2], (0, 255, 0), 2)
         if results[17][3] > score_th and results[19][3] > score_th:
@@ -164,7 +164,7 @@ def draw_landmarks(image, results_list, score_th):
         if results[21][3] > score_th and results[15][3] > score_th:
             cv.line(image, results[21][:2], results[15][:2], (0, 255, 0), 2)
 
-        # 左手
+        # Left hand
         if results[16][3] > score_th and results[18][3] > score_th:
             cv.line(image, results[16][:2], results[18][:2], (0, 255, 0), 2)
         if results[18][3] > score_th and results[20][3] > score_th:
@@ -174,7 +174,7 @@ def draw_landmarks(image, results_list, score_th):
         if results[22][3] > score_th and results[16][3] > score_th:
             cv.line(image, results[22][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 胴体
+        # Torso
         if results[11][3] > score_th and results[23][3] > score_th:
             cv.line(image, results[11][:2], results[23][:2], (0, 255, 0), 2)
         if results[12][3] > score_th and results[24][3] > score_th:
@@ -182,7 +182,7 @@ def draw_landmarks(image, results_list, score_th):
         if results[23][3] > score_th and results[24][3] > score_th:
             cv.line(image, results[23][:2], results[24][:2], (0, 255, 0), 2)
 
-        # 右足
+        # Right leg
         if results[23][3] > score_th and results[25][3] > score_th:
             cv.line(image, results[23][:2], results[25][:2], (0, 255, 0), 2)
         if results[25][3] > score_th and results[27][3] > score_th:
@@ -192,7 +192,7 @@ def draw_landmarks(image, results_list, score_th):
         if results[29][3] > score_th and results[31][3] > score_th:
             cv.line(image, results[29][:2], results[31][:2], (0, 255, 0), 2)
 
-        # 左足
+        # Left leg
         if results[24][3] > score_th and results[26][3] > score_th:
             cv.line(image, results[24][:2], results[26][:2], (0, 255, 0), 2)
         if results[26][3] > score_th and results[28][3] > score_th:

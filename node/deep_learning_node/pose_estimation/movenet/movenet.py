@@ -21,7 +21,7 @@ class MoveNet(object):
             'CPUExecutionProvider',
         ],
     ):
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -31,7 +31,7 @@ class MoveNet(object):
         self.input_name = self.input_detail.name
         self.output_detail = self.onnx_session.get_outputs()[0]
 
-        # 各種設定
+        # Various settings
         self.input_shape = input_shape
 
     def __call__(self, image):
@@ -58,7 +58,7 @@ class MoveNet(object):
         landmark_dict = {}
         # SinglePose
         if keypoints_with_scores.shape == (17, 3):
-            # キーポイント
+            # Keypoints
             for id in range(17):
                 keypoint_x = int(image_width * keypoints_with_scores[id][1])
                 keypoint_y = int(image_height * keypoints_with_scores[id][0])
@@ -70,7 +70,7 @@ class MoveNet(object):
         # MultiPose
         elif keypoints_with_scores.shape == (6, 56):
             for keypoints_with_score in keypoints_with_scores:
-                # キーポイント
+                # Keypoints
                 for id in range(17):
                     keypoint_x = int(image_width *
                                      keypoints_with_score[(id * 3) + 1])
@@ -80,7 +80,7 @@ class MoveNet(object):
 
                     landmark_dict[id] = [keypoint_x, keypoint_y, score]
 
-                # バウンディングボックス
+                # Bounding box
                 bbox_ymin = int(image_height * keypoints_with_score[51])
                 bbox_xmin = int(image_width * keypoints_with_score[52])
                 bbox_ymax = int(image_height * keypoints_with_score[53])
@@ -169,7 +169,7 @@ class MoveNetMultiPoseLightning(object):
 
 def draw_singlepose_landmarks(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(17):
             landmark_x, landmark_y = results[id][0], results[id][1]
             visibility = results[id][2]
@@ -178,52 +178,52 @@ def draw_singlepose_landmarks(image, results_list, score_th):
                 continue
             cv.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # Line：鼻 → 左目
+        # Line: nose → left eye
         if results[0][2] > score_th and results[1][2] > score_th:
             cv.line(image, results[0][:2], results[1][:2], (0, 255, 0), 2)
-        # Line：鼻 → 右目
+        # Line: nose → right eye
         if results[0][2] > score_th and results[2][2] > score_th:
             cv.line(image, results[0][:2], results[2][:2], (0, 255, 0), 2)
-        # Line：左目 → 左耳
+        # Line: left eye → left ear
         if results[1][2] > score_th and results[3][2] > score_th:
             cv.line(image, results[1][:2], results[3][:2], (0, 255, 0), 2)
-        # Line：右目 → 右耳
+        # Line: right eye → right ear
         if results[2][2] > score_th and results[4][2] > score_th:
             cv.line(image, results[2][:2], results[4][:2], (0, 255, 0), 2)
-        # Line：左肩 → 右肩
+        # Line: left shoulder → right shoulder
         if results[5][2] > score_th and results[6][2] > score_th:
             cv.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
-        # Line：左肩 → 左肘
+        # Line: left shoulder → left elbow
         if results[5][2] > score_th and results[7][2] > score_th:
             cv.line(image, results[5][:2], results[7][:2], (0, 255, 0), 2)
-        # Line：左肘 → 左手首
+        # Line: left elbow → left wrist
         if results[7][2] > score_th and results[9][2] > score_th:
             cv.line(image, results[7][:2], results[9][:2], (0, 255, 0), 2)
-        # Line：右肩 → 右肘
+        # Line: right shoulder → right elbow
         if results[6][2] > score_th and results[8][2] > score_th:
             cv.line(image, results[6][:2], results[8][:2], (0, 255, 0), 2)
-        # Line：右肘 → 右手首
+        # Line: right elbow → right wrist
         if results[8][2] > score_th and results[10][2] > score_th:
             cv.line(image, results[8][:2], results[10][:2], (0, 255, 0), 2)
-        # Line：左股関節 → 右股関節
+        # Line: left hip → right hip
         if results[11][2] > score_th and results[12][2] > score_th:
             cv.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
-        # Line：左肩 → 左股関節
+        # Line: left shoulder → left hip
         if results[5][2] > score_th and results[11][2] > score_th:
             cv.line(image, results[5][:2], results[11][:2], (0, 255, 0), 2)
-        # Line：左股関節 → 左ひざ
+        # Line: left hip → left knee
         if results[11][2] > score_th and results[13][2] > score_th:
             cv.line(image, results[11][:2], results[13][:2], (0, 255, 0), 2)
-        # Line：左ひざ → 左足首
+        # Line: left knee → left ankle
         if results[13][2] > score_th and results[15][2] > score_th:
             cv.line(image, results[13][:2], results[15][:2], (0, 255, 0), 2)
-        # Line：右肩 → 右股関節
+        # Line: right shoulder → right hip
         if results[6][2] > score_th and results[12][2] > score_th:
             cv.line(image, results[6][:2], results[12][:2], (0, 255, 0), 2)
-        # Line：右股関節 → 右ひざ
+        # Line: right hip → right knee
         if results[12][2] > score_th and results[14][2] > score_th:
             cv.line(image, results[12][:2], results[14][:2], (0, 255, 0), 2)
-        # Line：右ひざ → 右足首
+        # Line: right knee → right ankle
         if results[14][2] > score_th and results[16][2] > score_th:
             cv.line(image, results[14][:2], results[16][:2], (0, 255, 0), 2)
 

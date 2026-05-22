@@ -65,7 +65,7 @@ def create_image_dict(
 ):
     frame_exist_flag = False
 
-    # 初期化用黒画像
+    # Black image for initialization
     black_image = np.zeros((resize_height, resize_width, 3)).astype(np.uint8)
 
     frame_dict = {}
@@ -119,7 +119,7 @@ class Node(DpgNodeABC):
     ):
         self._value_history = {}
 
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input00')
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
@@ -127,12 +127,12 @@ class Node(DpgNodeABC):
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -140,7 +140,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -150,24 +150,24 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # スロットナンバー保持用Dict
+        # Dictionary to store slot numbers
         if tag_node_name not in self._slot_id:
             self._slot_id[tag_node_name] = 1
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # スロット追加ボタン
+            # Add slot button
             with dpg.node_attribute(
                     tag=tag_node_input00_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -178,7 +178,7 @@ class Node(DpgNodeABC):
                     callback=self._add_slot,
                     user_data=tag_node_name,
                 )
-            # スロット
+            # Slot
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -206,20 +206,20 @@ class Node(DpgNodeABC):
         resize_height = self._opencv_setting_dict['result_height']
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         node_name_dict = {}
         connection_info_src = ''
         connection_info_src_dict = {}
         for source_tag, destination_tag, connection_type in self._iter_connections(
                 connection_list):
-            # タグ名からスロットナンバー取得
+            # Get slot number from tag name
             slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
 
             if connection_type == self.TYPE_IMAGE:
-                # 画像取得元のノード名(ID付き)を取得
+                # Get source node name for image (with ID)
                 connection_info_src = self._extract_source_node_key(source_tag)
                 node_name = connection_info_src.split(':')[1]
 
@@ -228,7 +228,7 @@ class Node(DpgNodeABC):
 
         slot_num = self._slot_id[tag_node_name]
 
-        # 画像取得
+        # Get image
         frame_dict = {}
         if len(connection_info_src_dict) > 0:
             frame_dict = create_image_dict(
@@ -242,13 +242,13 @@ class Node(DpgNodeABC):
                 draw_info_on_result,
             )
 
-        # 結合画像生成
+        # Generate concatenated image
         frame = None
         display_frame = None
         if len(connection_info_src_dict) > 0 and frame_dict is not None:
             frame, display_frame = create_concat_image(frame_dict, slot_num)
 
-        # 描画
+        # Draw
         if display_frame is not None:
             texture = convert_cv_to_dpg(
                 display_frame,
@@ -287,11 +287,11 @@ class Node(DpgNodeABC):
         if self._max_slot_number > self._slot_id[tag_node_name]:
             self._slot_id[tag_node_name] += 1
 
-            # 挿入先タグ名生成
+            # Generate insertion destination tag name
             before_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
             before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
 
-            # 追加スロットのタグを生成
+            # Generate added slot tag
             tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
             tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
 
@@ -299,7 +299,7 @@ class Node(DpgNodeABC):
             tag_node_inputXX_value_name += str(
                 self._slot_id[tag_node_name]).zfill(2) + 'Value'
 
-            # スロット追加
+            # Add slot
             with dpg.node_attribute(
                     tag=tag_node_inputXX_name,
                     attribute_type=dpg.mvNode_Attr_Input,

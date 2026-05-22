@@ -20,7 +20,7 @@ class MobileNetV3(object):
             'CPUExecutionProvider',
         ],
     ):
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -30,7 +30,7 @@ class MobileNetV3(object):
         self.input_name = self.input_detail.name
         self.output_name = self.onnx_session.get_outputs()[0].name
 
-        # 各種設定
+        # Various settings
         self.input_shape = input_size
 
     def __call__(self, image, top_k=5):

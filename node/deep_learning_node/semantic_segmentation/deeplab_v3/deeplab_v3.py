@@ -18,7 +18,7 @@ class DeepLabV3(object):
             'CPUExecutionProvider',
         ],
     ):
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -28,7 +28,7 @@ class DeepLabV3(object):
         self.input_name = self.input_detail.name
         self.output_detail = self.onnx_session.get_outputs()[0]
 
-        # 各種設定
+        # Various settings
         self.input_shape = self.input_detail.shape[1:3]
 
     def __call__(self, image):

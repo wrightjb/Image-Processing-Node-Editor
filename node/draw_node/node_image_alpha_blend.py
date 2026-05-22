@@ -30,7 +30,7 @@ def create_image_dict(
 ):
     frame_exist_flag = False
 
-    # 初期化用黒画像
+    # Black image for initialization
     black_image = np.zeros((resize_height, resize_width, 3)).astype(np.uint8)
 
     frame_dict = {}
@@ -90,7 +90,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
         tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
@@ -107,13 +107,13 @@ class Node(DpgNodeABC):
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -121,7 +121,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -131,18 +131,18 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # スロットナンバー保持用Dict
+        # Dictionary to store slot numbers
         if tag_node_name not in self._slot_id:
             self._slot_id[tag_node_name] = 1
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 入力端子
+            # Input port
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -151,7 +151,7 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_value_name,
                     default_value='Input BGR image',
                 )
-            # 入力端子
+            # Input port
             with dpg.node_attribute(
                     tag=tag_node_input02_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -160,13 +160,13 @@ class Node(DpgNodeABC):
                     tag=tag_node_input02_value_name,
                     default_value='Input BGR image',
                 )
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # ヒステリシス
+            # Hysteresis
             with dpg.node_attribute(
                     tag=tag_node_input03_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -206,7 +206,7 @@ class Node(DpgNodeABC):
                     max_value=self._gamma_max,
                     callback=None,
                 )
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -238,7 +238,7 @@ class Node(DpgNodeABC):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
-        # 接続情報確認
+        # Check connection info
         frame = None
         frame1 = None
         frame2 = None
@@ -248,17 +248,17 @@ class Node(DpgNodeABC):
         for source_tag, destination_tag, connection_type in self._iter_connections(
                 connection_list):
 
-            # タグ名からスロットナンバー取得
+            # Get slot number from tag name
             slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
             connection_tag = self._extract_port_name(destination_tag)
             if connection_type == self.TYPE_FLOAT:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
-                # 値更新
+                # Update value
                 input_value = round(float(dpg_get_value(source_value_tag)), 3)
                 if connection_tag == 'Input03':
                     input_value = max([self._alpha_min, input_value])
@@ -268,23 +268,23 @@ class Node(DpgNodeABC):
                     input_value = min([self._beta_max, input_value])
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_INT:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
-                # 値更新
+                # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 if connection_tag == 'Input05':
                     input_value = max([self._gamma_min, input_value])
                     input_value = min([self._gamma_max, input_value])
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_IMAGE:
-                # 画像取得元のノード名(ID付き)を取得
+                # Get source node name for image (with ID)
                 connection_info_src = self._extract_source_node_key(source_tag)
                 node_name = connection_info_src.split(':')[1]
                 node_name_dict[slot_number] = node_name
                 connection_info_src_dict[slot_number] = connection_info_src
 
-        # 画像取得
+        # Get image
 
         if len(connection_info_src_dict) == 1:
             connected_first_slot_no = (next(iter(connection_info_src_dict)))
@@ -295,12 +295,12 @@ class Node(DpgNodeABC):
             frame2 = node_image_dict.get(connection_info_src_dict[1])
             frame = frame1
 
-        # アルファブレンド
+        # Alpha blend
         alpha_val = float(dpg_get_value(input_value03_tag))
         beta_val = float(dpg_get_value(input_value04_tag))
         gamma_val = int(dpg_get_value(input_value05_tag))
 
-        # 計測開始
+        # Measurement start
         if frame is not None and use_pref_counter:
             start_time = time.perf_counter()
         
@@ -308,14 +308,14 @@ class Node(DpgNodeABC):
             if frame1 is not None and frame2 is not None:
                 frame = image_process(frame1, frame2, alpha_val, beta_val, gamma_val)
 
-        # 計測終了
+        # Measurement end
         if frame is not None and use_pref_counter:
             elapsed_time = time.perf_counter() - start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

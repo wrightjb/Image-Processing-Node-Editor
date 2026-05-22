@@ -26,14 +26,14 @@ class LWPDetector(object):
             ],
             num_threads=None,  # Valid only when using Tensorflow-Lite
     ):
-        # 入力サイズ
+        # Input size
         self.input_shape = input_shape
 
-        # 閾値
+        # Threshold
         self.score_th = score_th
         self.nms_th = nms_th
 
-        # モデル読み込み
+        # Load model
         self.extension = os.path.splitext(model_path)[1][1:]
         if self.extension == 'onnx':
             import onnxruntime
@@ -69,10 +69,10 @@ class LWPDetector(object):
     def __call__(self, image):
         temp_image = copy.deepcopy(image)
 
-        # 前処理
+        # Pre-processing
         image, ratio = self._preprocess(temp_image, self.input_shape)
 
-        # 推論実施
+        # Run inference
         results = None
         if self.extension == 'onnx':
             results = self.model.run(
@@ -90,7 +90,7 @@ class LWPDetector(object):
             self.model.invoke()
             results = self.model.get_tensor(self.output_name)
 
-        # 後処理
+        # Post-processing
         bboxes, scores, class_ids = self._postprocess(
             results,
             self.input_shape,
@@ -102,7 +102,7 @@ class LWPDetector(object):
         return bboxes, scores, class_ids
 
     def _preprocess(self, image, input_size):
-        # リサイズ
+        # Resize
         ratio = min(input_size[0] / image.shape[0],
                     input_size[1] / image.shape[1])
         resized_image = cv2.resize(
@@ -112,7 +112,7 @@ class LWPDetector(object):
         )
         resized_image = resized_image.astype(np.uint8)
 
-        # パディング込み画像作成
+        # Translated from Japanese comment
         padded_image = np.ones(
             (input_size[0], input_size[1], 3),
             dtype=np.uint8,
@@ -210,7 +210,7 @@ class LWPDetector(object):
 
             color = self._get_color(class_id)
 
-            # バウンディングボックス
+            # Bounding box
             debug_image = cv2.rectangle(
                 debug_image,
                 (x1, y1),
@@ -219,7 +219,7 @@ class LWPDetector(object):
                 thickness=thickness,
             )
 
-            # クラスID、スコア
+            # Class ID and score
             score = '%.2f' % score
             text = '%s:%s' % (str(coco_classes[int(class_id)]), score)
             debug_image = cv2.putText(

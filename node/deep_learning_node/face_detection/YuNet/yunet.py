@@ -11,7 +11,7 @@ import onnxruntime
 
 class YuNet(object):
 
-    # Feature map用定義
+    # Translated from Japanese comment
     MIN_SIZES = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
     STEPS = [8, 16, 32, 64]
     VARIANCE = [0.1, 0.2]
@@ -34,7 +34,7 @@ class YuNet(object):
             'CPUExecutionProvider',
         ],
     ):
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -46,38 +46,38 @@ class YuNet(object):
         output_name_03 = self.onnx_session.get_outputs()[2].name
         self.output_names = [output_name_01, output_name_02, output_name_03]
 
-        # 各種設定
+        # Various settings
         self.input_shape = input_shape  # [w, h]
         self.conf_th = conf_th
         self.nms_th = nms_th
         self.topk = topk
         self.keep_topk = keep_topk
 
-        # priors生成
+        # Translated from Japanese comment
         self.priors = None
         self._generate_priors()
 
     def __call__(self, image):
         image_width, image_height = image.shape[1], image.shape[0]
 
-        # 前処理
+        # Pre-processing
         temp_image = copy.deepcopy(image)
         temp_image = self._preprocess(temp_image)
 
-        # 推論
+        # Translated from Japanese comment
         result = self.onnx_session.run(
             self.output_names,
             {self.input_name: temp_image},
         )
 
-        # 後処理
+        # Post-processing
         bboxes, landmarks, scores = self._postprocess(result)
 
         results_list = []
         for bbox, landmark, score in zip(bboxes, landmarks, scores):
             landmark_dict = {}
 
-            # 各キーポイント
+            # Each keypoint
             for id, keypoint in enumerate(landmark):
                 x = min(int((keypoint[0] / self.input_shape[0]) * image_width),
                         image_width - 1)
@@ -87,7 +87,7 @@ class YuNet(object):
                 visibility = score
                 landmark_dict[id] = [x, y, visibility]
 
-            # バウンディングボックス
+            # Bounding box
             bbox_xmin = int((bbox[0] / self.input_shape[0]) * image_width)
             bbox_ymin = int((bbox[1] / self.input_shape[1]) * image_height)
             bbox_xmax = bbox_xmin + int(
@@ -146,17 +146,17 @@ class YuNet(object):
         self.priors = np.array(priors, dtype=np.float32)
 
     def _preprocess(self, image):
-        # BGR -> RGB 変換
+        # Translated from Japanese comment
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
-        # リサイズ
+        # Resize
         image = cv.resize(
             image,
             (self.input_shape[0], self.input_shape[1]),
             interpolation=cv.INTER_LINEAR,
         )
 
-        # リシェイプ
+        # Translated from Japanese comment
         image = image.astype(np.float32)
         image = image.transpose((2, 0, 1))
         image = image.reshape(1, 3, self.input_shape[1], self.input_shape[0])
@@ -164,7 +164,7 @@ class YuNet(object):
         return image
 
     def _postprocess(self, result):
-        # 結果デコード
+        # Translated from Japanese comment
         dets = self._decode(result)
 
         # NMS
@@ -176,7 +176,7 @@ class YuNet(object):
             top_k=self.topk,
         )
 
-        # bboxes, landmarks, scores へ成形
+        # Translated from Japanese comment
         scores = []
         bboxes = []
         landmarks = []
@@ -194,7 +194,7 @@ class YuNet(object):
     def _decode(self, result):
         loc, conf, iou = result
 
-        # スコア取得
+        # Translated from Japanese comment
         cls_scores = conf[:, 1]
         iou_scores = iou[:, 0]
 
@@ -207,7 +207,7 @@ class YuNet(object):
 
         scale = np.array(self.input_shape)
 
-        # バウンディングボックス取得
+        # Translated from Japanese comment
         bboxes = np.hstack(
             ((self.priors[:, 0:2] +
               loc[:, 0:2] * self.VARIANCE[0] * self.priors[:, 2:4]) * scale,
@@ -215,7 +215,7 @@ class YuNet(object):
              scale))
         bboxes[:, 0:2] -= bboxes[:, 2:4] / 2
 
-        # ランドマーク取得
+        # Translated from Japanese comment
         landmarks = np.hstack(
             ((self.priors[:, 0:2] +
               loc[:, 4:6] * self.VARIANCE[0] * self.priors[:, 2:4]) * scale,
@@ -281,7 +281,7 @@ def get_args():
 
 
 def main():
-    # 引数解析 #################################################################
+    # Translated from Japanese comment
     args = get_args()
     cap_device = args.device
     cap_width = args.width
@@ -297,12 +297,12 @@ def main():
     topk = args.topk
     keep_topk = args.keep_topk
 
-    # カメラ準備 ###############################################################
+    # Translated from Japanese comment
     cap = cv.VideoCapture(cap_device)
     cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
-    # モデルロード #############################################################
+    # Translated from Japanese comment
     yunet = YuNet(
         model_path=model_path,
         input_shape=input_shape,
@@ -313,24 +313,24 @@ def main():
     )
 
     while True:
-        # カメラキャプチャ ################################################
+        # Translated from Japanese comment
         ret, frame = cap.read()
         if not ret:
             break
         debug_image = copy.deepcopy(frame)
 
-        # 推論実施 ########################################################
+        # Translated from Japanese comment
         results_list = yunet(frame)
 
-        # デバッグ描画
+        # Debug drawing
         debug_image = draw_debug(frame, results_list, score_th)
 
-        # キー処理(ESC：終了) ##############################################
+        # Translated from Japanese comment
         key = cv.waitKey(1)
         if key == 27:  # ESC
             break
 
-        # 画面反映 #########################################################
+        # Translated from Japanese comment
         cv.imshow('YuNet ONNX Sample', debug_image)
 
     cap.release()
@@ -339,14 +339,14 @@ def main():
 
 def draw_debug(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(5):
             if score_th > results[id][2]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # バウンディングボックス
+        # Bounding box
         bbox = results.get('bbox', None)
         if bbox is not None:
             image = cv.rectangle(

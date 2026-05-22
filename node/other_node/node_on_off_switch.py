@@ -38,7 +38,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
@@ -52,12 +52,12 @@ class Node(DpgNodeABC):
         tag_switch_select_value_name = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_TEXT, 'Switch'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = int(self._opencv_setting_dict['process_width'] / 2)
         small_window_h = int(self._opencv_setting_dict['process_height'] / 2)
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -65,7 +65,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -75,14 +75,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 入力端子
+            # Input port
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -91,13 +91,13 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_value_name,
                     default_value='Input BGR image',
                 )
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # ON/OFF切り替え
+            # ON/OFF switch
             with dpg.node_attribute(
                     tag=tag_switch_select_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -128,7 +128,7 @@ class Node(DpgNodeABC):
         small_window_w = int(self._opencv_setting_dict['process_width'] / 2)
         small_window_h = int(self._opencv_setting_dict['process_height'] / 2)
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         connection_info_src = ''
         for source_tag, _, connection_type in self._iter_connections(
                 connection_list):
@@ -137,10 +137,10 @@ class Node(DpgNodeABC):
 
             connection_info_src = self._extract_source_node_key(source_tag)
 
-        # ON/OFF選択状態取得
+        # Get ON/OFF selection state
         switch_status = dpg_get_value(tag_switch_select_value_name)
 
-        # 画像取得
+        # Get image
         frame = None
         if switch_status == self._switch_on:
             frame = node_image_dict.get(connection_info_src, None)
@@ -148,7 +148,7 @@ class Node(DpgNodeABC):
             if frame is not None:
                 frame = image_process(frame)
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

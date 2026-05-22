@@ -51,6 +51,8 @@ class Node(DpgNodeABC):
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
         tag_node_input04_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
         tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+        tag_node_input05_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
+        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
@@ -152,6 +154,17 @@ class Node(DpgNodeABC):
                     callback=None,
                     default_value=True,
                 )
+            # キャッシュ要否(ソースノード向け)
+            with dpg.node_attribute(
+                    tag=tag_node_input05_name,
+                    attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Cache Source',
+                    tag=tag_node_input05_value_name,
+                    callback=None,
+                    default_value=False,
+                )
             # 処理時間
             if use_pref_counter:
                 with dpg.node_attribute(
@@ -176,6 +189,7 @@ class Node(DpgNodeABC):
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
         tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
         output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
         output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
@@ -217,6 +231,7 @@ class Node(DpgNodeABC):
         # スキップ割合
         skip_rate = int(dpg_get_value(tag_node_input03_value_name))
         natural_fps_mode = bool(dpg_get_value(tag_node_input04_value_name))
+        cache_source = bool(dpg_get_value(tag_node_input05_value_name))
 
         # 計測開始
         decode_start_time = None
@@ -336,6 +351,8 @@ class Node(DpgNodeABC):
         setting_dict[tag_node_input02_value_name] = loop_flag
         setting_dict[tag_node_input03_value_name] = skip_rate
         setting_dict[tag_node_input04_value_name] = natural_fps_mode
+        setting_dict[tag_node_input05_value_name] = cache_source
+        setting_dict['__cache_source_enabled__'] = cache_source
 
         return setting_dict
 
@@ -344,6 +361,7 @@ class Node(DpgNodeABC):
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
         tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
 
         movie_path = setting_dict.get('movie_path', None)
         node_id = str(node_id)
@@ -360,10 +378,17 @@ class Node(DpgNodeABC):
         loop_flag = setting_dict[tag_node_input02_value_name]
         skip_rate = int(setting_dict[tag_node_input03_value_name])
         natural_fps_mode = setting_dict.get(tag_node_input04_value_name, True)
+        cache_source = bool(
+            setting_dict.get(
+                tag_node_input05_value_name,
+                setting_dict.get('__cache_source_enabled__', False),
+            )
+        )
 
         dpg_set_value(tag_node_input02_value_name, loop_flag)
         dpg_set_value(tag_node_input03_value_name, skip_rate)
         dpg_set_value(tag_node_input04_value_name, natural_fps_mode)
+        dpg_set_value(tag_node_input05_value_name, cache_source)
 
     def _callback_file_select(self, sender, data):
         if data['file_name'] != '.':

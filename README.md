@@ -158,7 +158,8 @@ Read the node settings(json file) output by Export<br>
             Open the file dialog with the "Select Movie" button<br>
             Check "Loop" to play the video in a loop<br>
             "Skip rate" sets the interval for skipping the output image.<br>
-            Check "Natural FPS" to follow source FPS timing, or uncheck to read frames in sequential order.
+            Check "Natural FPS" to follow source FPS timing, or uncheck to read frames in sequential order.<br>
+            "Cache Source" enables source-node frame cache for this Video node (OFF by default).
         </td>
     </tr>
     <tr>

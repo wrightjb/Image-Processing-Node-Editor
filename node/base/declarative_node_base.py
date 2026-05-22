@@ -17,6 +17,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
     parameters = []
     show_elapsed_time = True
+    _cache_toggle_setting_key = '__cache_enabled__'
+    _cache_enabled_by_node = {}
 
     def add_node(
         self,
@@ -33,6 +35,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         output_image_value_tag = self._value_tag(output_image_tag)
         elapsed_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         elapsed_value_tag = self._value_tag(elapsed_tag)
+        cache_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
+        cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
 
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['process_width']
@@ -81,6 +85,19 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 small_window_w,
                 callback,
             )
+
+            with dpg.node_attribute(
+                tag=cache_toggle_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Cache',
+                    tag=cache_toggle_value_tag,
+                    default_value=True,
+                    callback=self._on_cache_toggle,
+                    user_data=node_id,
+                )
+                self._cache_enabled_by_node[str(node_id)] = True
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -177,6 +194,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             setting_dict[parameter_value_tag] = dpg_get_value(parameter_value_tag)
 
         setting_dict.update(self.get_custom_setting_dict(tag_node_name, node_id))
+        setting_dict[self._cache_toggle_setting_key] = bool(
+            self._cache_enabled_by_node.get(str(node_id), True)
+        )
 
         return setting_dict
 
@@ -193,6 +213,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             dpg_set_value(parameter_value_tag, value)
 
         self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
+
+        cache_toggle_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
+        )
+        cache_enabled = bool(setting_dict.get(self._cache_toggle_setting_key, True))
+        self._cache_enabled_by_node[str(node_id)] = cache_enabled
+        dpg_set_value(cache_toggle_value_tag, cache_enabled)
 
         self.on_settings_applied(tag_node_name)
 
@@ -211,6 +238,10 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
     def on_settings_applied(self, tag_node_name):
         del tag_node_name
+
+    def _on_cache_toggle(self, sender, app_data, user_data):
+        del sender
+        self._cache_enabled_by_node[str(user_data)] = bool(app_data)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

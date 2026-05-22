@@ -263,6 +263,10 @@ def update_node_info(
             else:
                 node_setting = node_instance.get_setting_dict(node_id)
 
+        if use_cache and isinstance(node_setting, dict):
+            if node_setting.get('__cache_enabled__') is False:
+                use_cache = False
+
         if use_cache:
             for source_tag, _ in connection_list:
                 source_node_id_name = ':'.join(source_tag.split(':')[:2])

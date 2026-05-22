@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import os
 import time
 import cv2
 import numpy as np
@@ -331,6 +332,7 @@ class Node(DpgNodeABC):
         setting_dict = {}
         setting_dict['ver'] = self._ver
         setting_dict['pos'] = pos
+        setting_dict['movie_path'] = self._movie_filepath.get(str(node_id), None)
         setting_dict[tag_node_input02_value_name] = loop_flag
         setting_dict[tag_node_input03_value_name] = skip_rate
         setting_dict[tag_node_input04_value_name] = natural_fps_mode
@@ -342,6 +344,18 @@ class Node(DpgNodeABC):
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
         tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+
+        movie_path = setting_dict.get('movie_path', None)
+        node_id = str(node_id)
+        if movie_path is not None:
+            if os.path.isfile(movie_path):
+                self._movie_filepath[node_id] = movie_path
+            else:
+                self._movie_filepath.pop(node_id, None)
+                self._prev_movie_filepath.pop(node_id, None)
+                self._video_capture.pop(node_id, None)
+                self._last_output_frame.pop(node_id, None)
+                print(f'WARNING : Movie file not found ({movie_path})')
 
         loop_flag = setting_dict[tag_node_input02_value_name]
         skip_rate = int(setting_dict[tag_node_input03_value_name])

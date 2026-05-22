@@ -146,6 +146,19 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
         return frame, result
 
+    def render_cached_output(self, node_id, frame):
+        if frame is None:
+            return
+
+        tag_node_name = self._node_name(node_id)
+        output_image_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
+        )
+        small_window_w = self._opencv_setting_dict['process_width']
+        small_window_h = self._opencv_setting_dict['process_height']
+        texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
+        dpg_set_value(output_image_value_tag, texture)
+
     def close(self, node_id):
         del node_id
 

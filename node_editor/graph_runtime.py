@@ -301,6 +301,14 @@ def update_node_info(
                         node_result_dict[node_id_name] = copy.deepcopy(
                             frame_cached_result['result']
                         )
+                        if hasattr(node_instance, 'render_cached_output'):
+                            try:
+                                node_instance.render_cached_output(
+                                    node_id,
+                                    node_image_dict[node_id_name],
+                                )
+                            except Exception:
+                                pass
                         continue
             elif (
                 cached_result is not None and
@@ -312,6 +320,14 @@ def update_node_info(
                 node_result_dict[node_id_name] = copy.deepcopy(
                     cached_result['result']
                 )
+                if hasattr(node_instance, 'render_cached_output'):
+                    try:
+                        node_instance.render_cached_output(
+                            node_id,
+                            node_image_dict[node_id_name],
+                        )
+                    except Exception:
+                        pass
                 continue
 
         if mode_async:

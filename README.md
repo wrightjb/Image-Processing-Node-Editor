@@ -157,7 +157,8 @@ Read the node settings(json file) output by Export<br>
             A node that reads a video (mp4, avi) and outputs an image for each frame<br>
             Open the file dialog with the "Select Movie" button<br>
             Check "Loop" to play the video in a loop<br>
-            "Skip rate" sets the interval for skipping the output image.
+            "Skip rate" sets the interval for skipping the output image.<br>
+            Check "Natural FPS" to follow source FPS timing, or uncheck to read frames in sequential order.
         </td>
     </tr>
     <tr>
@@ -219,6 +220,20 @@ Read the node settings(json file) output by Export<br>
     </tr>
 </table>
 </details>
+
+## Cache toggle and video cache behavior / キャッシュ切替と動画キャッシュ挙動
+
+**English**
+
+- Declarative process nodes include a `Cache` checkbox. Turn it OFF to disable and clear runtime cache entries for that node on subsequent update ticks.
+- During cache replay, node preview images are still refreshed and elapsed time now reflects cached-render cost.
+- Input video decoding itself is not cached by OpenCV in this app; the current speed depends on `VideoCapture` reads/seeks and downstream processing load.
+
+**日本語**
+
+- 宣言的プロセスノードには `Cache` チェックボックスがあります。OFF にすると、そのノードのランタイムキャッシュは次回更新以降で無効化され、保持済みエントリも削除されます。
+- キャッシュ再生中でもノードのプレビュー画像は更新され、elapsed time はキャッシュ再描画コストを表示します。
+- このアプリでは入力動画のデコード自体を OpenCV 側で明示キャッシュしていないため、実行速度は `VideoCapture` の read/seek と下流処理負荷に依存します。
 
 <details>
 <summary>Process Node</summary>

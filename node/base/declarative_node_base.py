@@ -167,14 +167,22 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         if frame is None:
             return
 
+        start_time = time.perf_counter()
         tag_node_name = self._node_name(node_id)
         output_image_value_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         )
+        elapsed_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        )
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
         texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
         dpg_set_value(output_image_value_tag, texture)
+        if self.show_elapsed_time and use_pref_counter:
+            elapsed_time = int((time.perf_counter() - start_time) * 1000)
+            dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
 
     def close(self, node_id):
         del node_id

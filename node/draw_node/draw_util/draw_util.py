@@ -190,7 +190,7 @@ def draw_object_detection_info(
 
         color = get_color(class_id)
 
-        # バウンディングボックス
+        # Bounding box
         debug_image = cv2.rectangle(
             debug_image,
             (x1, y1),
@@ -199,7 +199,7 @@ def draw_object_detection_info(
             thickness=thickness,
         )
 
-        # クラスID、スコア
+        # Class ID and score
         score = '%.2f' % score
         text = '%s:%s(%s)' % (int(class_id), str(
             class_names[int(class_id)]), score)
@@ -245,7 +245,7 @@ def draw_classification_with_od_info(
 
         color = get_color(od_class_id)
 
-        # バウンディングボックス
+        # Bounding box
         debug_image = cv2.rectangle(
             debug_image,
             (x1, y1),
@@ -254,7 +254,7 @@ def draw_classification_with_od_info(
             thickness=thickness,
         )
 
-        # Object Detection：クラスID、スコア
+        # Object Detection: class ID and score
         score_text = '%.2f' % od_score
         text = '%s:%s(%s)' % (int(od_class_id),
                               str(od_class_names[int(od_class_id)]),
@@ -269,7 +269,7 @@ def draw_classification_with_od_info(
             thickness=thickness,
         )
 
-        # Classification：クラスID、スコア
+        # Classification: class ID and score
         score_text = '%.2f' % score
         text = '%s:%s(%s)' % (int(class_id), str(
             class_name_dict[int(class_id)]), score_text)
@@ -346,37 +346,37 @@ def draw_pose_estimation_info(model_name, image, results_list, score_th):
 
 def draw_mediapipe_hands_info(image, results_list):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(21):
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv2.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # 接続線
-        # 親指
+        # Connection lines
+        # Thumb
         cv2.line(image, results[2][:2], results[3][:2], (0, 255, 0), 2)
         cv2.line(image, results[3][:2], results[4][:2], (0, 255, 0), 2)
 
-        # 人差指
+        # Index finger
         cv2.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
         cv2.line(image, results[6][:2], results[7][:2], (0, 255, 0), 2)
         cv2.line(image, results[7][:2], results[8][:2], (0, 255, 0), 2)
 
-        # 中指
+        # Middle finger
         cv2.line(image, results[9][:2], results[10][:2], (0, 255, 0), 2)
         cv2.line(image, results[10][:2], results[11][:2], (0, 255, 0), 2)
         cv2.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
 
-        # 薬指
+        # Ring finger
         cv2.line(image, results[13][:2], results[14][:2], (0, 255, 0), 2)
         cv2.line(image, results[14][:2], results[15][:2], (0, 255, 0), 2)
         cv2.line(image, results[15][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 小指
+        # Little finger
         cv2.line(image, results[17][:2], results[18][:2], (0, 255, 0), 2)
         cv2.line(image, results[18][:2], results[19][:2], (0, 255, 0), 2)
         cv2.line(image, results[19][:2], results[20][:2], (0, 255, 0), 2)
 
-        # 手の平
+        # Palm
         cv2.line(image, results[0][:2], results[1][:2], (0, 255, 0), 2)
         cv2.line(image, results[1][:2], results[2][:2], (0, 255, 0), 2)
         cv2.line(image, results[2][:2], results[5][:2], (0, 255, 0), 2)
@@ -394,7 +394,7 @@ def draw_mediapipe_hands_info(image, results_list):
 
 def draw_mediapipe_pose_info(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(33):
             landmark_x, landmark_y = results[id][0], results[id][1]
             visibility = results[id][3]
@@ -403,40 +403,40 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
                 continue
             cv2.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # 接続線
-        # 右目
+        # Connection lines
+        # Right eye
         if results[1][3] > score_th and results[2][3] > score_th:
             cv2.line(image, results[1][:2], results[2][:2], (0, 255, 0), 2)
         if results[2][3] > score_th and results[3][3] > score_th:
             cv2.line(image, results[2][:2], results[3][:2], (0, 255, 0), 2)
 
-        # 左目
+        # Left eye
         if results[4][3] > score_th and results[5][3] > score_th:
             cv2.line(image, results[4][:2], results[5][:2], (0, 255, 0), 2)
         if results[5][3] > score_th and results[6][3] > score_th:
             cv2.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
 
-        # 口
+        # Mouth
         if results[9][3] > score_th and results[10][3] > score_th:
             cv2.line(image, results[9][:2], results[10][:2], (0, 255, 0), 2)
 
-        # 肩
+        # Shoulders
         if results[11][3] > score_th and results[12][3] > score_th:
             cv2.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
 
-        # 右腕
+        # Right arm
         if results[11][3] > score_th and results[13][3] > score_th:
             cv2.line(image, results[11][:2], results[13][:2], (0, 255, 0), 2)
         if results[13][3] > score_th and results[15][3] > score_th:
             cv2.line(image, results[13][:2], results[15][:2], (0, 255, 0), 2)
 
-        # 左腕
+        # Left arm
         if results[12][3] > score_th and results[14][3] > score_th:
             cv2.line(image, results[12][:2], results[14][:2], (0, 255, 0), 2)
         if results[14][3] > score_th and results[16][3] > score_th:
             cv2.line(image, results[14][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 右手
+        # Right hand
         if results[15][3] > score_th and results[17][3] > score_th:
             cv2.line(image, results[15][:2], results[17][:2], (0, 255, 0), 2)
         if results[17][3] > score_th and results[19][3] > score_th:
@@ -446,7 +446,7 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
         if results[21][3] > score_th and results[15][3] > score_th:
             cv2.line(image, results[21][:2], results[15][:2], (0, 255, 0), 2)
 
-        # 左手
+        # Left hand
         if results[16][3] > score_th and results[18][3] > score_th:
             cv2.line(image, results[16][:2], results[18][:2], (0, 255, 0), 2)
         if results[18][3] > score_th and results[20][3] > score_th:
@@ -456,7 +456,7 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
         if results[22][3] > score_th and results[16][3] > score_th:
             cv2.line(image, results[22][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 胴体
+        # Torso
         if results[11][3] > score_th and results[23][3] > score_th:
             cv2.line(image, results[11][:2], results[23][:2], (0, 255, 0), 2)
         if results[12][3] > score_th and results[24][3] > score_th:
@@ -464,7 +464,7 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
         if results[23][3] > score_th and results[24][3] > score_th:
             cv2.line(image, results[23][:2], results[24][:2], (0, 255, 0), 2)
 
-        # 右足
+        # Right leg
         if results[23][3] > score_th and results[25][3] > score_th:
             cv2.line(image, results[23][:2], results[25][:2], (0, 255, 0), 2)
         if results[25][3] > score_th and results[27][3] > score_th:
@@ -474,7 +474,7 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
         if results[29][3] > score_th and results[31][3] > score_th:
             cv2.line(image, results[29][:2], results[31][:2], (0, 255, 0), 2)
 
-        # 左足
+        # Left leg
         if results[24][3] > score_th and results[26][3] > score_th:
             cv2.line(image, results[24][:2], results[26][:2], (0, 255, 0), 2)
         if results[26][3] > score_th and results[28][3] > score_th:
@@ -488,7 +488,7 @@ def draw_mediapipe_pose_info(image, results_list, score_th):
 
 def draw_movenet_info(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(17):
             landmark_x, landmark_y = results[id][0], results[id][1]
             visibility = results[id][2]
@@ -497,52 +497,52 @@ def draw_movenet_info(image, results_list, score_th):
                 continue
             cv2.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # Line：鼻 → 左目
+        # Line: nose → left eye
         if results[0][2] > score_th and results[1][2] > score_th:
             cv2.line(image, results[0][:2], results[1][:2], (0, 255, 0), 2)
-        # Line：鼻 → 右目
+        # Line: nose → right eye
         if results[0][2] > score_th and results[2][2] > score_th:
             cv2.line(image, results[0][:2], results[2][:2], (0, 255, 0), 2)
-        # Line：左目 → 左耳
+        # Line: left eye → left ear
         if results[1][2] > score_th and results[3][2] > score_th:
             cv2.line(image, results[1][:2], results[3][:2], (0, 255, 0), 2)
-        # Line：右目 → 右耳
+        # Line: right eye → right ear
         if results[2][2] > score_th and results[4][2] > score_th:
             cv2.line(image, results[2][:2], results[4][:2], (0, 255, 0), 2)
-        # Line：左肩 → 右肩
+        # Line: left shoulder → right shoulder
         if results[5][2] > score_th and results[6][2] > score_th:
             cv2.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
-        # Line：左肩 → 左肘
+        # Line: left shoulder → left elbow
         if results[5][2] > score_th and results[7][2] > score_th:
             cv2.line(image, results[5][:2], results[7][:2], (0, 255, 0), 2)
-        # Line：左肘 → 左手首
+        # Line: left elbow → left wrist
         if results[7][2] > score_th and results[9][2] > score_th:
             cv2.line(image, results[7][:2], results[9][:2], (0, 255, 0), 2)
-        # Line：右肩 → 右肘
+        # Line: right shoulder → right elbow
         if results[6][2] > score_th and results[8][2] > score_th:
             cv2.line(image, results[6][:2], results[8][:2], (0, 255, 0), 2)
-        # Line：右肘 → 右手首
+        # Line: right elbow → right wrist
         if results[8][2] > score_th and results[10][2] > score_th:
             cv2.line(image, results[8][:2], results[10][:2], (0, 255, 0), 2)
-        # Line：左股関節 → 右股関節
+        # Line: left hip → right hip
         if results[11][2] > score_th and results[12][2] > score_th:
             cv2.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
-        # Line：左肩 → 左股関節
+        # Line: left shoulder → left hip
         if results[5][2] > score_th and results[11][2] > score_th:
             cv2.line(image, results[5][:2], results[11][:2], (0, 255, 0), 2)
-        # Line：左股関節 → 左ひざ
+        # Line: left hip → left knee
         if results[11][2] > score_th and results[13][2] > score_th:
             cv2.line(image, results[11][:2], results[13][:2], (0, 255, 0), 2)
-        # Line：左ひざ → 左足首
+        # Line: left knee → left ankle
         if results[13][2] > score_th and results[15][2] > score_th:
             cv2.line(image, results[13][:2], results[15][:2], (0, 255, 0), 2)
-        # Line：右肩 → 右股関節
+        # Line: right shoulder → right hip
         if results[6][2] > score_th and results[12][2] > score_th:
             cv2.line(image, results[6][:2], results[12][:2], (0, 255, 0), 2)
-        # Line：右股関節 → 右ひざ
+        # Line: right hip → right knee
         if results[12][2] > score_th and results[14][2] > score_th:
             cv2.line(image, results[12][:2], results[14][:2], (0, 255, 0), 2)
-        # Line：右ひざ → 右足首
+        # Line: right knee → right ankle
         if results[14][2] > score_th and results[16][2] > score_th:
             cv2.line(image, results[14][:2], results[16][:2], (0, 255, 0), 2)
 
@@ -589,14 +589,14 @@ def draw_face_detection_info(model_name, image, results_list, score_th):
 
 def draw_mediapipe_face_detection_info(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(6):
             if score_th > results[id][2]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv2.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # バウンディングボックス
+        # Bounding box
         bbox = results.get('bbox', None)
         if bbox is not None:
             image = cv2.rectangle(
@@ -612,26 +612,26 @@ def draw_mediapipe_face_detection_info(image, results_list, score_th):
 
 def draw_mediapipe_facemesh_info(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(len(results)):
             if score_th > results[id][3]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv2.circle(image, (landmark_x, landmark_y), 2, (0, 255, 0), -1)
 
-        # 左眉毛(55：内側、46：外側)
+        # Translated from Japanese comment
         cv2.line(image, results[55][:2], results[65][:2], (0, 255, 0), 2)
         cv2.line(image, results[65][:2], results[52][:2], (0, 255, 0), 2)
         cv2.line(image, results[52][:2], results[53][:2], (0, 255, 0), 2)
         cv2.line(image, results[53][:2], results[46][:2], (0, 255, 0), 2)
 
-        # # 右眉毛(285：内側、276：外側)
+        # Translated from Japanese comment
         cv2.line(image, results[285][:2], results[295][:2], (0, 255, 0), 2)
         cv2.line(image, results[295][:2], results[282][:2], (0, 255, 0), 2)
         cv2.line(image, results[282][:2], results[283][:2], (0, 255, 0), 2)
         cv2.line(image, results[283][:2], results[276][:2], (0, 255, 0), 2)
 
-        # # 左目 (133：目頭、246：目尻)
+        # Translated from Japanese comment
         cv2.line(image, results[133][:2], results[173][:2], (0, 255, 0), 2)
         cv2.line(image, results[173][:2], results[157][:2], (0, 255, 0), 2)
         cv2.line(image, results[157][:2], results[158][:2], (0, 255, 0), 2)
@@ -648,7 +648,7 @@ def draw_mediapipe_facemesh_info(image, results_list, score_th):
         cv2.line(image, results[154][:2], results[155][:2], (0, 255, 0), 2)
         cv2.line(image, results[155][:2], results[133][:2], (0, 255, 0), 2)
 
-        # # 右目 (362：目頭、466：目尻)
+        # Translated from Japanese comment
         cv2.line(image, results[362][:2], results[398][:2], (0, 255, 0), 2)
         cv2.line(image, results[398][:2], results[384][:2], (0, 255, 0), 2)
         cv2.line(image, results[384][:2], results[385][:2], (0, 255, 0), 2)
@@ -665,7 +665,7 @@ def draw_mediapipe_facemesh_info(image, results_list, score_th):
         cv2.line(image, results[381][:2], results[382][:2], (0, 255, 0), 2)
         cv2.line(image, results[382][:2], results[362][:2], (0, 255, 0), 2)
 
-        # # 口 (308：右端、78：左端)
+        # Translated from Japanese comment
         cv2.line(image, results[308][:2], results[415][:2], (0, 255, 0), 2)
         cv2.line(image, results[415][:2], results[310][:2], (0, 255, 0), 2)
         cv2.line(image, results[310][:2], results[311][:2], (0, 255, 0), 2)
@@ -693,14 +693,14 @@ def draw_mediapipe_facemesh_info(image, results_list, score_th):
 
 def draw_yunet_info(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(5):
             if score_th > results[id][2]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv2.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # バウンディングボックス
+        # Bounding box
         bbox = results.get('bbox', None)
         if bbox is not None:
             image = cv2.rectangle(
@@ -728,7 +728,7 @@ def draw_multi_object_tracking_info(
 
         color = get_color(track_id_dict[id])
 
-        # バウンディングボックス
+        # Bounding box
         image = cv2.rectangle(
             image,
             (x1, y1),
@@ -737,7 +737,7 @@ def draw_multi_object_tracking_info(
             thickness=2,
         )
 
-        # トラックID、スコア
+        # Track ID and score
         score = '%.2f' % score
         text = 'TID:%s(%s)' % (str(int(track_id_dict[id])), str(score))
         image = cv2.putText(
@@ -750,7 +750,7 @@ def draw_multi_object_tracking_info(
             thickness=2,
         )
 
-        # クラスID
+        # Class ID
         text = 'CID:%s(%s)' % (str(int(class_id)), class_names[int(class_id)])
         image = cv2.putText(
             image,
@@ -771,7 +771,7 @@ def draw_qrcode_detection_info(
     bboxes,
 ):
     for text, bbox in zip(texts, bboxes):
-        # 各辺
+        # Each side
         cv2.line(image, (bbox[0][0], bbox[0][1]), (bbox[1][0], bbox[1][1]),
                  (255, 0, 0), 2)
         cv2.line(image, (bbox[1][0], bbox[1][1]), (bbox[2][0], bbox[2][1]),
@@ -781,7 +781,7 @@ def draw_qrcode_detection_info(
         cv2.line(image, (bbox[3][0], bbox[3][1]), (bbox[0][0], bbox[0][1]),
                  (0, 255, 0), 2)
 
-        # テキスト
+        # Text
         cv2.putText(
             image,
             str(text),

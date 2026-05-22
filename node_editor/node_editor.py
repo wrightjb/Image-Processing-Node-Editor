@@ -123,7 +123,7 @@ class DpgNodeEditor(object):
         node_id_dict = OrderedDict({})
         node_connection_dict = OrderedDict({})
 
-        # ノードIDとノード接続を辞書形式で整理
+        # Organize node IDs and node links as dictionaries
         for source, destination in node_link_list:
             source_id = int(source.split(':')[0])
             destination_id = int(destination.split(':')[0])
@@ -143,7 +143,7 @@ class DpgNodeEditor(object):
         node_id_list = list(node_id_dict.items())
         node_connection_list = list(node_connection_dict.items())
 
-        # 入力から出力に向かって処理順序を入れ替える
+        # Reorder processing from input to output
         index = 0
         while index < len(node_id_list):
             swap_flag = False
@@ -163,7 +163,7 @@ class DpgNodeEditor(object):
             if not swap_flag:
                 index += 1
 
-        # 接続リストに登場しないノードを追加する(入力ノード等)
+        # Add nodes not in the link list (e.g., input nodes)
         index = 0
         unfinded_id_dict = {}
         while index < len(node_id_list):
@@ -383,7 +383,7 @@ class DpgNodeEditor(object):
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
-        # メニュー項目定義(key：メニュー名、value：ノードのコード格納ディレクトリ名)
+        # Define menu items (key: menu name, value: directory containing node code)
         if menu_dict is None:
             menu_dict = OrderedDict({
                 'Input Node': 'input_node',

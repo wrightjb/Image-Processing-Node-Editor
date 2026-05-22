@@ -24,12 +24,12 @@ def receive_image_process(rtsp_url, image_queue, request):
                 image_queue.put(frame)
             time.sleep(0.001)
         else:
-            # 取得失敗時は1秒待ち再接続
+            # If acquisition fails, wait 1 second and reconnect
             time.sleep(1)
             rtsp_capture.release()
             rtsp_capture = cv2.VideoCapture(rtsp_url)
 
-        # 0指定時はプロセスを終了する
+        # Exit process when set to 0
         if request.value == 0:
             rtsp_capture.release()
             break
@@ -62,7 +62,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
         tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
@@ -74,13 +74,13 @@ class Node(DpgNodeABC):
         tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
         tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -88,7 +88,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -98,14 +98,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # RTSP URL入力欄
+            # RTSP URL input field
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -115,13 +115,13 @@ class Node(DpgNodeABC):
                     label='URL',
                     width=small_window_w - 30,
                 )
-            # カメラ画像
+            # Camera image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # 録画/再生追加ボタン
+            # Add record/playback button
             with dpg.node_attribute(
                     tag=tag_node_button_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -133,7 +133,7 @@ class Node(DpgNodeABC):
                     callback=self._button,
                     user_data=tag_node_name,
                 )
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -162,52 +162,52 @@ class Node(DpgNodeABC):
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # multiprocessing使用有無
+        # Translated from Japanese comment
         use_mp = self._opencv_setting_dict['use_multiprocessing_rtsp']
 
-        # RTSP URL取得
+        # Get RTSP URL
         rtsp_url = dpg_get_value(input_value01_tag)
 
-        # VideoCapture()インスタンス取得
+        # Get VideoCapture() instance
         rtsp_capture = None
         image_queue = None
         if rtsp_url != '':
             if use_mp:
-                # multiprocessing使用
+                # Translated from Japanese comment
                 if rtsp_url in self._image_queue:
                     image_queue = self._image_queue[rtsp_url]
             else:
-                # multiprocessing未使用
+                # Translated from Japanese comment
                 if rtsp_url in self._rtsp_capture:
                     rtsp_capture = self._rtsp_capture[rtsp_url]
 
-        # 計測開始
+        # Measurement start
         if rtsp_url != '' and use_pref_counter:
             start_time = time.perf_counter()
 
-        # 画像取得
+        # Get image
         frame = None
         if use_mp:
-            # multiprocessing使用
+            # Translated from Japanese comment
             if image_queue is not None:
                 num = image_queue.qsize()
                 if num > 0:
                     frame = image_queue.get()
         else:
-            # multiprocessing未使用
+            # Translated from Japanese comment
             if rtsp_capture is not None:
                 ret, frame = rtsp_capture.read()
                 if not ret:
                     return None, None
 
-        # 計測終了
+        # Measurement end
         if rtsp_url != '' and use_pref_counter:
             elapsed_time = time.perf_counter() - start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,
@@ -219,10 +219,10 @@ class Node(DpgNodeABC):
         return frame, None
 
     def close(self, node_id):
-        # multiprocessing使用有無
+        # Translated from Japanese comment
         use_mp = self._opencv_setting_dict['use_multiprocessing_rtsp']
         if use_mp:
-            # multiprocessing使用
+            # Translated from Japanese comment
             for rtsp_url in self._process.keys():
                 self._request[rtsp_url].value = 0
                 if self._process[rtsp_url].is_alive():
@@ -257,16 +257,16 @@ class Node(DpgNodeABC):
 
         label = dpg.get_item_label(tag_node_button_value_name)
 
-        # RTSP URL取得
+        # Get RTSP URL
         rtsp_url = dpg_get_value(input_value01_tag)
 
-        # multiprocessing使用有無
+        # Translated from Japanese comment
         use_mp = self._opencv_setting_dict['use_multiprocessing_rtsp']
 
         if label == self._start_label:
             if rtsp_url != '':
                 if use_mp:
-                    # multiprocessing使用
+                    # Translated from Japanese comment
                     if not (rtsp_url in self._process):
                         self._image_queue[rtsp_url] = mp.Queue(maxsize=1)
                         self._request[rtsp_url] = mp.Value('i', 1)
@@ -277,7 +277,7 @@ class Node(DpgNodeABC):
                         )
                         self._process[rtsp_url].start()
                 else:
-                    # multiprocessing未使用
+                    # Translated from Japanese comment
                     if not (rtsp_url in self._rtsp_capture):
                         rtsp_capture = cv2.VideoCapture(rtsp_url)
                         self._rtsp_capture[rtsp_url] = rtsp_capture
@@ -286,7 +286,7 @@ class Node(DpgNodeABC):
         elif label == self._stop_label:
             if rtsp_url != '':
                 if use_mp:
-                    # multiprocessing使用
+                    # Translated from Japanese comment
                     if rtsp_url in self._request:
                         self._request[rtsp_url].value = 0
                         if self._process[rtsp_url].is_alive():
@@ -295,7 +295,7 @@ class Node(DpgNodeABC):
                         self._request.pop(rtsp_url)
                         self._process.pop(rtsp_url)
                 else:
-                    # multiprocessing未使用
+                    # Translated from Japanese comment
                     if rtsp_url in self._rtsp_capture:
                         self._rtsp_capture[rtsp_url].release()
                         self._rtsp_capture.pop(rtsp_url)

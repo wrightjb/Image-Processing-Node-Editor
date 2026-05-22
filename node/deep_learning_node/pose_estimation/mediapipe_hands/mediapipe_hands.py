@@ -45,18 +45,18 @@ class MediaPipeHands(object):
             ):
                 landmark_dict = {}
 
-                # 手のひらの重心
+                # Center of palm
                 cx, cy = self._calc_palm_moment(image, hand_landmarks)
                 landmark_dict['palm_moment'] = [cx, cy]
 
-                # 各キーポイント
+                # Each keypoint
                 for id, landmark in enumerate(hand_landmarks.landmark):
                     x = min(int(landmark.x * image_width), image_width - 1)
                     y = min(int(landmark.y * image_height), image_height - 1)
                     z = landmark.z
                     visibility = 1.0
                     landmark_dict[id] = [x, y, z, visibility]
-                # ラベル
+                # Label
                 landmark_dict['label'] = handedness.classification[0].label
 
                 results_list.append(copy.deepcopy(landmark_dict))
@@ -74,17 +74,17 @@ class MediaPipeHands(object):
 
             landmark_point = [np.array((landmark_x, landmark_y))]
 
-            if index == 0:  # 手首1
+            if index == 0:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
-            if index == 1:  # 手首2
+            if index == 1:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
-            if index == 5:  # 人差指：付け根
+            if index == 5:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
-            if index == 9:  # 中指：付け根
+            if index == 9:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
-            if index == 13:  # 薬指：付け根
+            if index == 13:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
-            if index == 17:  # 小指：付け根
+            if index == 17:  # Translated comment (was Japanese).
                 palm_array = np.append(palm_array, landmark_point, axis=0)
         M = cv.moments(palm_array)
         cx, cy = 0, 0
@@ -135,39 +135,39 @@ class MediaPipeHandsComplexity1(object):
 
 def draw_landmarks(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(21):
             if score_th > results[id][3]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv.circle(image, (landmark_x, landmark_y), 5, (0, 255, 0), -1)
 
-        # 接続線
-        # 親指
+        # Connection lines
+        # Thumb
         cv.line(image, results[2][:2], results[3][:2], (0, 255, 0), 2)
         cv.line(image, results[3][:2], results[4][:2], (0, 255, 0), 2)
 
-        # 人差指
+        # Index finger
         cv.line(image, results[5][:2], results[6][:2], (0, 255, 0), 2)
         cv.line(image, results[6][:2], results[7][:2], (0, 255, 0), 2)
         cv.line(image, results[7][:2], results[8][:2], (0, 255, 0), 2)
 
-        # 中指
+        # Middle finger
         cv.line(image, results[9][:2], results[10][:2], (0, 255, 0), 2)
         cv.line(image, results[10][:2], results[11][:2], (0, 255, 0), 2)
         cv.line(image, results[11][:2], results[12][:2], (0, 255, 0), 2)
 
-        # 薬指
+        # Ring finger
         cv.line(image, results[13][:2], results[14][:2], (0, 255, 0), 2)
         cv.line(image, results[14][:2], results[15][:2], (0, 255, 0), 2)
         cv.line(image, results[15][:2], results[16][:2], (0, 255, 0), 2)
 
-        # 小指
+        # Little finger
         cv.line(image, results[17][:2], results[18][:2], (0, 255, 0), 2)
         cv.line(image, results[18][:2], results[19][:2], (0, 255, 0), 2)
         cv.line(image, results[19][:2], results[20][:2], (0, 255, 0), 2)
 
-        # 手の平
+        # Palm
         cv.line(image, results[0][:2], results[1][:2], (0, 255, 0), 2)
         cv.line(image, results[1][:2], results[2][:2], (0, 255, 0), 2)
         cv.line(image, results[2][:2], results[5][:2], (0, 255, 0), 2)

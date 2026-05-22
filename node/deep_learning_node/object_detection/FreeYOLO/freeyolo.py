@@ -24,7 +24,7 @@ class FreeYOLO(object):
             'CPUExecutionProvider',
         ],
     ):
-        # モデル読み込み
+        # Load model
         self.onnx_session = onnxruntime.InferenceSession(
             model_path,
             providers=providers,
@@ -33,7 +33,7 @@ class FreeYOLO(object):
         self.input_detail = self.onnx_session.get_inputs()[0]
         self.input_name = self.input_detail.name
 
-        # 各種設定
+        # Various settings
         self.input_shape = self.input_detail.shape[2:]
         self.num_classes = num_classes
         self.class_score_th = class_score_th
@@ -45,20 +45,20 @@ class FreeYOLO(object):
         nms_th = self.nms_th
         temp_image = copy.deepcopy(image)
 
-        # 前処理
+        # Pre-processing
         x, ratio = self._preprocess(
             temp_image,
             input_size=self.input_shape,
             swap=(2, 0, 1),
         )
 
-        # 推論実施
+        # Run inference
         results = self.onnx_session.run(
             None,
             {self.input_name: x[None, :, :, :]},
         )
 
-        # 後処理
+        # Post-processing
         bboxes, scores, class_ids = self._postprocess(
             results[0][0],
             input_size=self.input_shape,

@@ -39,7 +39,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
         tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
@@ -47,12 +47,12 @@ class Node(DpgNodeABC):
         tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
         tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -60,7 +60,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -70,20 +70,20 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
             ):
                 dpg.add_image(tag_node_input01_value_name)
-            # 録画/再生追加ボタン
+            # Add record/playback button
             with dpg.node_attribute(
                     tag=tag_node_button_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -109,7 +109,7 @@ class Node(DpgNodeABC):
         input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
         tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         connection_info_src = ''
         for source_tag, _, connection_type in self._iter_connections(
                 connection_list):
@@ -123,20 +123,20 @@ class Node(DpgNodeABC):
         writer_width = self._opencv_setting_dict['video_writer_width']
         writer_height = self._opencv_setting_dict['video_writer_height']
 
-        # 画像取得
+        # Get image
         frame = node_image_dict.get(connection_info_src, None)
 
-        # 描画
+        # Draw
         if frame is not None:
             rec_frame = copy.deepcopy(frame)
-            # 録画中
+            # Recording
             if tag_node_name in self._video_writer_dict:
-                # 動画書き出し
+                # Write video
                 writer_frame = cv2.resize(rec_frame,
                                           (writer_width, writer_height))
                 self._video_writer_dict[tag_node_name].write(writer_frame)
 
-                # 録画表示
+                # Recording display
                 rec_frame = cv2.circle(rec_frame, (80, 80),
                                        50, (0, 0, 255),
                                        thickness=-1)
@@ -146,7 +146,7 @@ class Node(DpgNodeABC):
                                         4.0, (0, 0, 255),
                                         thickness=10)
 
-            # 画面反映
+            # Update display
             texture = convert_cv_to_dpg(
                 rec_frame,
                 small_window_w,
@@ -156,11 +156,11 @@ class Node(DpgNodeABC):
         else:
             label = dpg.get_item_label(tag_node_button_value_name)
             if label == self._stop_label and self._prev_frame_flag:
-                # 録画停止
+                # Stop recording
                 self._recording_button(None, None, tag_node_name)
-                # 初期化用黒画像
+                # Black image for initialization
                 black_image = np.zeros((small_window_w, small_window_h, 3))
-                # 画面反映
+                # Update display
                 texture = convert_cv_to_dpg(
                     black_image,
                     small_window_w,
@@ -202,11 +202,11 @@ class Node(DpgNodeABC):
         label = dpg.get_item_label(tag_node_button_value_name)
 
         if label == self._start_label:
-            # 開始時刻
+            # Start time
             datetime_now = datetime.datetime.now()
             startup_time_text = datetime_now.strftime('%Y%m%d_%H%M%S')
 
-            # 録画設定
+            # Recording settings
             writer_width = self._opencv_setting_dict['video_writer_width']
             writer_height = self._opencv_setting_dict['video_writer_height']
             writer_fps = self._opencv_setting_dict['video_writer_fps']
@@ -215,7 +215,7 @@ class Node(DpgNodeABC):
 
             os.makedirs(video_writer_directory, exist_ok=True)
 
-            # 録画開始
+            # Start recording
             if tag_node_name not in self._video_writer_dict:
                 self._video_writer_dict[tag_node_name] = cv2.VideoWriter(
                     video_writer_directory + '/' + startup_time_text + '.mp4',
@@ -226,7 +226,7 @@ class Node(DpgNodeABC):
 
             dpg.set_item_label(tag_node_button_value_name, self._stop_label)
         elif label == self._stop_label:
-            # 録画終了
+            # Finish recording
             self._video_writer_dict[tag_node_name].release()
             self._video_writer_dict.pop(tag_node_name)
 

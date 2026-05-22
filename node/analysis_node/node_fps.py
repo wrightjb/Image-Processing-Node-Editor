@@ -37,7 +37,7 @@ class Node(DpgNodeABC):
     ):
         self._value_history = {}
 
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input00')
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input01')
@@ -47,22 +47,22 @@ class Node(DpgNodeABC):
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['result_width']
 
-        # スロットナンバー保持用Dict
+        # Dictionary to store slot numbers
         if tag_node_name not in self._slot_id:
             self._slot_id[tag_node_name] = 1
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # FPS表示
+            # FPS display
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -71,7 +71,7 @@ class Node(DpgNodeABC):
                     tag=tag_node_output01_value_name,
                     default_value='FPS:',
                 )
-            # 合計時間表示
+            # Total time display
             with dpg.node_attribute(
                     tag=tag_node_output02_name,
                     attribute_type=dpg.mvNode_Attr_Output,
@@ -80,7 +80,7 @@ class Node(DpgNodeABC):
                     tag=tag_node_output02_value_name,
                     default_value='Total time(ms)',
                 )
-            # スロット追加ボタン
+            # Add slot button
             with dpg.node_attribute(
                     tag=tag_node_input00_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -91,7 +91,7 @@ class Node(DpgNodeABC):
                     callback=self._add_slot,
                     user_data=tag_node_name,
                 )
-            # スロット
+            # Slot
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -116,23 +116,23 @@ class Node(DpgNodeABC):
 
         total_elapsed_time = 0
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         for source_tag, destination_tag, connection_type in self._iter_connections(
                 connection_list):
             if connection_type == self.TYPE_TIME_MS:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
 
-                # 値更新
+                # Update value
                 input_value = dpg_get_value(source_value_tag)
 
-                # 数値のみを抽出
+                # Extract numeric value only
                 input_value = re.sub(r'\D', '', input_value)
                 if input_value != '':
                     input_value = int(input_value)
 
-                    # 取得した経過時間をキューに追加
+                    # Add elapsed time to queue
                     if source_value_tag not in self._value_history:
                         self._value_history[source_value_tag] = deque(
                             maxlen=self._buffer_len)
@@ -140,17 +140,17 @@ class Node(DpgNodeABC):
                     else:
                         self._value_history[source_value_tag].append(input_value)
 
-                    # 平均処理時間
+                    # Average processing time
                     average_elapsed_time = sum(
                         self._value_history[source_value_tag]) / len(
                             self._value_history[source_value_tag])
 
-                    # FPS算出
+                    # Calculate FPS
                     fps = 0
                     if average_elapsed_time > 0:
                         fps = 1000.0 / average_elapsed_time
 
-                    # 表示テキスト生成
+                    # Generate display text
                     text = 'FPS:'
                     if fps > 1:
                         fps = int(fps)
@@ -160,13 +160,13 @@ class Node(DpgNodeABC):
                     text += ' (' + '{:.0f}'.format(input_value).zfill(
                         4) + 'ms)'
 
-                    # テキスト更新
+                    # Update text
                     dpg_set_value(destination_value_tag, text)
 
-                    # 全スロットの合計時間
+                    # Total time of all slots
                     total_elapsed_time += average_elapsed_time
 
-        # 全スロットの合計時間のFPS算出
+        # Calculate FPS from total time of all slots
         if total_elapsed_time > 0:
             fps = 1000.0 / total_elapsed_time
             text = 'FPS:'
@@ -213,11 +213,11 @@ class Node(DpgNodeABC):
         if self._max_slot_number > self._slot_id[tag_node_name]:
             self._slot_id[tag_node_name] += 1
 
-            # 挿入先タグ名生成
+            # Generate insertion destination tag name
             before_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
             before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
 
-            # 追加スロットのタグを生成
+            # Generate added slot tag
             tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
             tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
 
@@ -225,7 +225,7 @@ class Node(DpgNodeABC):
             tag_node_inputXX_value_name += str(
                 self._slot_id[tag_node_name]).zfill(2) + 'Value'
 
-            # スロット追加
+            # Add slot
             with dpg.node_attribute(
                     tag=tag_node_inputXX_name,
                     attribute_type=dpg.mvNode_Attr_Input,

@@ -32,14 +32,14 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
         tag_node_input01_value_name = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['result_width']
         small_window_h = self._opencv_setting_dict['result_height']
@@ -47,14 +47,14 @@ class Node(DpgNodeABC):
         self._default_xdata = np.linspace(0, 256 - 1, 256)
         self._default_ydata = np.linspace(0, 100, 256)
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # ヒストグラム
+            # Histogram
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -65,17 +65,17 @@ class Node(DpgNodeABC):
                         tag=tag_node_input01_value_name,
                         no_menus=True,
                 ):
-                    # 凡例
+                    # Legend
                     dpg.add_plot_legend(horizontal=True,
                                         location=dpg.mvPlot_Location_NorthEast)
-                    # x軸
+                    # X-axis
                     dpg.add_plot_axis(
                         dpg.mvXAxis,
                         tag=tag_node_input01_value_name + 'xaxis',
                     )
                     dpg.set_axis_limits(dpg.last_item(), 0, 256)
 
-                    # y軸
+                    # Y-axis
                     dpg.add_plot_axis(
                         dpg.mvYAxis,
                         tag=tag_node_input01_value_name + 'yaxis',
@@ -115,7 +115,7 @@ class Node(DpgNodeABC):
         tag_node_input01_value_name = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
 
-        # 画像取得元のノード名(ID付き)を取得する
+        # Get source node name for image (with ID)
         connection_info_src = ''
         for source_tag, _, connection_type in self._iter_connections(
                 connection_list):
@@ -124,17 +124,17 @@ class Node(DpgNodeABC):
 
             connection_info_src = self._extract_source_node_key(source_tag)
 
-        # 画像取得
+        # Get image
         frame = node_image_dict.get(connection_info_src, None)
 
-        # 各チャンネルのヒストグラム算出
+        # Calculate histogram for each channel
         result = None
         if frame is not None:
             b_histgram = cv2.calcHist([frame], [0], None, [256], [0, 256])
             g_histgram = cv2.calcHist([frame], [1], None, [256], [0, 256])
             r_histgram = cv2.calcHist([frame], [2], None, [256], [0, 256])
 
-            # ヒストグラム反映
+            # Apply histogram
             dpg_set_value(tag_node_input01_value_name + 'line_b',
                           [self._default_xdata, b_histgram.T[0]])
             dpg_set_value(tag_node_input01_value_name + 'line_g',

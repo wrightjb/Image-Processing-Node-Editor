@@ -26,17 +26,14 @@ python -m pytest --use-cv2-stub
 ```
 
 
-## Node base refactor notes / ノード基底クラス整理メモ
+## Node base refactor notes
 
 **English**
 
 - The canonical status/design notes for node base/helper refactoring are maintained in [`docs/NODE_BASE_CLASS_REFACTOR.md`](docs/NODE_BASE_CLASS_REFACTOR.md).
 
-**日本語**
 
-- ノード基底クラス/ヘルパー整理の状況と設計メモは [`docs/NODE_BASE_CLASS_REFACTOR.md`](docs/NODE_BASE_CLASS_REFACTOR.md) を参照してください。
-
-## Async update-loop safety / 非同期更新ループの安全性
+## Async update-loop safety
 
 **English**
 
@@ -45,22 +42,14 @@ python -m pytest --use-cv2-stub
 - Keep node input parsing defensive (for example, tolerate `None` / malformed values).
 - For a deeper explanation and architecture recommendations, see: [`docs/async-dpg-race-guide.md`](docs/async-dpg-race-guide.md).
 
-**日本語**
-
-- ノード削除・Import の繰り返し時は、GUI コールバックと非同期更新が競合し、DearPyGui の一時的な例外が発生することがあります。
-- `Node.update()` から到達する処理では、`dpg.get_*` を直接呼ぶより、`node_editor/util.py` のガード付きヘルパー（`dpg_get_value` / `dpg_set_value` / `dpg_get_item_children`）の利用を推奨します。
-- ノード入力値のパースは、`None` や不正値を許容する防御的な実装にしてください。
-- 詳細な背景と推奨アーキテクチャは [`docs/async-dpg-race-guide.md`](docs/async-dpg-race-guide.md) を参照してください。
 
 ---
 
-テスト実行方法:
 
 ```bash
 python -m pytest
 ```
 
-OpenCV の読み込みに失敗する環境（例: `libGL.so.1` が無い環境）では、公式の cv2 スタブを使って実行できます。
 
 ```bash
 python -m pytest --use-cv2-stub
@@ -222,7 +211,7 @@ Read the node settings(json file) output by Export<br>
 </table>
 </details>
 
-## Cache toggle and video cache behavior / キャッシュ切替と動画キャッシュ挙動
+## Cache toggle and video cache behavior
 
 **English**
 
@@ -230,11 +219,6 @@ Read the node settings(json file) output by Export<br>
 - During cache replay, node preview images are still refreshed and elapsed time now reflects cached-render cost.
 - Input video decoding itself is not cached by OpenCV in this app; the current speed depends on `VideoCapture` reads/seeks and downstream processing load.
 
-**日本語**
-
-- 宣言的プロセスノードには `Cache` チェックボックスがあります。OFF にすると、そのノードのランタイムキャッシュは次回更新以降で無効化され、保持済みエントリも削除されます。
-- キャッシュ再生中でもノードのプレビュー画像は更新され、elapsed time はキャッシュ再描画コストを表示します。
-- このアプリでは入力動画のデコード自体を OpenCV 側で明示キャッシュしていないため、実行速度は `VideoCapture` の read/seek と下流処理負荷に依存します。
 
 <details>
 <summary>Process Node</summary>

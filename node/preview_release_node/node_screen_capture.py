@@ -25,7 +25,7 @@ def screen_capture_process(image_queue, request):
             image_queue.put(frame)
         time.sleep(0.001)
 
-        # 0指定時はプロセスを終了する
+        # Exit process when set to 0
         if request.value == 0:
             break
 
@@ -56,20 +56,20 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -77,7 +77,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -87,20 +87,20 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # カメラ画像
+            # Camera image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -130,7 +130,7 @@ class Node(DpgNodeABC):
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # スクリーンキャプチャスレッド生成
+        # Create screen capture thread
         if self._process is None:
             self._image_queue = mp.Queue(maxsize=1)
             self._request = mp.Value('i', 1)
@@ -143,11 +143,11 @@ class Node(DpgNodeABC):
             )
             self._process.start()
 
-        # 計測開始
+        # Measurement start
         if use_pref_counter:
             start_time = time.perf_counter()
 
-        # 画像取得
+        # Get image
         frame = None
         if self._image_queue is not None:
             num = self._image_queue.qsize()
@@ -157,14 +157,14 @@ class Node(DpgNodeABC):
             else:
                 frame = copy.deepcopy(self._prev_frame)
 
-        # 計測終了
+        # Measurement end
         if use_pref_counter:
             elapsed_time = time.perf_counter() - start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

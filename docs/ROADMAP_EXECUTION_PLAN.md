@@ -4,7 +4,7 @@ This document consolidates the feature ideas and architecture discussions into a
 
 ---
 
-## Progress update / 進捗
+## Progress update
 
 ### Epic A canonical status
 - ✅ A1 completed: graph runtime extraction into `node_editor/graph_runtime.py`.

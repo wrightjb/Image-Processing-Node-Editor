@@ -41,7 +41,7 @@ class MediaPipeFaceMesh(object):
             for face_landmarks in results.multi_face_landmarks:
                 landmark_dict = {}
 
-                # 各キーポイント
+                # Each keypoint
                 for id, landmark in enumerate(face_landmarks.landmark):
                     x = min(int(landmark.x * image_width), image_width - 1)
                     y = min(int(landmark.y * image_height), image_height - 1)
@@ -92,26 +92,26 @@ class MediaPipeFaceMeshRefine(object):
 
 def draw_landmarks(image, results_list, score_th):
     for results in results_list:
-        # キーポイント
+        # Keypoints
         for id in range(len(results)):
             if score_th > results[id][3]:
                 continue
             landmark_x, landmark_y = results[id][0], results[id][1]
             cv.circle(image, (landmark_x, landmark_y), 1, (0, 255, 0), -1)
 
-        # 左眉毛(55：内側、46：外側)
+        # Translated from Japanese comment
         cv.line(image, results[55][:2], results[65][:2], (0, 255, 0), 2)
         cv.line(image, results[65][:2], results[52][:2], (0, 255, 0), 2)
         cv.line(image, results[52][:2], results[53][:2], (0, 255, 0), 2)
         cv.line(image, results[53][:2], results[46][:2], (0, 255, 0), 2)
 
-        # # 右眉毛(285：内側、276：外側)
+        # Translated from Japanese comment
         cv.line(image, results[285][:2], results[295][:2], (0, 255, 0), 2)
         cv.line(image, results[295][:2], results[282][:2], (0, 255, 0), 2)
         cv.line(image, results[282][:2], results[283][:2], (0, 255, 0), 2)
         cv.line(image, results[283][:2], results[276][:2], (0, 255, 0), 2)
 
-        # # 左目 (133：目頭、246：目尻)
+        # Translated from Japanese comment
         cv.line(image, results[133][:2], results[173][:2], (0, 255, 0), 2)
         cv.line(image, results[173][:2], results[157][:2], (0, 255, 0), 2)
         cv.line(image, results[157][:2], results[158][:2], (0, 255, 0), 2)
@@ -128,7 +128,7 @@ def draw_landmarks(image, results_list, score_th):
         cv.line(image, results[154][:2], results[155][:2], (0, 255, 0), 2)
         cv.line(image, results[155][:2], results[133][:2], (0, 255, 0), 2)
 
-        # # 右目 (362：目頭、466：目尻)
+        # Translated from Japanese comment
         cv.line(image, results[362][:2], results[398][:2], (0, 255, 0), 2)
         cv.line(image, results[398][:2], results[384][:2], (0, 255, 0), 2)
         cv.line(image, results[384][:2], results[385][:2], (0, 255, 0), 2)
@@ -145,7 +145,7 @@ def draw_landmarks(image, results_list, score_th):
         cv.line(image, results[381][:2], results[382][:2], (0, 255, 0), 2)
         cv.line(image, results[382][:2], results[362][:2], (0, 255, 0), 2)
 
-        # # 口 (308：右端、78：左端)
+        # Translated from Japanese comment
         cv.line(image, results[308][:2], results[415][:2], (0, 255, 0), 2)
         cv.line(image, results[415][:2], results[310][:2], (0, 255, 0), 2)
         cv.line(image, results[310][:2], results[311][:2], (0, 255, 0), 2)

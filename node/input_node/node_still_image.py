@@ -35,7 +35,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT,
                                                'Input01')
@@ -43,12 +43,12 @@ class Node(DpgNodeABC):
                                                 'Output01')
         tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -56,7 +56,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -78,14 +78,14 @@ class Node(DpgNodeABC):
                 'Image (*.bmp *.jpg *.png *.gif){.bmp,.jpg,.png,.gif}')
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # ファイル選択
+            # File selection
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -96,7 +96,7 @@ class Node(DpgNodeABC):
                     callback=lambda: dpg.show_item(
                         'image_select:' + str(node_id), ),
                 )
-            # カメラ画像
+            # Camera image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
@@ -119,17 +119,17 @@ class Node(DpgNodeABC):
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
 
-        # VideoCapture()インスタンス生成
+        # Create VideoCapture() instance
         image_path = self._image_filepath.get(str(node_id), None)
         prev_image_path = self._prev_image_filepath.get(str(node_id), None)
         if prev_image_path != image_path:
             self._image[str(node_id)] = cv2.imread(image_path)
             self._prev_image_filepath[str(node_id)] = image_path
 
-        # 画像取得
+        # Get image
         frame = self._image.get(str(node_id), None)
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

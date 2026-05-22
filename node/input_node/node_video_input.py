@@ -42,7 +42,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input01')
         tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
@@ -58,13 +58,13 @@ class Node(DpgNodeABC):
         tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['input_window_width']
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -72,7 +72,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -93,14 +93,14 @@ class Node(DpgNodeABC):
             dpg.add_file_extension('Movie (*.mp4 *.avi){.mp4,.avi}')
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # ファイル選択
+            # File selection
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -111,13 +111,13 @@ class Node(DpgNodeABC):
                     callback=lambda: dpg.show_item(
                         'movie_select:' + str(node_id), ),
                 )
-            # カメラ画像
+            # Camera image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # ループ要否
+            # Loop enabled
             with dpg.node_attribute(
                     tag=tag_node_input02_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -129,7 +129,7 @@ class Node(DpgNodeABC):
                     user_data=tag_node_name,
                     default_value=True,
                 )
-            # カーネルサイズ
+            # Kernel size
             with dpg.node_attribute(
                     tag=tag_node_input03_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -143,7 +143,7 @@ class Node(DpgNodeABC):
                     max_value=self._max_val,
                     callback=None,
                 )
-            # 再生モード
+            # Playback mode
             with dpg.node_attribute(
                     tag=tag_node_input04_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -154,7 +154,7 @@ class Node(DpgNodeABC):
                     callback=None,
                     default_value=True,
                 )
-            # キャッシュ要否(ソースノード向け)
+            # Use cache (for source nodes)
             with dpg.node_attribute(
                     tag=tag_node_input05_name,
                     attribute_type=dpg.mvNode_Attr_Static,
@@ -165,7 +165,7 @@ class Node(DpgNodeABC):
                     callback=None,
                     default_value=False,
                 )
-            # 処理時間
+            # Processing time
             if use_pref_counter:
                 with dpg.node_attribute(
                         tag=tag_node_output02_name,
@@ -197,20 +197,20 @@ class Node(DpgNodeABC):
         small_window_h = self._opencv_setting_dict['input_window_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        # 接続情報確認
+        # Check connection info
         for source_tag, destination_tag, connection_type in self._iter_connections(
                 connection_list):
             if connection_type == self.TYPE_INT:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
-                # 値更新
+                # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 input_value = max([self._min_val, input_value])
                 input_value = min([self._max_val, input_value])
                 dpg_set_value(destination_value_tag, input_value)
 
-        # VideoCapture()インスタンス生成
+        # Create VideoCapture() instance
         movie_path = self._movie_filepath.get(str(node_id), None)
         prev_movie_path = self._prev_movie_filepath.get(str(node_id), None)
         if prev_movie_path != movie_path:
@@ -226,19 +226,19 @@ class Node(DpgNodeABC):
 
         video_capture = self._video_capture.get(str(node_id), None)
 
-        # ループ要否
+        # Loop enabled
         loop_flag = dpg_get_value(tag_node_input02_value_name)
-        # スキップ割合
+        # Skip ratio
         skip_rate = int(dpg_get_value(tag_node_input03_value_name))
         natural_fps_mode = bool(dpg_get_value(tag_node_input04_value_name))
         cache_source = bool(dpg_get_value(tag_node_input05_value_name))
 
-        # 計測開始
+        # Measurement start
         decode_start_time = None
         if video_capture is not None and use_pref_counter:
             decode_start_time = time.perf_counter()
 
-        # 画像取得
+        # Get image
         frame = None
         if video_capture is not None:
             total_frame = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -292,14 +292,14 @@ class Node(DpgNodeABC):
                 )
                 self._last_output_frame[str(node_id)] = frame.copy()
 
-        # 計測終了
+        # Measurement end
         if video_capture is not None and use_pref_counter and decode_start_time is not None:
             elapsed_time = time.perf_counter() - decode_start_time
             elapsed_time = int(elapsed_time * 1000)
             dpg_set_value(output_value02_tag,
                           str(elapsed_time).zfill(4) + 'ms')
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

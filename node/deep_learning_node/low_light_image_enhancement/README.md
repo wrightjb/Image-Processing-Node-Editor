@@ -1,5 +1,5 @@
 # Low-Light Image Enhancement
-| モデル名 | 取得元リポジトリ | ライセンス | 備考 |
+| Model | Source repository | License | Notes |
 | :--- | :--- | :--- | :--- |
 | AGLLNet | [PINTO0309/PINTO_model_zoo/200_AGLLNet](https://github.com/PINTO0309/PINTO_model_zoo/tree/main/200_AGLLNet) | MIT | - |
 | SCI | [PINTO0309/PINTO_model_zoo/286_SCI](https://github.com/PINTO0309/PINTO_model_zoo/tree/main/286_SCI) | MIT | - |

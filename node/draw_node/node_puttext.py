@@ -68,7 +68,7 @@ class Node(DpgNodeABC):
         opencv_setting_dict=None,
         callback=None,
     ):
-        # タグ名
+        # Tag names
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
         tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
@@ -81,12 +81,12 @@ class Node(DpgNodeABC):
 
         tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
-        # OpenCV向け設定
+        # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
 
-        # 初期化用黒画像
+        # Black image for initialization
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -94,7 +94,7 @@ class Node(DpgNodeABC):
             small_window_h,
         )
 
-        # テクスチャ登録
+        # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
                 small_window_w,
@@ -104,14 +104,14 @@ class Node(DpgNodeABC):
                 format=dpg.mvFormat_Float_rgb,
             )
 
-        # ノード
+        # Node
         with dpg.node(
                 tag=tag_node_name,
                 parent=parent,
                 label=self.node_label,
                 pos=pos,
         ):
-            # 入力端子
+            # Input port
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -120,13 +120,13 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_value_name,
                     default_value='Input BGR image',
                 )
-            # 画像
+            # Image
             with dpg.node_attribute(
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
                 dpg.add_image(tag_node_output01_value_name)
-            # 文字入力欄
+            # Text input field
             with dpg.node_attribute(
                     tag=tag_node_input02_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -143,7 +143,7 @@ class Node(DpgNodeABC):
                         no_inputs=True,
                         no_alpha=True,
                     )
-            # 処理時間入力
+            # Processing time input
             with dpg.node_attribute(
                     tag=tag_node_input03_name,
                     attribute_type=dpg.mvNode_Attr_Input,
@@ -173,40 +173,40 @@ class Node(DpgNodeABC):
         small_window_h = self._opencv_setting_dict['process_height']
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
-        # 接続情報確認
+        # Check connection info
         node_name = ''
         connection_info_src = ''
         connect_elapsed_time_flag = False
         for source_tag, destination_tag, connection_type in self._iter_connections(
                 connection_list):
             if connection_type == self.TYPE_TEXT:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
-                # 値更新
+                # Update value
                 input_value = dpg_get_value(source_value_tag)
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_TIME_MS:
-                # 接続タグ取得
+                # Get connection tag
                 source_value_tag = self._value_tag(source_tag)
                 destination_value_tag = self._value_tag(destination_tag)
-                # 値更新
+                # Update value
                 input_value = dpg_get_value(source_value_tag)
                 dpg_set_value(destination_value_tag, input_value)
 
                 connect_elapsed_time_flag = True
             if connection_type == self.TYPE_IMAGE:
-                # 画像取得元のノード名(ID付き)を取得
+                # Get source node name for image (with ID)
                 connection_info_src = self._extract_source_node_key(source_tag)
                 node_name = connection_info_src.split(':')[1]
 
-        # 画像取得
+        # Get image
         frame = node_image_dict.get(connection_info_src, None)
         if draw_info_on_result and connection_info_src != '':
             node_result = node_result_dict[connection_info_src]
             frame = draw_info(node_name, node_result, frame)
 
-        # テキスト、色、経過時間
+        # Text, color, and elapsed time
         text = dpg_get_value(input_value02_tag)
         color = dpg_get_value(tag_color_edit_value_name)[:3]
         color = (
@@ -221,7 +221,7 @@ class Node(DpgNodeABC):
         if frame is not None:
             frame = image_process(frame, text, elapsed_time_text, color)
 
-        # 描画
+        # Draw
         if frame is not None:
             texture = convert_cv_to_dpg(
                 frame,

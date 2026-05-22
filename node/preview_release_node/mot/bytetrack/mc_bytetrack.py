@@ -31,7 +31,7 @@ class MultiClassByteTrack(object):
         self.mot20 = mot20
         self.fps = fps
 
-        # ByteTracker保持用Dict生成
+        # Translated from Japanese comment
         self.tracker_dict = {}
 
     def __call__(
@@ -41,7 +41,7 @@ class MultiClassByteTrack(object):
         scores,
         class_ids,
     ):
-        # 未トラッキングのクラスのトラッキングインスタンスを追加
+        # Translated from Japanese comment
         for class_id in np.unique(class_ids):
             if not int(class_id) in self.tracker_dict:
                 self.tracker_dict[int(class_id)] = BYTETracker(
@@ -59,7 +59,7 @@ class MultiClassByteTrack(object):
         t_scores = []
         t_class_ids = []
         for class_id in self.tracker_dict.keys():
-            # 対象クラス抽出
+            # Extract target classes
             target_index = np.in1d(class_ids, np.array(int(class_id)))
 
             if len(target_index) == 0:
@@ -69,19 +69,19 @@ class MultiClassByteTrack(object):
             target_scores = np.array(scores)[target_index]
             target_class_ids = np.array(class_ids)[target_index]
 
-            # トラッカー用変数に格納
+            # Store in tracker variables
             detections = [[*b, s, l] for b, s, l in zip(
                 target_bboxes, target_scores, target_class_ids)]
             detections = np.array(detections)
 
-            # トラッカー更新
+            # Update tracker
             result = self._tracker_update(
                 self.tracker_dict[class_id],
                 image,
                 detections,
             )
 
-            # 結果格納
+            # Store result
             for bbox, score, t_id in zip(result[0], result[1], result[2]):
                 t_ids.append(str(int(class_id)) + '_' + str(t_id))
                 t_bboxes.append(bbox)

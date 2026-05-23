@@ -12,6 +12,7 @@ from node_editor.util import (
     dpg_get_value,
     dpg_set_value,
     get_aspect_fit_size,
+    get_size_by_long_edge,
 )
 
 
@@ -302,7 +303,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
         result_large_long_edge = int(self._opencv_setting_dict['result_width']) * 2
         default_width = result_large_long_edge
-        default_height = result_large_long_edge
+        default_height = int(round(result_large_long_edge * 9 / 16))
         pinned_pos = self._get_pinned_window_pos(node_id, node_tag)
 
         with dpg.window(
@@ -335,6 +336,22 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         frame_height, frame_width = frame.shape[:2]
         aspect = frame_width / max(1, frame_height)
         self._preview_aspect_by_node[node_key] = aspect
+
+        default_window_size = (
+            int(self._opencv_setting_dict['result_width']) * 2,
+            int(round(int(self._opencv_setting_dict['result_width']) * 2 * 9 / 16)),
+        )
+        if self._preview_window_size_by_node.get(node_key) == default_window_size:
+            long_edge = int(self._opencv_setting_dict['result_width']) * 2
+            init_w, init_h = get_size_by_long_edge(frame_width, frame_height, long_edge)
+            viewport_w = int(max(320, dpg.get_viewport_client_width() - 80))
+            viewport_h = int(max(240, dpg.get_viewport_client_height() - 80))
+            scale = min(1.0, viewport_w / max(1, init_w), viewport_h / max(1, init_h))
+            init_w = max(160, int(round(init_w * scale)))
+            init_h = max(120, int(round(init_h * scale)))
+            dpg.configure_item(window_tag, width=init_w + 16, height=init_h + 40)
+            self._preview_window_size_by_node[node_key] = (init_w + 16, init_h + 40)
+
         window_width = int(max(160, dpg.get_item_width(window_tag)))
         expected_height = int(round(window_width / max(0.01, aspect))) + 32
         window_height = int(max(120, dpg.get_item_height(window_tag)))
@@ -388,14 +405,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             dpg.delete_item(window_tag)
 
     def _get_pinned_window_pos(self, node_id, node_tag):
-        node_pos = dpg.get_item_pos(node_tag)
-        node_key = str(node_id)
-        parent_tag = self._preview_parent_tag_by_node.get(node_key)
-        if parent_tag and dpg.does_item_exist(parent_tag):
-            parent_pos = dpg.get_item_rect_min(parent_tag)
-        else:
-            parent_pos = [0, 0]
-        return [int(parent_pos[0] + node_pos[0] + 320), int(parent_pos[1] + node_pos[1])]
+        node_min = dpg.get_item_rect_min(node_tag)
+        node_width = dpg.get_item_width(node_tag)
+        return [int(node_min[0] + node_width + 16), int(node_min[1])]
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

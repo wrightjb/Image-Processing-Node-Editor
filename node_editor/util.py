@@ -16,6 +16,33 @@ def convert_cv_to_dpg(image, width, height):
 
     return texture_data
 
+
+def get_aspect_fit_size(src_width, src_height, max_width, max_height):
+    src_width = int(max(1, src_width))
+    src_height = int(max(1, src_height))
+    max_width = int(max(1, max_width))
+    max_height = int(max(1, max_height))
+
+    scale = min(max_width / src_width, max_height / src_height)
+    fit_width = max(1, int(round(src_width * scale)))
+    fit_height = max(1, int(round(src_height * scale)))
+    return fit_width, fit_height
+
+
+def get_size_by_long_edge(src_width, src_height, long_edge):
+    src_width = int(max(1, src_width))
+    src_height = int(max(1, src_height))
+    long_edge = int(max(1, long_edge))
+
+    if src_width >= src_height:
+        width = long_edge
+        height = max(1, int(round(src_height * (long_edge / src_width))))
+    else:
+        height = long_edge
+        width = max(1, int(round(src_width * (long_edge / src_height))))
+
+    return width, height
+
 def check_camera_connection(max_device_count=4, is_debug=False):
     device_no_list = []
 

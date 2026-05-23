@@ -7,7 +7,12 @@ import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.node_abc import DpgNodeABC
-from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
+from node_editor.util import (
+    convert_cv_to_dpg,
+    dpg_get_value,
+    dpg_set_value,
+    get_size_by_long_edge,
+)
 
 
 class DeclarativeImageProcessNodeBase(DpgNodeABC):
@@ -18,7 +23,12 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     parameters = []
     show_elapsed_time = True
     _cache_toggle_setting_key = '__cache_enabled__'
+    _preview_toggle_setting_key = '__preview_enabled__'
     _cache_enabled_by_node = {}
+    _preview_enabled_by_node = {}
+    _preview_window_tag_by_node = {}
+    _preview_texture_tag_by_node = {}
+    _preview_size_by_node = {}
 
     def add_node(
         self,
@@ -74,7 +84,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 tag=output_image_tag,
                 attribute_type=dpg.mvNode_Attr_Output,
             ):
-                dpg.add_image(output_image_value_tag)
+                dpg.add_text(default_value='Preview in popout window')
 
             for parameter in self.parameters:
                 self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
@@ -99,6 +109,14 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 )
                 self._cache_enabled_by_node[str(node_id)] = True
 
+                dpg.add_checkbox(
+                    label='Preview',
+                    default_value=False,
+                    callback=self._on_preview_toggle,
+                    user_data={'node_id': node_id, 'node_tag': tag_node_name},
+                )
+                self._preview_enabled_by_node[str(node_id)] = False
+
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
                     tag=elapsed_tag,
@@ -122,11 +140,11 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         del node_result_dict
 
         tag_node_name = self._node_name(node_id)
-        output_image_value_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
-        )
         elapsed_value_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
+        )
+        output_image_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
         )
 
         small_window_w = self._opencv_setting_dict['process_width']
@@ -160,6 +178,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         if frame is not None:
             texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
             dpg_set_value(output_image_value_tag, texture)
+            self._render_preview_window(node_id, tag_node_name, frame)
 
         return frame, result
 
@@ -180,6 +199,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
         texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
         dpg_set_value(output_image_value_tag, texture)
+        self._render_preview_window(node_id, tag_node_name, frame)
         if self.show_elapsed_time and use_pref_counter:
             elapsed_time = int((time.perf_counter() - start_time) * 1000)
             dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
@@ -205,6 +225,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         setting_dict[self._cache_toggle_setting_key] = bool(
             self._cache_enabled_by_node.get(str(node_id), True)
         )
+        setting_dict[self._preview_toggle_setting_key] = bool(
+            self._preview_enabled_by_node.get(str(node_id), False)
+        )
 
         return setting_dict
 
@@ -228,6 +251,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         cache_enabled = bool(setting_dict.get(self._cache_toggle_setting_key, True))
         self._cache_enabled_by_node[str(node_id)] = cache_enabled
         dpg_set_value(cache_toggle_value_tag, cache_enabled)
+        self._preview_enabled_by_node[str(node_id)] = bool(
+            setting_dict.get(self._preview_toggle_setting_key, False)
+        )
 
         self.on_settings_applied(tag_node_name)
 
@@ -250,6 +276,98 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     def _on_cache_toggle(self, sender, app_data, user_data):
         del sender
         self._cache_enabled_by_node[str(user_data)] = bool(app_data)
+
+    def _on_preview_toggle(self, sender, app_data, user_data):
+        del sender
+        node_id = user_data['node_id']
+        node_tag = user_data['node_tag']
+        node_key = str(node_id)
+        enabled = bool(app_data)
+        self._preview_enabled_by_node[node_key] = enabled
+        if not enabled:
+            self._close_preview_window(node_id)
+            return
+        self._ensure_preview_window(node_id, node_tag)
+
+    def _ensure_preview_window(self, node_id, node_tag):
+        node_key = str(node_id)
+        window_tag = f'{node_tag}:PreviewWindow'
+        if dpg.does_item_exist(window_tag):
+            self._preview_window_tag_by_node[node_key] = window_tag
+            return window_tag
+
+        result_large_long_edge = int(self._opencv_setting_dict['result_width']) * 2
+        default_width = result_large_long_edge
+        default_height = result_large_long_edge
+        node_pos = dpg.get_item_pos(node_tag)
+
+        with dpg.window(
+            tag=window_tag,
+            label=f'Preview: {self.node_label} ({node_id})',
+            pos=[int(node_pos[0] + 320), int(node_pos[1])],
+            width=default_width,
+            height=default_height,
+            no_scrollbar=True,
+        ):
+            dpg.add_text(default_value='Waiting for frame...')
+
+        self._preview_window_tag_by_node[node_key] = window_tag
+        self._preview_size_by_node[node_key] = (default_width, default_height)
+        return window_tag
+
+    def _render_preview_window(self, node_id, node_tag, frame):
+        node_key = str(node_id)
+        if not self._preview_enabled_by_node.get(node_key, False):
+            return
+
+        window_tag = self._ensure_preview_window(node_id, node_tag)
+        if not dpg.does_item_exist(window_tag):
+            return
+
+        node_pos = dpg.get_item_pos(node_tag)
+        dpg.configure_item(window_tag, pos=[int(node_pos[0] + 320), int(node_pos[1])])
+
+        frame_height, frame_width = frame.shape[:2]
+        content_width = int(max(1, dpg.get_item_width(window_tag) - 16))
+        content_height = int(max(1, dpg.get_item_height(window_tag) - 40))
+        fit_width, fit_height = get_size_by_long_edge(
+            frame_width,
+            frame_height,
+            min(content_width, content_height, int(self._opencv_setting_dict['result_width']) * 2),
+        )
+
+        prev_size = self._preview_size_by_node.get(node_key)
+        texture_tag = self._preview_texture_tag_by_node.get(node_key)
+        if prev_size != (fit_width, fit_height) or not texture_tag or not dpg.does_item_exist(texture_tag):
+            texture_tag = f'{window_tag}:Texture'
+            if dpg.does_item_exist(texture_tag):
+                dpg.delete_item(texture_tag)
+            texture_data = convert_cv_to_dpg(frame, fit_width, fit_height)
+            with dpg.texture_registry(show=False):
+                dpg.add_raw_texture(
+                    fit_width,
+                    fit_height,
+                    texture_data,
+                    tag=texture_tag,
+                    format=dpg.mvFormat_Float_rgb,
+                )
+            dpg.delete_item(window_tag, children_only=True)
+            dpg.add_image(texture_tag, parent=window_tag)
+            self._preview_texture_tag_by_node[node_key] = texture_tag
+            self._preview_size_by_node[node_key] = (fit_width, fit_height)
+        else:
+            texture_data = convert_cv_to_dpg(frame, fit_width, fit_height)
+            dpg_set_value(texture_tag, texture_data)
+
+    def _close_preview_window(self, node_id):
+        node_key = str(node_id)
+        window_tag = self._preview_window_tag_by_node.pop(node_key, None)
+        texture_tag = self._preview_texture_tag_by_node.pop(node_key, None)
+        self._preview_size_by_node.pop(node_key, None)
+        if texture_tag and dpg.does_item_exist(texture_tag):
+            dpg.delete_item(texture_tag)
+        if window_tag and dpg.does_item_exist(window_tag):
+            dpg.delete_item(window_tag)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

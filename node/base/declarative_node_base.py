@@ -33,6 +33,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     _preview_parent_tag_by_node = {}
     _preview_aspect_by_node = {}
     _preview_window_size_by_node = {}
+    _preview_last_node_rect_by_node = {}
 
     def add_node(
         self,
@@ -319,6 +320,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         self._preview_window_tag_by_node[node_key] = window_tag
         self._preview_size_by_node[node_key] = (default_width, default_height)
         self._preview_window_size_by_node[node_key] = (default_width, default_height)
+        self._preview_last_node_rect_by_node[node_key] = self._get_node_rect(node_tag)
         return window_tag
 
     def _render_preview_window(self, node_id, node_tag, frame):
@@ -330,8 +332,12 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         if not dpg.does_item_exist(window_tag):
             return
 
-        pinned_pos = self._get_pinned_window_pos(node_id, node_tag)
-        dpg.configure_item(window_tag, pos=pinned_pos)
+        current_rect = self._get_node_rect(node_tag)
+        prev_rect = self._preview_last_node_rect_by_node.get(node_key)
+        if prev_rect != current_rect:
+            pinned_pos = self._get_pinned_window_pos(node_id, node_tag)
+            dpg.configure_item(window_tag, pos=pinned_pos)
+            self._preview_last_node_rect_by_node[node_key] = current_rect
 
         frame_height, frame_width = frame.shape[:2]
         aspect = frame_width / max(1, frame_height)
@@ -352,9 +358,10 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             dpg.configure_item(window_tag, width=init_w + 16, height=init_h + 40)
             self._preview_window_size_by_node[node_key] = (init_w + 16, init_h + 40)
 
-        window_width = int(max(160, dpg.get_item_width(window_tag)))
+        window_rect_size = dpg.get_item_rect_size(window_tag)
+        window_width = int(max(160, window_rect_size[0]))
         expected_height = int(round(window_width / max(0.01, aspect))) + 32
-        window_height = int(max(120, dpg.get_item_height(window_tag)))
+        window_height = int(max(120, window_rect_size[1]))
         if abs(window_height - expected_height) > 1:
             dpg.configure_item(window_tag, height=expected_height)
             window_height = expected_height
@@ -399,15 +406,21 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         self._preview_size_by_node.pop(node_key, None)
         self._preview_aspect_by_node.pop(node_key, None)
         self._preview_window_size_by_node.pop(node_key, None)
+        self._preview_last_node_rect_by_node.pop(node_key, None)
         if texture_tag and dpg.does_item_exist(texture_tag):
             dpg.delete_item(texture_tag)
         if window_tag and dpg.does_item_exist(window_tag):
             dpg.delete_item(window_tag)
 
     def _get_pinned_window_pos(self, node_id, node_tag):
+        del node_id
+        node_min, node_max = self._get_node_rect(node_tag)
+        return [int(node_max[0] + 16), int(node_min[1])]
+
+    def _get_node_rect(self, node_tag):
         node_min = dpg.get_item_rect_min(node_tag)
-        node_width = dpg.get_item_width(node_tag)
-        return [int(node_min[0] + node_width + 16), int(node_min[1])]
+        node_max = dpg.get_item_rect_max(node_tag)
+        return node_min, node_max
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

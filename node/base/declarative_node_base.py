@@ -18,7 +18,12 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     parameters = []
     show_elapsed_time = True
     _cache_toggle_setting_key = '__cache_enabled__'
+    _result_image_toggle_setting_key = '__result_image_enabled__'
+    _result_large_image_toggle_setting_key = '__result_large_image_enabled__'
     _cache_enabled_by_node = {}
+    _result_image_enabled_by_node = {}
+    _result_large_image_enabled_by_node = {}
+    _ui_callback = None
 
     def add_node(
         self,
@@ -37,8 +42,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         elapsed_value_tag = self._value_tag(elapsed_tag)
         cache_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
         cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
+        result_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImage')
+        result_image_toggle_value_tag = self._value_tag(result_image_toggle_tag)
+        result_large_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImageLarge')
+        result_large_image_toggle_value_tag = self._value_tag(result_large_image_toggle_tag)
 
         self._opencv_setting_dict = opencv_setting_dict
+        self._ui_callback = callback
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
@@ -74,7 +84,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 tag=output_image_tag,
                 attribute_type=dpg.mvNode_Attr_Output,
             ):
-                dpg.add_image(output_image_value_tag)
+                pass
 
             for parameter in self.parameters:
                 self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
@@ -98,6 +108,32 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     user_data=node_id,
                 )
                 self._cache_enabled_by_node[str(node_id)] = True
+
+            with dpg.node_attribute(
+                tag=result_image_toggle_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Result Image',
+                    tag=result_image_toggle_value_tag,
+                    default_value=False,
+                    callback=self._on_result_image_toggle,
+                    user_data=node_id,
+                )
+                self._result_image_enabled_by_node[str(node_id)] = False
+
+            with dpg.node_attribute(
+                tag=result_large_image_toggle_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Result Image(Large)',
+                    tag=result_large_image_toggle_value_tag,
+                    default_value=False,
+                    callback=self._on_result_large_image_toggle,
+                    user_data=node_id,
+                )
+                self._result_large_image_enabled_by_node[str(node_id)] = False
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -205,6 +241,12 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         setting_dict[self._cache_toggle_setting_key] = bool(
             self._cache_enabled_by_node.get(str(node_id), True)
         )
+        setting_dict[self._result_image_toggle_setting_key] = bool(
+            self._result_image_enabled_by_node.get(str(node_id), False)
+        )
+        setting_dict[self._result_large_image_toggle_setting_key] = bool(
+            self._result_large_image_enabled_by_node.get(str(node_id), False)
+        )
 
         return setting_dict
 
@@ -225,9 +267,29 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         cache_toggle_value_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
         )
+        result_image_toggle_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImage')
+        )
+        result_large_image_toggle_value_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImageLarge')
+        )
         cache_enabled = bool(setting_dict.get(self._cache_toggle_setting_key, True))
+        result_image_enabled = bool(
+            setting_dict.get(self._result_image_toggle_setting_key, False)
+        )
+        result_large_image_enabled = bool(
+            setting_dict.get(self._result_large_image_toggle_setting_key, False)
+        )
         self._cache_enabled_by_node[str(node_id)] = cache_enabled
+        self._result_image_enabled_by_node[str(node_id)] = result_image_enabled
+        self._result_large_image_enabled_by_node[str(node_id)] = result_large_image_enabled
         dpg_set_value(cache_toggle_value_tag, cache_enabled)
+        dpg_set_value(result_image_toggle_value_tag, result_image_enabled)
+        dpg_set_value(result_large_image_toggle_value_tag, result_large_image_enabled)
+        self._emit_result_node_toggle(node_id, 'ResultImage', result_image_enabled)
+        self._emit_result_node_toggle(
+            node_id, 'ResultImageLarge', result_large_image_enabled
+        )
 
         self.on_settings_applied(tag_node_name)
 
@@ -250,6 +312,30 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     def _on_cache_toggle(self, sender, app_data, user_data):
         del sender
         self._cache_enabled_by_node[str(user_data)] = bool(app_data)
+
+    def _on_result_image_toggle(self, sender, app_data, user_data):
+        del sender
+        enabled = bool(app_data)
+        self._result_image_enabled_by_node[str(user_data)] = enabled
+        self._emit_result_node_toggle(user_data, 'ResultImage', enabled)
+
+    def _on_result_large_image_toggle(self, sender, app_data, user_data):
+        del sender
+        enabled = bool(app_data)
+        self._result_large_image_enabled_by_node[str(user_data)] = enabled
+        self._emit_result_node_toggle(user_data, 'ResultImageLarge', enabled)
+
+    def _emit_result_node_toggle(self, node_id, result_node_tag, enabled):
+        if self._ui_callback is None:
+            return
+        self._ui_callback(
+            'toggle_result_node',
+            {
+                'source_node_id_name': self._node_name(node_id),
+                'result_node_tag': result_node_tag,
+                'enabled': bool(enabled),
+            },
+        )
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

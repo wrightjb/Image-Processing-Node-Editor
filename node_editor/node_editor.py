@@ -315,6 +315,7 @@ class DpgNodeEditor(object):
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
+            callback=self._cntrl_node_callback,
         )
 
     def _vw_add_link(self, source, destination):
@@ -431,6 +432,77 @@ class DpgNodeEditor(object):
             print(f'\tuser_data       : {user_data}')
             print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
+
+    def _cntrl_node_callback(self, event_name, data):
+        if event_name == 'toggle_result_node':
+            if not isinstance(data, dict):
+                return
+            self._cntrl_toggle_result_node(
+                str(data.get('source_node_id_name', '')),
+                str(data.get('result_node_tag', '')),
+                bool(data.get('enabled', False)),
+            )
+
+    def _cntrl_toggle_result_node(
+        self,
+        source_node_id_name,
+        result_node_tag,
+        enabled,
+    ):
+        if ':' not in source_node_id_name:
+            return
+        if result_node_tag not in self._node_instance_list:
+            return
+
+        source_output_tag = self._cntrl_find_node_port(
+            source_node_id_name, 'Image', 'Output'
+        )
+        if source_output_tag is None:
+            return
+
+        existing_result_node = self._cntrl_find_linked_result_node(
+            source_node_id_name,
+            result_node_tag,
+        )
+        if enabled:
+            if existing_result_node is not None:
+                return
+            source_pos = dpg.get_item_pos(source_node_id_name)
+            new_id, new_node_id_name = self._mdl_add_node(result_node_tag)
+            result_pos = [source_pos[0] + 260, source_pos[1]]
+            self._vw_add_node(result_node_tag, new_id, result_pos)
+            self._node_list.append(new_node_id_name)
+            result_input_tag = self._cntrl_find_node_port(
+                new_node_id_name, 'Image', 'Input'
+            )
+            if result_input_tag is None:
+                self._mdl_delete_node(new_node_id_name)
+                self._vw_delete_item(new_node_id_name)
+                return
+            if self._mdl_add_link(source_output_tag, result_input_tag):
+                link_dpg_id = self._vw_add_link(source_output_tag, result_input_tag)
+                self._vw_register_link(source_output_tag, result_input_tag, link_dpg_id)
+            self._mdl_sort_node_graph()
+        else:
+            if existing_result_node is None:
+                return
+            self._mdl_delete_node(existing_result_node)
+            self._vw_delete_links_for_node(existing_result_node)
+            self._vw_delete_item(existing_result_node)
+
+    def _cntrl_find_linked_result_node(self, source_node_id_name, result_node_tag):
+        source_output_tag = self._cntrl_find_node_port(
+            source_node_id_name, 'Image', 'Output'
+        )
+        if source_output_tag is None:
+            return None
+        for source_tag, dest_tag in self._node_link_list:
+            if source_tag != source_output_tag:
+                continue
+            dest_node_id_name = ':'.join(dest_tag.split(':')[:2])
+            if dest_node_id_name.endswith(f':{result_node_tag}'):
+                return dest_node_id_name
+        return None
 
     def _cntrl_get_link_from_dpg_id(self, link_dpg_id):
         link_dpg_config = dpg.get_item_configuration(link_dpg_id)

@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_value, dpg_set_value
+from node_editor.util import dpg_set_value
 
 from node.node_abc import DpgNodeABC
 from node_editor.util import convert_cv_to_dpg
@@ -15,42 +15,67 @@ from node.draw_node.draw_util.draw_util import draw_info
 
 
 def create_concat_image(frame_dict, slot_num):
+    def hconcat_top(images):
+        max_h = max(image.shape[0] for image in images)
+        padded = []
+        for image in images:
+            h, w = image.shape[:2]
+            canvas = np.zeros((max_h, w, 3), dtype=np.uint8)
+            canvas[0:h, 0:w] = image
+            padded.append(canvas)
+        return cv2.hconcat(padded)
+
+    def vconcat_left(images):
+        max_w = max(image.shape[1] for image in images)
+        padded = []
+        for image in images:
+            h, w = image.shape[:2]
+            canvas = np.zeros((h, max_w, 3), dtype=np.uint8)
+            canvas[0:h, 0:w] = image
+            padded.append(canvas)
+        return cv2.vconcat(padded)
+
     if slot_num == 1:
         frame = frame_dict[0]
         display_frame = copy.deepcopy(frame)
     elif slot_num == 2:
-        frame = cv2.hconcat([frame_dict[0], frame_dict[1]])
-
-        bg_image = np.zeros(
-            (frame.shape[0] * 2, frame.shape[1], 3)).astype(np.uint8)
-        bg_image[int(frame.shape[0] / 2):int(frame.shape[0] / 2) +
-                 frame.shape[0], 0:frame.shape[1]] = frame
-
-        display_frame = copy.deepcopy(bg_image)
+        frame = hconcat_top([frame_dict[0], frame_dict[1]])
+        display_frame = copy.deepcopy(frame)
     elif slot_num == 3 or slot_num == 4:
-        hconcat_image01 = cv2.hconcat([frame_dict[0], frame_dict[1]])
-        hconcat_image02 = cv2.hconcat([frame_dict[2], frame_dict[3]])
-        frame = cv2.vconcat([hconcat_image01, hconcat_image02])
+        hconcat_image01 = hconcat_top([frame_dict[0], frame_dict[1]])
+        hconcat_image02 = hconcat_top([frame_dict[2], frame_dict[3]])
+        frame = vconcat_left([hconcat_image01, hconcat_image02])
         display_frame = copy.deepcopy(frame)
     elif slot_num == 5 or slot_num == 6:
-        hconcat_image01 = cv2.hconcat([frame_dict[0], frame_dict[1]])
-        hconcat_image01 = cv2.hconcat([hconcat_image01, frame_dict[2]])
-        hconcat_image02 = cv2.hconcat([frame_dict[3], frame_dict[4]])
-        hconcat_image02 = cv2.hconcat([hconcat_image02, frame_dict[5]])
-        frame = cv2.vconcat([hconcat_image01, hconcat_image02])
+        hconcat_image01 = hconcat_top([frame_dict[0], frame_dict[1], frame_dict[2]])
+        hconcat_image02 = hconcat_top([frame_dict[3], frame_dict[4], frame_dict[5]])
+        frame = vconcat_left([hconcat_image01, hconcat_image02])
         display_frame = copy.deepcopy(frame)
     elif slot_num == 7 or slot_num == 8 or slot_num == 9:
-        hconcat_image01 = cv2.hconcat([frame_dict[0], frame_dict[1]])
-        hconcat_image01 = cv2.hconcat([hconcat_image01, frame_dict[2]])
-        hconcat_image02 = cv2.hconcat([frame_dict[3], frame_dict[4]])
-        hconcat_image02 = cv2.hconcat([hconcat_image02, frame_dict[5]])
-        hconcat_image03 = cv2.hconcat([frame_dict[6], frame_dict[7]])
-        hconcat_image03 = cv2.hconcat([hconcat_image03, frame_dict[8]])
-        vconcat_image = cv2.vconcat([hconcat_image01, hconcat_image02])
-        frame = cv2.vconcat([vconcat_image, hconcat_image03])
+        hconcat_image01 = hconcat_top([frame_dict[0], frame_dict[1], frame_dict[2]])
+        hconcat_image02 = hconcat_top([frame_dict[3], frame_dict[4], frame_dict[5]])
+        hconcat_image03 = hconcat_top([frame_dict[6], frame_dict[7], frame_dict[8]])
+        frame = vconcat_left([hconcat_image01, hconcat_image02, hconcat_image03])
         display_frame = copy.deepcopy(frame)
 
     return frame, display_frame
+
+
+def resize_with_aspect_and_pad(frame, resize_width, resize_height):
+    image_h, image_w = frame.shape[:2]
+    if image_w <= 0 or image_h <= 0:
+        return np.zeros((resize_height, resize_width, 3), dtype=np.uint8)
+
+    scale = min(resize_width / float(image_w), resize_height / float(image_h))
+    width = max(1, int(round(image_w * scale)))
+    height = max(1, int(round(image_h * scale)))
+    resized = cv2.resize(frame, (width, height))
+
+    canvas = np.zeros((resize_height, resize_width, 3), dtype=np.uint8)
+    offset_x = (resize_width - width) // 2
+    offset_y = (resize_height - height) // 2
+    canvas[offset_y:offset_y + height, offset_x:offset_x + width] = resized
+    return canvas
 
 
 def create_image_dict(
@@ -77,7 +102,7 @@ def create_image_dict(
                 node_result = node_result_dict[node_id_name]
                 image_node_name = node_id_name.split(':')[1]
                 frame = draw_info(image_node_name, node_result, frame)
-            resize_frame = cv2.resize(frame, (resize_width, resize_height))
+            resize_frame = frame
             frame_dict[slot_num - index - 1] = copy.deepcopy(resize_frame)
 
             frame_exist_flag = True
@@ -166,7 +191,9 @@ class Node(DpgNodeABC):
                     tag=tag_node_output01_name,
                     attribute_type=dpg.mvNode_Attr_Output,
             ):
-                dpg.add_image(tag_node_output01_value_name)
+                dpg.add_image(
+                    tag_node_output01_value_name,
+                )
             # Add slot button
             with dpg.node_attribute(
                     tag=tag_node_input00_name,
@@ -199,7 +226,6 @@ class Node(DpgNodeABC):
     ):
         tag_node_name = self._node_name(node_id)
         output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         resize_width = self._opencv_setting_dict['result_width']
@@ -207,7 +233,6 @@ class Node(DpgNodeABC):
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
         # Get source node name for image (with ID)
-        node_name_dict = {}
         connection_info_src = ''
         connection_info_src_dict = {}
         for source_tag, destination_tag, connection_type in self._iter_connections(
@@ -223,7 +248,6 @@ class Node(DpgNodeABC):
                 connection_info_src = self._extract_source_node_key(source_tag)
                 node_name = connection_info_src.split(':')[1]
 
-                node_name_dict[slot_number] = node_name
                 connection_info_src_dict[slot_number] = connection_info_src
 
         slot_num = self._slot_id[tag_node_name]
@@ -250,8 +274,13 @@ class Node(DpgNodeABC):
 
         # Draw
         if display_frame is not None:
-            texture = convert_cv_to_dpg(
+            preview_frame = resize_with_aspect_and_pad(
                 display_frame,
+                small_window_w,
+                small_window_h,
+            )
+            texture = convert_cv_to_dpg(
+                preview_frame,
                 small_window_w,
                 small_window_h,
             )

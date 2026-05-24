@@ -3,7 +3,7 @@
 import numpy as np
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_value, dpg_set_value
+from node_editor.util import dpg_set_value
 
 from node.node_abc import DpgNodeABC
 from node_editor.util import convert_cv_to_dpg
@@ -19,7 +19,23 @@ class Node(DpgNodeABC):
     _opencv_setting_dict = None
 
     def __init__(self):
-        pass
+        self._display_size_dict = {}
+        self._current_texture_tag_dict = {}
+        self._texture_tags_dict = {}
+
+    def _compute_display_size(self, frame, max_size):
+        image_h, image_w = frame.shape[:2]
+        max_size = max(1, int(max_size))
+        if image_w <= 0 or image_h <= 0:
+            return max_size, max_size
+
+        scale = max_size / float(max(image_w, image_h))
+        display_w = max(1, int(round(image_w * scale)))
+        display_h = max(1, int(round(image_h * scale)))
+        return display_w, display_h
+
+    def _build_texture_tag_with_size(self, node_id, width, height):
+        return f'{self.node_tag}:{node_id}:Input01:Texture:{width}x{height}'
 
     def add_node(
         self,
@@ -33,14 +49,23 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
-        tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
+        tag_node_input01_image_name = self._value_tag(tag_node_input01_name)
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
-        small_window_w = self._opencv_setting_dict['result_width']
-        small_window_h = self._opencv_setting_dict['result_height']
+        max_size = max(
+            self._opencv_setting_dict['result_width'],
+            self._opencv_setting_dict['result_height'],
+        )
+        texture_tag = self._build_texture_tag_with_size(node_id, max_size,
+                                                        max_size)
+        self._display_size_dict[node_id] = (max_size, max_size)
+        self._current_texture_tag_dict[node_id] = texture_tag
+        self._texture_tags_dict[node_id] = {texture_tag}
 
         # Black image for initialization
+        small_window_w = max_size
+        small_window_h = max_size
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
@@ -54,7 +79,7 @@ class Node(DpgNodeABC):
                 small_window_w,
                 small_window_h,
                 black_texture,
-                tag=tag_node_input01_value_name,
+                tag=texture_tag,
                 format=dpg.mvFormat_Float_rgb,
             )
 
@@ -70,7 +95,12 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
             ):
-                dpg.add_image(tag_node_input01_value_name)
+                dpg.add_image(
+                    texture_tag,
+                    tag=tag_node_input01_image_name,
+                    width=small_window_w,
+                    height=small_window_h,
+                )
 
         return tag_node_name
 
@@ -82,11 +112,10 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        input_value01_tag = self._value_tag(
+        input_image_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
-        small_window_w = self._opencv_setting_dict['result_width']
-        small_window_h = self._opencv_setting_dict['result_height']
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
 
         # Get source node name for image (with ID)
@@ -108,17 +137,65 @@ class Node(DpgNodeABC):
             if draw_info_on_result and connection_info_src != '':
                 node_result = node_result_dict[connection_info_src]
                 frame = draw_info(node_name, node_result, frame)
+
+            max_size = max(
+                self._opencv_setting_dict['result_width'],
+                self._opencv_setting_dict['result_height'],
+            )
+            small_window_w, small_window_h = self._compute_display_size(
+                frame,
+                max_size,
+            )
+            previous_size = self._display_size_dict.get(node_id)
+            if previous_size != (small_window_w, small_window_h):
+                texture_tag = self._build_texture_tag_with_size(
+                    node_id, small_window_w, small_window_h)
+                self._current_texture_tag_dict[node_id] = texture_tag
+                if node_id not in self._texture_tags_dict:
+                    self._texture_tags_dict[node_id] = set()
+                empty_texture = np.zeros((small_window_w * small_window_h * 3,),
+                                         dtype='f')
+                if not dpg.does_item_exist(texture_tag):
+                    with dpg.texture_registry(show=False):
+                        dpg.add_raw_texture(
+                            small_window_w,
+                            small_window_h,
+                            empty_texture,
+                            tag=texture_tag,
+                            format=dpg.mvFormat_Float_rgb,
+                        )
+                    self._texture_tags_dict[node_id].add(texture_tag)
+                dpg.configure_item(
+                    input_image_tag,
+                    texture_tag=texture_tag,
+                    width=small_window_w,
+                    height=small_window_h,
+                )
+                self._display_size_dict[node_id] = (small_window_w,
+                                                    small_window_h)
+            elif texture_tag is None:
+                texture_tag = self._build_texture_tag_with_size(
+                    node_id, small_window_w, small_window_h)
+                self._current_texture_tag_dict[node_id] = texture_tag
             texture = convert_cv_to_dpg(
                 frame,
                 small_window_w,
                 small_window_h,
             )
-            dpg_set_value(input_value01_tag, texture)
+            dpg_set_value(texture_tag, texture)
 
         return frame, None
 
     def close(self, node_id):
-        pass
+        texture_tags = self._texture_tags_dict.pop(node_id, set())
+        self._current_texture_tag_dict.pop(node_id, None)
+        self._display_size_dict.pop(node_id, None)
+        for texture_tag in texture_tags:
+            if dpg.does_item_exist(texture_tag):
+                try:
+                    dpg.delete_item(texture_tag)
+                except (SystemError, RuntimeError):
+                    pass
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)

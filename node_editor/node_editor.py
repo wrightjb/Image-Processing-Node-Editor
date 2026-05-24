@@ -1338,11 +1338,18 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
-        reconnect_pairs = self._cntrl_delete_node_by_tag(user_data)
-        for source_tag, dest_tag in reconnect_pairs:
-            if self._mdl_add_link(source_tag, dest_tag):
-                link_dpg_id = self._vw_add_link(source_tag, dest_tag)
-                self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+        # Avoid deleting a node while DearPyGui is still executing one of the
+        # node's child-item callbacks. Defer the destructive work to next frame.
+        node_tag = user_data
+
+        def _deferred_delete():
+            reconnect_pairs = self._cntrl_delete_node_by_tag(node_tag)
+            for source_tag, dest_tag in reconnect_pairs:
+                if self._mdl_add_link(source_tag, dest_tag):
+                    link_dpg_id = self._vw_add_link(source_tag, dest_tag)
+                    self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+
+        dpg.set_frame_callback(dpg.get_frame_count() + 1, _deferred_delete)
 
     # Public functions
     def get_node_list(self):

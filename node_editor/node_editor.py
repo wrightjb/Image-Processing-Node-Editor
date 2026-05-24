@@ -183,6 +183,14 @@ class DpgNodeEditor(object):
             dest_port = self._port_registry.get(link_info[1])
             source_node = source_port.node_ref.node_id_name if source_port else ''
             destination_node = dest_port.node_ref.node_id_name if dest_port else ''
+            if not source_node and isinstance(link_info[0], str):
+                source_parts = link_info[0].split(':')
+                if len(source_parts) >= 2:
+                    source_node = f'{source_parts[0]}:{source_parts[1]}'
+            if not destination_node and isinstance(link_info[1], str):
+                dest_parts = link_info[1].split(':')
+                if len(dest_parts) >= 2:
+                    destination_node = f'{dest_parts[0]}:{dest_parts[1]}'
             if source_node == node_id_name or destination_node == node_id_name:
                 self._link_registry.pop((link_info[0], link_info[1]), None)
                 self._link_by_dest_port.pop(link_info[1], None)
@@ -593,12 +601,17 @@ class DpgNodeEditor(object):
         for source_tag, dest_tag in self._link_view_id_map:
             source_port = self._port_registry.get(source_tag)
             dest_port = self._port_registry.get(dest_tag)
-            if source_port is None or dest_port is None:
-                continue
-            if (
-                source_port.node_ref.node_id_name == node_id_name
-                or dest_port.node_ref.node_id_name == node_id_name
-            ):
+            source_node = source_port.node_ref.node_id_name if source_port else ''
+            destination_node = dest_port.node_ref.node_id_name if dest_port else ''
+            if not source_node and isinstance(source_tag, str):
+                source_parts = source_tag.split(':')
+                if len(source_parts) >= 2:
+                    source_node = f'{source_parts[0]}:{source_parts[1]}'
+            if not destination_node and isinstance(dest_tag, str):
+                dest_parts = dest_tag.split(':')
+                if len(dest_parts) >= 2:
+                    destination_node = f'{dest_parts[0]}:{dest_parts[1]}'
+            if source_node == node_id_name or destination_node == node_id_name:
                 delete_targets.append((source_tag, dest_tag))
 
         for source_tag, dest_tag in delete_targets:
@@ -1251,7 +1264,10 @@ class DpgNodeEditor(object):
                 new_destination = ':'.join(dest_parts)
                 link_dpg_id = self._vw_add_link(new_source, new_destination)
                 self._vw_register_link(new_source, new_destination, link_dpg_id)
-                new_link_list.append([new_source, new_destination])
+                if not self._mdl_add_link(new_source, new_destination):
+                    # Preserve serialized links for compatibility with older
+                    # graph formats (e.g., duplicate destination links).
+                    new_link_list.append([new_source, new_destination])
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()

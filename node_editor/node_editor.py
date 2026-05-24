@@ -1338,20 +1338,7 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
-        delete_callback = (
-            lambda s=None, d=None, tag=user_data:
-            self._cntrl_delete_node_deferred(s, d, tag)
-        )
-        with dpg.mutex():
-            target_frame = dpg.get_frame_count() + 2
-            dpg.set_frame_callback(target_frame, delete_callback)
-
-    def _cntrl_delete_node_deferred(self, sender, data, user_data):
-        node_tag = user_data
-        if (not node_tag) or (not dpg.does_item_exist(node_tag)):
-            return
-
-        reconnect_pairs = self._cntrl_delete_node_by_tag(node_tag)
+        reconnect_pairs = self._cntrl_delete_node_by_tag(user_data)
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
                 link_dpg_id = self._vw_add_link(source_tag, dest_tag)

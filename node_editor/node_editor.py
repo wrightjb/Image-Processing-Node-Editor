@@ -314,7 +314,7 @@ class DpgNodeEditor(object):
                             )
 
     def _vw_create_insert_link_popup_menu(self):
-        dpg.add_text('Insert Node Into Existing Link')
+        dpg.add_text('Insert Node')
         dpg.add_separator()
         for menu_label, nodes in self._menu_nodes.items():
             with dpg.menu(label=menu_label):
@@ -328,7 +328,7 @@ class DpgNodeEditor(object):
 
 
     def _vw_create_add_node_popup_menu(self):
-        dpg.add_text('Create and Connect New Node')
+        dpg.add_text('Append Node')
         dpg.add_separator()
         for menu_label, nodes in self._menu_nodes.items():
             with dpg.menu(label=menu_label):
@@ -351,7 +351,17 @@ class DpgNodeEditor(object):
         )
 
     def _vw_add_link(self, source, destination):
-        return dpg.add_node_link(source, destination, parent=self._node_editor_tag)
+        source_id = source
+        destination_id = destination
+        if isinstance(source, str):
+            source_id = dpg.get_alias_id(source)
+        if isinstance(destination, str):
+            destination_id = dpg.get_alias_id(destination)
+        return dpg.add_node_link(
+            source_id,
+            destination_id,
+            parent=self._node_editor_tag,
+        )
 
     def _vw_register_link(self, source_tag, dest_tag, link_dpg_id):
         self._link_view_id_map[(source_tag, dest_tag)] = link_dpg_id

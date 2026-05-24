@@ -643,12 +643,24 @@ class DpgNodeEditor(object):
         ]
 
     def _cntrl_find_node_port(self, node_id_name, port_type, port_prefix):
+        expected_attr_type = None
+        if port_prefix == 'Input':
+            expected_attr_type = dpg.mvNode_Attr_Input
+        elif port_prefix == 'Output':
+            expected_attr_type = dpg.mvNode_Attr_Output
+
         for index in range(100):
             port_tag = (
                 f'{node_id_name}:{port_type}:{port_prefix}{index:02d}'
             )
-            if dpg.does_item_exist(port_tag):
-                return port_tag
+            if not dpg.does_item_exist(port_tag):
+                continue
+
+            if expected_attr_type is not None:
+                config = dpg.get_item_configuration(port_tag)
+                if config.get('attribute_type') != expected_attr_type:
+                    continue
+            return port_tag
         return None
 
 

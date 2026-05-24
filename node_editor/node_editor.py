@@ -10,8 +10,28 @@ from glob import glob
 from collections import OrderedDict
 from importlib import import_module
 from pathlib import Path
+from dataclasses import dataclass
 
 import dearpygui.dearpygui as dpg
+
+
+@dataclass(frozen=True)
+class NodeRef:
+    node_id: str
+    node_tag: str
+
+    @property
+    def node_id_name(self):
+        return f'{self.node_id}:{self.node_tag}'
+
+
+@dataclass(frozen=True)
+class PortRef:
+    node_ref: NodeRef
+    direction: str
+    data_type: str
+    index: int
+    dpg_tag: str
 
 
 class DpgNodeEditor(object):
@@ -66,6 +86,10 @@ class DpgNodeEditor(object):
         self._pending_insert_link_dpg_id = None
         self._pending_add_from_output_tag = None
         self._node_port_capabilities = {}
+        self._node_registry = {}
+        self._port_registry = {}
+        self._link_registry = {}
+        self._link_by_dest_port = {}
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -75,16 +99,56 @@ class DpgNodeEditor(object):
         new_node_id_name = f"{self._node_id}:{node_tag}"
         return self._node_id, new_node_id_name
 
+    def _mdl_register_node_ref(self, node_ref):
+        self._node_registry[node_ref.node_id_name] = node_ref
+
+    def _mdl_get_node_ref(self, node_id_name):
+        return self._node_registry.get(node_id_name)
+
+    def _cntrl_parse_port_tag(self, port_tag):
+        if not isinstance(port_tag, str):
+            return None
+        if port_tag in self._port_registry:
+            return self._port_registry[port_tag]
+        parts = port_tag.split(':')
+        if len(parts) < 4:
+            return None
+        node_ref = NodeRef(parts[0], parts[1])
+        port_name = parts[3]
+        if port_name.startswith('Input'):
+            direction = 'Input'
+            index_text = port_name[len('Input'):]
+        elif port_name.startswith('Output'):
+            direction = 'Output'
+            index_text = port_name[len('Output'):]
+        else:
+            return None
+        try:
+            index = int(index_text)
+        except ValueError:
+            return None
+        parsed = PortRef(node_ref, direction, parts[2], index, port_tag)
+        self._port_registry[port_tag] = parsed
+        if node_ref.node_id_name not in self._node_registry:
+            self._mdl_register_node_ref(node_ref)
+        return parsed
+
     def _mdl_add_link(self, source_tag, dest_tag):
-        if any(dest_tag == d_tag for _, d_tag in self._node_link_list):
+        source_port = self._cntrl_parse_port_tag(source_tag)
+        dest_port = self._cntrl_parse_port_tag(dest_tag)
+        if source_port is None or dest_port is None:
+            return False
+        if dest_tag in self._link_by_dest_port:
             return False
         self._node_link_list.append([source_tag, dest_tag])
+        self._link_registry[(source_tag, dest_tag)] = (source_port, dest_port)
+        self._link_by_dest_port[dest_tag] = source_tag
         return True
 
     def _mdl_get_link_by_destination(self, dest_tag):
-        for link in self._node_link_list:
-            if link[1] == dest_tag:
-                return link
+        source_tag = self._link_by_dest_port.get(dest_tag)
+        if source_tag is not None:
+            return [source_tag, dest_tag]
         return None
 
     def _mdl_get_export_settings(self):
@@ -112,13 +176,21 @@ class DpgNodeEditor(object):
 
         copy_node_link_list = copy.deepcopy(self._node_link_list)
         for link_info in copy_node_link_list:
-            source_node = ':'.join(link_info[0].split(':')[:2])
-            destination_node = ':'.join(link_info[1].split(':')[:2])
+            source_port = self._port_registry.get(link_info[0])
+            dest_port = self._port_registry.get(link_info[1])
+            source_node = source_port.node_ref.node_id_name if source_port else ''
+            destination_node = dest_port.node_ref.node_id_name if dest_port else ''
             if source_node == node_id_name or destination_node == node_id_name:
+                self._link_registry.pop((link_info[0], link_info[1]), None)
+                self._link_by_dest_port.pop(link_info[1], None)
                 self._node_link_list.remove(link_info)
+        self._node_registry.pop(node_id_name, None)
         self._mdl_sort_node_graph()
 
     def _mdl_delete_link(self, link):
+        source_tag, dest_tag = link
+        self._link_registry.pop((source_tag, dest_tag), None)
+        self._link_by_dest_port.pop(dest_tag, None)
         self._node_link_list.remove(link)
         self._mdl_sort_node_graph()
 
@@ -463,9 +535,14 @@ class DpgNodeEditor(object):
     def _vw_delete_links_for_node(self, node_id_name):
         delete_targets = []
         for source_tag, dest_tag in self._link_view_id_map:
-            source_node = ':'.join(source_tag.split(':')[:2])
-            dest_node = ':'.join(dest_tag.split(':')[:2])
-            if source_node == node_id_name or dest_node == node_id_name:
+            source_port = self._port_registry.get(source_tag)
+            dest_port = self._port_registry.get(dest_tag)
+            if source_port is None or dest_port is None:
+                continue
+            if (
+                source_port.node_ref.node_id_name == node_id_name
+                or dest_port.node_ref.node_id_name == node_id_name
+            ):
                 delete_targets.append((source_tag, dest_tag))
 
         for source_tag, dest_tag in delete_targets:
@@ -559,6 +636,7 @@ class DpgNodeEditor(object):
 
     def _cntrl_add_node(self, sender, data, user_data):
         new_id, new_node_id_name = self._mdl_add_node(user_data)
+        self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
         pos = [0, 0]
         if self._last_pos is not None:
             pos = [self._last_pos[0] + 30, self._last_pos[1] + 30]
@@ -611,6 +689,7 @@ class DpgNodeEditor(object):
                 return
             source_pos = dpg.get_item_pos(source_node_id_name)
             new_id, new_node_id_name = self._mdl_add_node(result_node_tag)
+            self._mdl_register_node_ref(NodeRef(str(new_id), result_node_tag))
             result_pos = [source_pos[0] + 260, source_pos[1]]
             self._vw_add_node(result_node_tag, new_id, result_pos)
             self._node_list.append(new_node_id_name)
@@ -641,9 +720,9 @@ class DpgNodeEditor(object):
         for source_tag, dest_tag in self._node_link_list:
             if source_tag != source_output_tag:
                 continue
-            dest_node_id_name = ':'.join(dest_tag.split(':')[:2])
-            if dest_node_id_name.endswith(f':{result_node_tag}'):
-                return dest_node_id_name
+            dest_port = self._port_registry.get(dest_tag)
+            if dest_port and dest_port.node_ref.node_tag == result_node_tag:
+                return dest_port.node_ref.node_id_name
         return None
 
     def _cntrl_get_link_from_dpg_id(self, link_dpg_id):
@@ -661,8 +740,10 @@ class DpgNodeEditor(object):
         if output_port_tag is not None:
             self._pending_insert_link_dpg_id = None
             self._vw_hide_insert_link_popup()
-            source_type = output_port_tag.split(':')[2]
-            self._vw_populate_append_popup_menu(source_type)
+            source_port = self._cntrl_parse_port_tag(output_port_tag)
+            self._vw_populate_append_popup_menu(
+                source_port.data_type if source_port else ''
+            )
             mouse_pos = dpg.get_mouse_pos(local=False)
             window_pos = dpg.get_item_pos(self._window_tag)
             popup_pos = [
@@ -677,10 +758,14 @@ class DpgNodeEditor(object):
         self._pending_insert_link_dpg_id = link_dpg_id
         if link_dpg_id is not None:
             source_tag, dest_tag = self._cntrl_get_link_from_dpg_id(link_dpg_id)
-            source_parts = source_tag.split(':')
-            dest_parts = dest_tag.split(':')
-            if len(source_parts) >= 4 and len(dest_parts) >= 4 and source_parts[2] == dest_parts[2]:
-                self._vw_populate_insert_popup_menu(source_parts[2])
+            source_port = self._cntrl_parse_port_tag(source_tag)
+            dest_port = self._cntrl_parse_port_tag(dest_tag)
+            if (
+                source_port is not None
+                and dest_port is not None
+                and source_port.data_type == dest_port.data_type
+            ):
+                self._vw_populate_insert_popup_menu(source_port.data_type)
             else:
                 self._vw_populate_insert_popup_menu('')
             mouse_pos = dpg.get_mouse_pos(local=False)
@@ -773,14 +858,15 @@ class DpgNodeEditor(object):
             self._vw_set_link_feedback('Create from output requires a hovered output port.')
             return
 
-        source_parts = source_tag.split(':')
-        if len(source_parts) < 4:
+        source_port = self._cntrl_parse_port_tag(source_tag)
+        if source_port is None:
             self._vw_set_link_feedback('Cannot create from output: invalid source port tag format.')
             return
 
-        link_type = source_parts[2]
+        link_type = source_port.data_type
         new_id, new_node_id_name = self._mdl_add_node(user_data)
-        source_node = ':'.join(source_tag.split(':')[:2])
+        self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
+        source_node = source_port.node_ref.node_id_name
         source_pos = dpg.get_item_pos(source_node)
         new_pos = [source_pos[0] + 260, source_pos[1]]
         self._vw_add_node(user_data, new_id, new_pos)
@@ -821,16 +907,16 @@ class DpgNodeEditor(object):
         source_tag, dest_tag = self._cntrl_get_link_from_dpg_id(
             selected_link_dpg_id
         )
-        source_parts = source_tag.split(':')
-        dest_parts = dest_tag.split(':')
-        if len(source_parts) < 4 or len(dest_parts) < 4:
+        source_port = self._cntrl_parse_port_tag(source_tag)
+        dest_port = self._cntrl_parse_port_tag(dest_tag)
+        if source_port is None or dest_port is None:
             self._vw_set_link_feedback(
                 'Cannot insert node into link: invalid port tag format.'
             )
             return
 
-        link_type = source_parts[2]
-        if link_type != dest_parts[2]:
+        link_type = source_port.data_type
+        if link_type != dest_port.data_type:
             self._vw_set_link_feedback(
                 'Cannot insert node into link: source and destination '
                 'types do not match.'
@@ -838,6 +924,7 @@ class DpgNodeEditor(object):
             return
 
         new_id, new_node_id_name = self._mdl_add_node(user_data)
+        self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
         insert_pos = self._cntrl_get_insert_node_pos(source_tag, dest_tag)
         self._vw_add_node(user_data, new_id, insert_pos)
         self._node_list.append(new_node_id_name)
@@ -902,16 +989,16 @@ class DpgNodeEditor(object):
             )
             return
 
-        source_parts = source_tag.split(':')
-        dest_parts = dest_tag.split(':')
-        if len(source_parts) < 4 or len(dest_parts) < 4:
+        source_port = self._cntrl_parse_port_tag(source_tag)
+        dest_port = self._cntrl_parse_port_tag(dest_tag)
+        if source_port is None or dest_port is None:
             self._vw_set_link_feedback(
                 'Link rejected: invalid port tag format.'
             )
             return
 
-        source_type = source_parts[2]
-        dest_type = dest_parts[2]
+        source_type = source_port.data_type
+        dest_type = dest_port.data_type
 
         if source_type != dest_type:
             self._vw_set_link_feedback(
@@ -993,6 +1080,7 @@ class DpgNodeEditor(object):
             node = self._node_instance_list[node_name]
 
             new_id, _ = self._mdl_add_node(node_name)
+            self._mdl_register_node_ref(NodeRef(str(new_id), node_name))
             id_map[old_id] = str(new_id)
 
             ver = setting_dict[node_id_name]['setting']['ver']
@@ -1057,17 +1145,14 @@ class DpgNodeEditor(object):
         outgoing_by_type = {}
 
         for source_tag, dest_tag in self._node_link_list:
-            dest_node = ':'.join(dest_tag.split(':')[:2])
-            source_node = ':'.join(source_tag.split(':')[:2])
-
-            if dest_node == node_id_name:
-                parts = dest_tag.split(':')
-                if len(parts) >= 4:
-                    incoming_by_type.setdefault(parts[2], []).append(source_tag)
-            elif source_node == node_id_name:
-                parts = source_tag.split(':')
-                if len(parts) >= 4:
-                    outgoing_by_type.setdefault(parts[2], []).append(dest_tag)
+            source_port = self._port_registry.get(source_tag)
+            dest_port = self._port_registry.get(dest_tag)
+            if source_port is None or dest_port is None:
+                continue
+            if dest_port.node_ref.node_id_name == node_id_name:
+                incoming_by_type.setdefault(dest_port.data_type, []).append(source_tag)
+            elif source_port.node_ref.node_id_name == node_id_name:
+                outgoing_by_type.setdefault(source_port.data_type, []).append(dest_tag)
 
         reconnect_pairs = []
         for link_type, outgoing_destinations in outgoing_by_type.items():

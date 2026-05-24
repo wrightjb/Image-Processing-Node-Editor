@@ -22,7 +22,8 @@ class Node(DpgNodeABC):
     _opencv_setting_dict = None
 
     def __init__(self):
-        self._canvas_size_dict = {}
+        self._display_size_dict = {}
+        self._texture_tag_dict = {}
 
     def _compute_display_size(self, frame, max_size):
         image_h, image_w = frame.shape[:2]
@@ -35,14 +36,8 @@ class Node(DpgNodeABC):
         display_h = max(1, int(round(image_h * scale)))
         return display_w, display_h
 
-    def _fit_with_letterbox(self, frame, canvas_size):
-        display_w, display_h = self._compute_display_size(frame, canvas_size)
-        resized = cv2.resize(frame, (display_w, display_h))
-        canvas = np.zeros((canvas_size, canvas_size, 3), dtype=np.uint8)
-        offset_x = (canvas_size - display_w) // 2
-        offset_y = (canvas_size - display_h) // 2
-        canvas[offset_y:offset_y + display_h, offset_x:offset_x + display_w] = resized
-        return canvas
+    def _build_texture_tag(self, node_id):
+        return f'{self.node_tag}:{node_id}:Input01:Texture'
 
     def add_node(
         self,
@@ -56,28 +51,30 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
-        tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
+        tag_node_input01_image_name = self._value_tag(tag_node_input01_name)
+        texture_tag = self._build_texture_tag(node_id)
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
-        canvas_size = self._opencv_setting_dict['result_width'] * self._ratio
-        self._canvas_size_dict[node_id] = canvas_size
+        max_size = self._opencv_setting_dict['result_width'] * self._ratio
+        self._display_size_dict[node_id] = (max_size, max_size)
+        self._texture_tag_dict[node_id] = texture_tag
 
         # Black image for initialization
-        black_image = np.zeros((canvas_size, canvas_size, 3))
+        black_image = np.zeros((max_size, max_size, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
-            canvas_size,
-            canvas_size,
+            max_size,
+            max_size,
         )
 
         # Register texture
         with dpg.texture_registry(show=False):
             dpg.add_raw_texture(
-                canvas_size,
-                canvas_size,
+                max_size,
+                max_size,
                 black_texture,
-                tag=tag_node_input01_value_name,
+                tag=texture_tag,
                 format=dpg.mvFormat_Float_rgb,
             )
 
@@ -93,7 +90,12 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
             ):
-                dpg.add_image(tag_node_input01_value_name)
+                dpg.add_image(
+                    texture_tag,
+                    tag=tag_node_input01_image_name,
+                    width=max_size,
+                    height=max_size,
+                )
 
         return tag_node_name
 
@@ -106,8 +108,10 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        input_value01_tag = self._value_tag(
+        input_image_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        texture_tag = self._texture_tag_dict.get(
+            node_id, self._build_texture_tag(node_id))
 
         # OpenCV settings
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
@@ -132,23 +136,51 @@ class Node(DpgNodeABC):
                 node_result = node_result_dict[connection_info_src]
                 frame = draw_info(node_name, node_result, frame)
 
-            canvas_size = self._canvas_size_dict.get(
-                node_id,
-                self._opencv_setting_dict['result_width'] * self._ratio,
-            )
-            frame = self._fit_with_letterbox(frame, canvas_size)
+            max_size = self._opencv_setting_dict['result_width'] * self._ratio
+            display_w, display_h = self._compute_display_size(frame, max_size)
+
+            previous_size = self._display_size_dict.get(node_id)
+            if previous_size != (display_w, display_h):
+                if dpg.does_item_exist(texture_tag):
+                    try:
+                        dpg.delete_item(texture_tag)
+                    except (SystemError, RuntimeError):
+                        pass
+                empty_texture = np.zeros((display_w * display_h * 3,),
+                                         dtype='f')
+                with dpg.texture_registry(show=False):
+                    dpg.add_raw_texture(
+                        display_w,
+                        display_h,
+                        empty_texture,
+                        tag=texture_tag,
+                        format=dpg.mvFormat_Float_rgb,
+                    )
+                dpg.configure_item(
+                    input_image_tag,
+                    texture_tag=texture_tag,
+                    width=display_w,
+                    height=display_h,
+                )
+                self._display_size_dict[node_id] = (display_w, display_h)
 
             texture = convert_cv_to_dpg(
                 frame,
-                canvas_size,
-                canvas_size,
+                display_w,
+                display_h,
             )
-            dpg_set_value(input_value01_tag, texture)
+            dpg_set_value(texture_tag, texture)
 
         return frame, None
 
     def close(self, node_id):
-        self._canvas_size_dict.pop(node_id, None)
+        texture_tag = self._texture_tag_dict.pop(node_id, None)
+        self._display_size_dict.pop(node_id, None)
+        if texture_tag is not None and dpg.does_item_exist(texture_tag):
+            try:
+                dpg.delete_item(texture_tag)
+            except (SystemError, RuntimeError):
+                pass
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)

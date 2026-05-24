@@ -47,7 +47,6 @@ class DpgNodeEditor(object):
     _add_node_popup_anchor_tag = _add_node_popup_tag + 'Anchor'
     _node_close_attr_suffix = ':CloseAttr'
     _node_close_button_suffix = ':CloseButton'
-    _pending_node_delete_tag = None
 
     _node_id = 0
     _node_instance_list = {}
@@ -94,7 +93,6 @@ class DpgNodeEditor(object):
         self._port_registry = {}
         self._link_registry = {}
         self._link_by_dest_port = {}
-        self._pending_node_delete_tag = None
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -560,6 +558,11 @@ class DpgNodeEditor(object):
                     callback=self._cntrl_delete_node_by_button,
                     user_data=node_view_tag,
                 )
+        node_children = dpg.get_item_children(node_view_tag, 1)
+        if node_children:
+            first_attribute = node_children[0]
+            if first_attribute != close_attr_tag:
+                dpg.move_item(close_attr_tag, parent=node_view_tag, before=first_attribute)
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -1334,13 +1337,15 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
-        self._pending_node_delete_tag = user_data
-        dpg.set_frame_callback(dpg.get_frame_count() + 1, self._cntrl_delete_node_deferred)
+        dpg.set_frame_callback(
+            dpg.get_frame_count() + 1,
+            self._cntrl_delete_node_deferred,
+            user_data,
+        )
 
-    def _cntrl_delete_node_deferred(self, sender, data):
-        node_tag = self._pending_node_delete_tag
-        self._pending_node_delete_tag = None
-        if not node_tag:
+    def _cntrl_delete_node_deferred(self, sender, data, user_data):
+        node_tag = user_data
+        if (not node_tag) or (not dpg.does_item_exist(node_tag)):
             return
 
         reconnect_pairs = self._cntrl_delete_node_by_tag(node_tag)

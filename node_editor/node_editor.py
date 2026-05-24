@@ -813,7 +813,6 @@ class DpgNodeEditor(object):
 
         self._pending_insert_link_dpg_id = None
         self._pending_add_from_output_tag = None
-        self._node_port_capabilities = {}
         if selected_link_dpg_id is None:
             self._vw_set_link_feedback(
                 'Insert into link requires a selected or hovered link.'

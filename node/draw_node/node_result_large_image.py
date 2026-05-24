@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_value, dpg_set_value
+from node_editor.util import dpg_set_value
 
 from node.node_abc import DpgNodeABC
 from node_editor.util import convert_cv_to_dpg
@@ -22,17 +22,17 @@ class Node(DpgNodeABC):
     _opencv_setting_dict = None
 
     def __init__(self):
-        self._max_size_dict = {}
+        self._viewport_size_dict = {}
         self._texture_size_dict = {}
 
-    def _compute_display_size(self, frame, max_size):
+    def _compute_display_size(self, frame, max_width, max_height):
         image_h, image_w = frame.shape[:2]
-        max_size = max(1, int(max_size))
-        long_edge = max(image_w, image_h)
-        if long_edge <= 0:
-            return max_size, max_size
+        max_width = max(1, int(max_width))
+        max_height = max(1, int(max_height))
+        if image_w <= 0 or image_h <= 0:
+            return max_width, max_height
 
-        scale = max_size / float(long_edge)
+        scale = min(max_width / float(image_w), max_height / float(image_h))
         display_w = max(1, int(round(image_w * scale)))
         display_h = max(1, int(round(image_h * scale)))
         return display_w, display_h
@@ -50,19 +50,19 @@ class Node(DpgNodeABC):
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
                                                'Input01')
         tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
-        tag_node_max_size_name = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'MaxSize'))
+        tag_node_input01_viewport_name = self._value_tag(
+            self._port_tag(tag_node_input01_name, self.TYPE_TEXT, 'Viewport'))
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
         default_max_size = self._opencv_setting_dict['result_width'] * self._ratio
-        self._max_size_dict[node_id] = default_max_size
-        small_window_w = default_max_size
-        small_window_h = default_max_size
-        self._texture_size_dict[node_id] = (small_window_w, small_window_h)
+        self._viewport_size_dict[node_id] = (default_max_size, default_max_size)
+        initial_texture_size = (default_max_size, default_max_size)
+        self._texture_size_dict[node_id] = initial_texture_size
 
         # Black image for initialization
-        black_image = np.zeros((small_window_w, small_window_h, 3))
+        small_window_w, small_window_h = initial_texture_size
+        black_image = np.zeros((small_window_h, small_window_w, 3))
         black_texture = convert_cv_to_dpg(
             black_image,
             small_window_w,
@@ -91,15 +91,18 @@ class Node(DpgNodeABC):
                     tag=tag_node_input01_name,
                     attribute_type=dpg.mvNode_Attr_Input,
             ):
-                dpg.add_image(tag_node_input01_value_name)
-                dpg.add_input_int(
-                    tag=tag_node_max_size_name,
-                    label='Max Size',
-                    default_value=default_max_size,
-                    min_value=1,
-                    min_clamped=True,
-                    width=120,
-                )
+                with dpg.child_window(
+                        tag=tag_node_input01_viewport_name,
+                        width=default_max_size,
+                        height=default_max_size,
+                        autosize_x=False,
+                        autosize_y=False,
+                ):
+                    dpg.add_image(
+                        tag_node_input01_value_name,
+                        width=default_max_size,
+                        height=default_max_size,
+                    )
 
         return tag_node_name
 
@@ -114,8 +117,10 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         input_value01_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
-        max_size_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'MaxSize'))
+        viewport_tag = self._value_tag(
+            self._port_tag(
+                self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'),
+                self.TYPE_TEXT, 'Viewport'))
 
         # OpenCV settings
         draw_info_on_result = self._opencv_setting_dict['draw_info_on_result']
@@ -136,23 +141,28 @@ class Node(DpgNodeABC):
 
         # Draw
         if frame is not None:
-            max_size = dpg_get_value(max_size_tag)
-            if max_size is None:
-                max_size = self._max_size_dict.get(node_id, 1)
-            max_size = max(1, int(max_size))
-            self._max_size_dict[node_id] = max_size
-
             if draw_info_on_result and connection_info_src != '':
                 node_result = node_result_dict[connection_info_src]
                 frame = draw_info(node_name, node_result, frame)
 
+            viewport_w, viewport_h = self._viewport_size_dict.get(
+                node_id, (self._opencv_setting_dict['result_width'] * self._ratio,
+                          self._opencv_setting_dict['result_width'] * self._ratio))
+            if dpg.does_item_exist(viewport_tag):
+                viewport_w = max(1, int(dpg.get_item_width(viewport_tag)))
+                viewport_h = max(1, int(dpg.get_item_height(viewport_tag)))
+                self._viewport_size_dict[node_id] = (viewport_w, viewport_h)
+
             small_window_w, small_window_h = self._compute_display_size(
                 frame,
-                max_size,
+                viewport_w,
+                viewport_h,
             )
 
             previous_texture_size = self._texture_size_dict.get(node_id)
             if previous_texture_size != (small_window_w, small_window_h):
+                if dpg.does_item_exist(input_value01_tag):
+                    dpg.delete_item(input_value01_tag)
                 with dpg.texture_registry(show=False):
                     dpg.add_raw_texture(
                         small_window_w,
@@ -161,11 +171,6 @@ class Node(DpgNodeABC):
                         tag=input_value01_tag,
                         format=dpg.mvFormat_Float_rgb,
                     )
-                dpg.configure_item(
-                    self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'),
-                    width=small_window_w,
-                    height=small_window_h,
-                )
                 dpg.configure_item(
                     input_value01_tag,
                     width=small_window_w,
@@ -184,7 +189,7 @@ class Node(DpgNodeABC):
         return frame, None
 
     def close(self, node_id):
-        self._max_size_dict.pop(node_id, None)
+        self._viewport_size_dict.pop(node_id, None)
         self._texture_size_dict.pop(node_id, None)
 
     def get_setting_dict(self, node_id):

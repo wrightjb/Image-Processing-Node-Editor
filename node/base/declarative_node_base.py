@@ -7,13 +7,7 @@ import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.node_abc import DpgNodeABC
-from node_editor.util import (
-    convert_cv_to_dpg,
-    dpg_get_value,
-    dpg_set_value,
-    get_aspect_fit_size,
-    get_size_by_long_edge,
-)
+from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
 
 
 class DeclarativeImageProcessNodeBase(DpgNodeABC):
@@ -24,17 +18,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     parameters = []
     show_elapsed_time = True
     _cache_toggle_setting_key = '__cache_enabled__'
-    _preview_toggle_setting_key = '__preview_enabled__'
     _cache_enabled_by_node = {}
-    _preview_enabled_by_node = {}
-    _preview_window_tag_by_node = {}
-    _preview_texture_tag_by_node = {}
-    _preview_size_by_node = {}
-    _preview_parent_tag_by_node = {}
-    _preview_aspect_by_node = {}
-    _preview_window_size_by_node = {}
-    _preview_last_node_rect_by_node = {}
-    _preview_last_node_pos_by_node = {}
 
     def add_node(
         self,
@@ -55,7 +39,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
 
         self._opencv_setting_dict = opencv_setting_dict
-        self._preview_parent_tag_by_node[str(node_id)] = parent
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
@@ -82,16 +65,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 tag=input_image_tag,
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
-                dpg.add_text(
-                    tag=input_image_value_tag,
-                    default_value='Input BGR image',
-                )
+                dpg.add_spacer(height=1)
 
             with dpg.node_attribute(
                 tag=output_image_tag,
                 attribute_type=dpg.mvNode_Attr_Output,
             ):
-                dpg.add_text(default_value='Preview in popout window')
+                dpg.add_spacer(height=1)
 
             for parameter in self.parameters:
                 self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
@@ -116,13 +96,15 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 )
                 self._cache_enabled_by_node[str(node_id)] = True
 
-                dpg.add_checkbox(
+                dpg.add_button(
                     label='Preview',
-                    default_value=False,
-                    callback=self._on_preview_toggle,
-                    user_data={'node_id': node_id, 'node_tag': tag_node_name},
+                    callback=self._on_preview_button,
+                    user_data={
+                        'node_id': node_id,
+                        'node_tag': tag_node_name,
+                        'external_callback': callback,
+                    },
                 )
-                self._preview_enabled_by_node[str(node_id)] = False
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -185,10 +167,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         if frame is not None:
             texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
             dpg_set_value(output_image_value_tag, texture)
-            try:
-                self._render_preview_window(node_id, tag_node_name, frame)
-            except (SystemError, RuntimeError, ValueError, TypeError):
-                pass
 
         return frame, result
 
@@ -209,10 +187,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
         texture = convert_cv_to_dpg(frame, small_window_w, small_window_h)
         dpg_set_value(output_image_value_tag, texture)
-        try:
-            self._render_preview_window(node_id, tag_node_name, frame)
-        except (SystemError, RuntimeError, ValueError, TypeError):
-            pass
         if self.show_elapsed_time and use_pref_counter:
             elapsed_time = int((time.perf_counter() - start_time) * 1000)
             dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
@@ -238,9 +212,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         setting_dict[self._cache_toggle_setting_key] = bool(
             self._cache_enabled_by_node.get(str(node_id), True)
         )
-        setting_dict[self._preview_toggle_setting_key] = bool(
-            self._preview_enabled_by_node.get(str(node_id), False)
-        )
 
         return setting_dict
 
@@ -264,9 +235,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         cache_enabled = bool(setting_dict.get(self._cache_toggle_setting_key, True))
         self._cache_enabled_by_node[str(node_id)] = cache_enabled
         dpg_set_value(cache_toggle_value_tag, cache_enabled)
-        self._preview_enabled_by_node[str(node_id)] = bool(
-            setting_dict.get(self._preview_toggle_setting_key, False)
-        )
 
         self.on_settings_applied(tag_node_name)
 
@@ -290,156 +258,15 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         del sender
         self._cache_enabled_by_node[str(user_data)] = bool(app_data)
 
-    def _on_preview_toggle(self, sender, app_data, user_data):
-        del sender
-        node_id = user_data['node_id']
-        node_tag = user_data['node_tag']
-        node_key = str(node_id)
-        enabled = bool(app_data)
-        self._preview_enabled_by_node[node_key] = enabled
-        if not enabled:
-            self._close_preview_window(node_id)
+    def _on_preview_button(self, sender, app_data, user_data):
+        del sender, app_data
+        callback = user_data.get('external_callback')
+        if callback is None:
             return
-        self._ensure_preview_window(node_id, node_tag)
-
-    def _ensure_preview_window(self, node_id, node_tag):
-        node_key = str(node_id)
-        window_tag = f'{node_tag}:PreviewWindow'
-        if dpg.does_item_exist(window_tag):
-            self._preview_window_tag_by_node[node_key] = window_tag
-            return window_tag
-
-        result_large_long_edge = int(self._opencv_setting_dict['result_width']) * 2
-        default_width = result_large_long_edge
-        default_height = int(round(result_large_long_edge * 9 / 16))
-        pinned_pos = self._get_pinned_window_pos(node_id, node_tag)
-
-        with dpg.window(
-            tag=window_tag,
-            label=f'Preview: {self.node_label} ({node_id})',
-            pos=pinned_pos,
-            width=default_width,
-            height=default_height,
-            no_scrollbar=True,
-        ):
-            dpg.add_text(default_value='Waiting for frame...')
-
-        self._preview_window_tag_by_node[node_key] = window_tag
-        self._preview_size_by_node[node_key] = (default_width, default_height)
-        self._preview_window_size_by_node[node_key] = (default_width, default_height)
-        self._preview_last_node_rect_by_node[node_key] = self._get_node_rect(node_tag)
-        self._preview_last_node_pos_by_node[node_key] = dpg.get_item_pos(node_tag)
-        return window_tag
-
-    def _render_preview_window(self, node_id, node_tag, frame):
-        node_key = str(node_id)
-        if not self._preview_enabled_by_node.get(node_key, False):
-            return
-
-        window_tag = self._ensure_preview_window(node_id, node_tag)
-        if not dpg.does_item_exist(window_tag):
-            return
-
-        current_pos = dpg.get_item_pos(node_tag)
-        prev_pos = self._preview_last_node_pos_by_node.get(node_key)
-        if prev_pos is not None and current_pos != prev_pos:
-            delta_x = int(current_pos[0] - prev_pos[0])
-            delta_y = int(current_pos[1] - prev_pos[1])
-            current_window_pos = dpg.get_item_pos(window_tag)
-            dpg.configure_item(
-                window_tag,
-                pos=[int(current_window_pos[0] + delta_x), int(current_window_pos[1] + delta_y)],
-            )
-        self._preview_last_node_pos_by_node[node_key] = current_pos
-
-        frame_height, frame_width = frame.shape[:2]
-        aspect = frame_width / max(1, frame_height)
-        self._preview_aspect_by_node[node_key] = aspect
-
-        default_window_size = (
-            int(self._opencv_setting_dict['result_width']) * 2,
-            int(round(int(self._opencv_setting_dict['result_width']) * 2 * 9 / 16)),
-        )
-        if self._preview_window_size_by_node.get(node_key) == default_window_size:
-            long_edge = int(self._opencv_setting_dict['result_width']) * 2
-            init_w, init_h = get_size_by_long_edge(frame_width, frame_height, long_edge)
-            viewport_w = int(max(320, dpg.get_viewport_client_width() - 80))
-            viewport_h = int(max(240, dpg.get_viewport_client_height() - 80))
-            scale = min(1.0, viewport_w / max(1, init_w), viewport_h / max(1, init_h))
-            init_w = max(160, int(round(init_w * scale)))
-            init_h = max(120, int(round(init_h * scale)))
-            win_w = init_w + 16
-            win_h = init_h + 40
-            dpg.configure_item(window_tag, width=win_w, height=win_h)
-            self._preview_window_size_by_node[node_key] = (win_w, win_h)
-            window_width = win_w
-            window_height = win_h
-        else:
-            window_rect_size = dpg.get_item_rect_size(window_tag)
-            window_width = int(max(160, window_rect_size[0]))
-            window_height = int(max(120, window_rect_size[1]))
-
-        expected_height = int(round(window_width / max(0.01, aspect))) + 32
-        if abs(window_height - expected_height) > 1:
-            dpg.configure_item(window_tag, height=expected_height)
-            window_height = expected_height
-        self._preview_window_size_by_node[node_key] = (window_width, window_height)
-
-        content_width = int(max(1, window_width - 16))
-        content_height = int(max(1, window_height - 40))
-        fit_width, fit_height = get_aspect_fit_size(
-            frame_width,
-            frame_height,
-            content_width,
-            content_height,
-        )
-
-        prev_size = self._preview_size_by_node.get(node_key)
-        texture_tag = self._preview_texture_tag_by_node.get(node_key)
-        if prev_size != (fit_width, fit_height) or not texture_tag or not dpg.does_item_exist(texture_tag):
-            texture_tag = f'{window_tag}:Texture'
-            if dpg.does_item_exist(texture_tag):
-                dpg.delete_item(texture_tag)
-            texture_data = convert_cv_to_dpg(frame, fit_width, fit_height)
-            with dpg.texture_registry(show=False):
-                dpg.add_raw_texture(
-                    fit_width,
-                    fit_height,
-                    texture_data,
-                    tag=texture_tag,
-                    format=dpg.mvFormat_Float_rgb,
-                )
-            dpg.delete_item(window_tag, children_only=True)
-            dpg.add_image(texture_tag, parent=window_tag)
-            self._preview_texture_tag_by_node[node_key] = texture_tag
-            self._preview_size_by_node[node_key] = (fit_width, fit_height)
-        else:
-            texture_data = convert_cv_to_dpg(frame, fit_width, fit_height)
-            dpg_set_value(texture_tag, texture_data)
-
-    def _close_preview_window(self, node_id):
-        node_key = str(node_id)
-        window_tag = self._preview_window_tag_by_node.pop(node_key, None)
-        texture_tag = self._preview_texture_tag_by_node.pop(node_key, None)
-        self._preview_size_by_node.pop(node_key, None)
-        self._preview_aspect_by_node.pop(node_key, None)
-        self._preview_window_size_by_node.pop(node_key, None)
-        self._preview_last_node_rect_by_node.pop(node_key, None)
-        self._preview_last_node_pos_by_node.pop(node_key, None)
-        if texture_tag and dpg.does_item_exist(texture_tag):
-            dpg.delete_item(texture_tag)
-        if window_tag and dpg.does_item_exist(window_tag):
-            dpg.delete_item(window_tag)
-
-    def _get_pinned_window_pos(self, node_id, node_tag):
-        del node_id
-        node_min, node_max = self._get_node_rect(node_tag)
-        return [int(node_max[0] + 16), int(node_min[1])]
-
-    def _get_node_rect(self, node_tag):
-        node_min = dpg.get_item_rect_min(node_tag)
-        node_max = dpg.get_item_rect_max(node_tag)
-        return node_min, node_max
+        callback('declarative_preview_request', None, {
+            'node_id': user_data['node_id'],
+            'node_tag': user_data['node_tag'],
+        })
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

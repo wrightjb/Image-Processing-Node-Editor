@@ -310,12 +310,21 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        node.add_node(
-            self._node_editor_tag,
-            new_id,
-            pos=pos,
-            opencv_setting_dict=self._opencv_setting_dict,
-        )
+        try:
+            node.add_node(
+                self._node_editor_tag,
+                new_id,
+                pos=pos,
+                opencv_setting_dict=self._opencv_setting_dict,
+                callback=self._cntrl_node_event,
+            )
+        except TypeError:
+            node.add_node(
+                self._node_editor_tag,
+                new_id,
+                pos=pos,
+                opencv_setting_dict=self._opencv_setting_dict,
+            )
 
     def _vw_add_link(self, source, destination):
         return dpg.add_node_link(source, destination, parent=self._node_editor_tag)
@@ -431,6 +440,37 @@ class DpgNodeEditor(object):
             print(f'\tuser_data       : {user_data}')
             print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
+
+    def _cntrl_node_event(self, sender, data, user_data):
+        del sender, data
+        if not isinstance(user_data, dict):
+            return
+        node_id = user_data.get('node_id')
+        source_node_tag = user_data.get('node_tag')
+        if node_id is None or source_node_tag is None:
+            return
+        self._cntrl_spawn_preview_node(int(node_id), source_node_tag)
+
+    def _cntrl_spawn_preview_node(self, source_node_id, source_node_tag):
+        source_node_id_name = f'{source_node_id}:{source_node_tag.split(":", 1)[1]}'
+        source_output_tag = self._cntrl_find_node_port(source_node_id_name, 'Image', 'Output')
+        if source_output_tag is None:
+            return
+
+        new_id, preview_node_id_name = self._mdl_add_node('ResultImageLarge')
+        source_pos = dpg.get_item_pos(source_node_id_name)
+        preview_pos = [int(source_pos[0] + 360), int(source_pos[1])]
+        self._vw_add_node('ResultImageLarge', new_id, preview_pos)
+        self._node_list.append(preview_node_id_name)
+
+        preview_input_tag = self._cntrl_find_node_port(preview_node_id_name, 'Image', 'Input')
+        if preview_input_tag is None:
+            return
+
+        if self._mdl_add_link(source_output_tag, preview_input_tag):
+            link_dpg_id = self._vw_add_link(source_output_tag, preview_input_tag)
+            self._vw_register_link(source_output_tag, preview_input_tag, link_dpg_id)
+            self._mdl_sort_node_graph()
 
     def _cntrl_get_link_from_dpg_id(self, link_dpg_id):
         link_dpg_config = dpg.get_item_configuration(link_dpg_id)

@@ -1342,10 +1342,9 @@ class DpgNodeEditor(object):
             lambda s=None, d=None, tag=user_data:
             self._cntrl_delete_node_deferred(s, d, tag)
         )
-        dpg.set_frame_callback(
-            dpg.get_frame_count() + 1,
-            delete_callback,
-        )
+        with dpg.mutex():
+            target_frame = dpg.get_frame_count() + 2
+            dpg.set_frame_callback(target_frame, delete_callback)
 
     def _cntrl_delete_node_deferred(self, sender, data, user_data):
         node_tag = user_data

@@ -85,6 +85,7 @@ class DpgNodeEditor(object):
         self._node_connection_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
         self._pending_add_from_output_tag = None
+        self._pending_add_to_input_tag = None
         self._node_port_capabilities = {}
         self._node_registry = {}
         self._port_registry = {}
@@ -393,7 +394,7 @@ class DpgNodeEditor(object):
         dpg.add_separator()
 
     def _vw_create_add_node_popup_menu(self):
-        dpg.add_text('Append Node')
+        dpg.add_text('Add Node')
         dpg.add_separator()
 
     def _vw_clear_popup_menu_items(self, popup_tag):
@@ -473,6 +474,29 @@ class DpgNodeEditor(object):
                     dpg.add_menu_item(
                         label=node_info['label'],
                         callback=self._cntrl_add_node_from_output_port,
+                        user_data=node_info['tag'],
+                    )
+        if not added:
+            dpg.add_text('No compatible nodes', parent=self._add_node_popup_tag)
+
+    def _vw_populate_prepend_popup_menu(self, dest_type):
+        self._vw_clear_popup_menu_items(self._add_node_popup_tag)
+        added = False
+        for menu_label, nodes in self._menu_nodes.items():
+            compatible_nodes = [
+                node_info for node_info in nodes
+                if dest_type in self._node_port_capabilities.get(
+                    node_info['tag'], {}
+                ).get('output_types', set())
+            ]
+            if not compatible_nodes:
+                continue
+            added = True
+            with dpg.menu(label=menu_label, parent=self._add_node_popup_tag):
+                for node_info in compatible_nodes:
+                    dpg.add_menu_item(
+                        label=node_info['label'],
+                        callback=self._cntrl_add_node_to_input_port,
                         user_data=node_info['tag'],
                     )
         if not added:
@@ -736,13 +760,33 @@ class DpgNodeEditor(object):
         del sender, data
         output_port_tag = self._cntrl_get_hovered_output_port_tag()
         self._pending_add_from_output_tag = output_port_tag
+        input_port_tag = self._cntrl_get_hovered_input_port_tag()
+        self._pending_add_to_input_tag = input_port_tag
 
         if output_port_tag is not None:
             self._pending_insert_link_dpg_id = None
+            self._pending_add_to_input_tag = None
             self._vw_hide_insert_link_popup()
             source_port = self._cntrl_parse_port_tag(output_port_tag)
             self._vw_populate_append_popup_menu(
                 source_port.data_type if source_port else ''
+            )
+            mouse_pos = dpg.get_mouse_pos(local=False)
+            window_pos = dpg.get_item_pos(self._window_tag)
+            popup_pos = [
+                int(mouse_pos[0] - window_pos[0]),
+                int(mouse_pos[1] - window_pos[1]),
+            ]
+            self._vw_show_add_node_popup(popup_pos)
+            return
+
+        if input_port_tag is not None:
+            self._pending_insert_link_dpg_id = None
+            self._pending_add_from_output_tag = None
+            self._vw_hide_insert_link_popup()
+            dest_port = self._cntrl_parse_port_tag(input_port_tag)
+            self._vw_populate_prepend_popup_menu(
+                dest_port.data_type if dest_port else ''
             )
             mouse_pos = dpg.get_mouse_pos(local=False)
             window_pos = dpg.get_item_pos(self._window_tag)
@@ -786,6 +830,7 @@ class DpgNodeEditor(object):
         if dpg.is_item_shown(self._add_node_popup_tag):
             self._vw_hide_add_node_popup()
         self._pending_add_from_output_tag = None
+        self._pending_add_to_input_tag = None
 
     def _cntrl_get_target_link_for_context_insert(self):
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -811,6 +856,23 @@ class DpgNodeEditor(object):
                     return port_tag
                 for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
                     type_port_tag = f'{node_id}:{node_name}:{port_type}:Output{index:02d}'
+                    if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
+                        return type_port_tag
+        return None
+
+    def _cntrl_get_hovered_input_port_tag(self):
+        for node_id_name in self._node_list:
+            parts = node_id_name.split(':')
+            if len(parts) < 2:
+                continue
+            node_id = parts[0]
+            node_name = parts[1]
+            for index in range(100):
+                port_tag = f'{node_id}:{node_name}:Image:Input{index:02d}'
+                if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
+                    return port_tag
+                for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
+                    type_port_tag = f'{node_id}:{node_name}:{port_type}:Input{index:02d}'
                     if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
                         return type_port_tag
         return None
@@ -884,6 +946,45 @@ class DpgNodeEditor(object):
         if self._mdl_add_link(source_tag, input_tag):
             link_dpg_id = self._vw_add_link(source_tag, input_tag)
             self._vw_register_link(source_tag, input_tag, link_dpg_id)
+            self._mdl_sort_node_graph()
+            self._vw_set_link_feedback('')
+
+    def _cntrl_add_node_to_input_port(self, sender, data, user_data):
+        del sender, data
+        self._vw_hide_add_node_popup()
+
+        dest_tag = self._pending_add_to_input_tag
+        self._pending_add_to_input_tag = None
+        if dest_tag is None:
+            self._vw_set_link_feedback('Create to input requires a hovered input port.')
+            return
+
+        dest_port = self._cntrl_parse_port_tag(dest_tag)
+        if dest_port is None:
+            self._vw_set_link_feedback('Cannot create to input: invalid destination port tag format.')
+            return
+
+        link_type = dest_port.data_type
+        new_id, new_node_id_name = self._mdl_add_node(user_data)
+        self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
+        dest_node = dest_port.node_ref.node_id_name
+        dest_pos = dpg.get_item_pos(dest_node)
+        new_pos = [dest_pos[0] - 260, dest_pos[1]]
+        self._vw_add_node(user_data, new_id, new_pos)
+        self._node_list.append(new_node_id_name)
+
+        output_tag = self._cntrl_find_node_port(new_node_id_name, link_type, 'Output')
+        if output_tag is None:
+            self._mdl_delete_node(new_node_id_name)
+            self._vw_delete_item(new_node_id_name)
+            self._vw_set_link_feedback(
+                f'Cannot connect {user_data}: it needs a {link_type} output port.'
+            )
+            return
+
+        if self._mdl_add_link(output_tag, dest_tag):
+            link_dpg_id = self._vw_add_link(output_tag, dest_tag)
+            self._vw_register_link(output_tag, dest_tag, link_dpg_id)
             self._mdl_sort_node_graph()
             self._vw_set_link_feedback('')
 

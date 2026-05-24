@@ -331,8 +331,25 @@ class DpgNodeEditor(object):
         for child in popup_children[2:]:
             dpg.delete_item(child)
 
-    def _cntrl_extract_node_port_capabilities(self, node_source_path):
+    def _cntrl_extract_node_port_capabilities(self, node, node_source_path):
         capabilities = {'input_types': set(), 'output_types': set()}
+
+        # Declarative nodes expose parameter metadata directly.
+        if hasattr(node, 'parameters') and isinstance(node.parameters, list):
+            capabilities['input_types'].add('Image')
+            capabilities['output_types'].add('Image')
+            if getattr(node, 'show_elapsed_time', True):
+                capabilities['output_types'].add('TimeMS')
+            for parameter in node.parameters:
+                if not isinstance(parameter, dict):
+                    continue
+                port_name = str(parameter.get('port', ''))
+                port_type = str(parameter.get('type', ''))
+                if not port_name.startswith('Input'):
+                    continue
+                if port_type in ('Int', 'Float', 'Image', 'Text', 'TimeMS'):
+                    capabilities['input_types'].add(port_type)
+
         try:
             source_text = Path(node_source_path).read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
@@ -538,7 +555,7 @@ class DpgNodeEditor(object):
                     'source_path': node_source,
                 })
                 self._node_port_capabilities[node.node_tag] = \
-                    self._cntrl_extract_node_port_capabilities(node_source)
+                    self._cntrl_extract_node_port_capabilities(node, node_source)
 
     def _cntrl_add_node(self, sender, data, user_data):
         new_id, new_node_id_name = self._mdl_add_node(user_data)
@@ -752,7 +769,6 @@ class DpgNodeEditor(object):
 
         source_tag = self._pending_add_from_output_tag
         self._pending_add_from_output_tag = None
-        self._node_port_capabilities = {}
         if source_tag is None:
             self._vw_set_link_feedback('Create from output requires a hovered output port.')
             return

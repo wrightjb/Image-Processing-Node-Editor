@@ -1052,13 +1052,50 @@ class DpgNodeEditor(object):
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
+    def _cntrl_reconnect_through_node(self, node_id_name):
+        incoming_by_type = {}
+        outgoing_by_type = {}
+
+        for source_tag, dest_tag in self._node_link_list:
+            dest_node = ':'.join(dest_tag.split(':')[:2])
+            source_node = ':'.join(source_tag.split(':')[:2])
+
+            if dest_node == node_id_name:
+                parts = dest_tag.split(':')
+                if len(parts) >= 4:
+                    incoming_by_type.setdefault(parts[2], []).append(source_tag)
+            elif source_node == node_id_name:
+                parts = source_tag.split(':')
+                if len(parts) >= 4:
+                    outgoing_by_type.setdefault(parts[2], []).append(dest_tag)
+
+        reconnect_pairs = []
+        for link_type, outgoing_destinations in outgoing_by_type.items():
+            incoming_sources = incoming_by_type.get(link_type, [])
+            if len(incoming_sources) != 1:
+                continue
+            source_tag = incoming_sources[0]
+            for dest_tag in outgoing_destinations:
+                if source_tag == dest_tag:
+                    continue
+                reconnect_pairs.append((source_tag, dest_tag))
+
+        return reconnect_pairs
+
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
+        reconnect_pairs = []
         for node_dpg_id in selected_nodes:
             node_tag = dpg.get_item_alias(node_dpg_id)
+            reconnect_pairs.extend(self._cntrl_reconnect_through_node(node_tag))
             self._mdl_delete_node(node_tag)
             self._vw_delete_links_for_node(node_tag)
             self._vw_delete_item(node_dpg_id)
+
+        for source_tag, dest_tag in reconnect_pairs:
+            if self._mdl_add_link(source_tag, dest_tag):
+                link_dpg_id = self._vw_add_link(source_tag, dest_tag)
+                self._vw_register_link(source_tag, dest_tag, link_dpg_id)
 
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         for link_dpg_id in selected_links:

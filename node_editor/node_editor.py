@@ -6,6 +6,7 @@ import json
 import platform
 import datetime
 import re
+from functools import partial
 from glob import glob
 from collections import OrderedDict
 from importlib import import_module
@@ -549,7 +550,8 @@ class DpgNodeEditor(object):
                 attribute_type=dpg.mvNode_Attr_Static,
         ):
             with dpg.group(horizontal=True):
-                dpg.add_spacer(width=120)
+                dpg.add_text(' ')
+                dpg.add_spacer(width=180)
                 dpg.add_button(
                     tag=close_button_tag,
                     label='x',
@@ -1339,8 +1341,7 @@ class DpgNodeEditor(object):
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
         dpg.set_frame_callback(
             dpg.get_frame_count() + 1,
-            self._cntrl_delete_node_deferred,
-            user_data,
+            partial(self._cntrl_delete_node_deferred, user_data=user_data),
         )
 
     def _cntrl_delete_node_deferred(self, sender, data, user_data):

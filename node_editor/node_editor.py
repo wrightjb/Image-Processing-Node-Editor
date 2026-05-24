@@ -353,10 +353,12 @@ class DpgNodeEditor(object):
     def _vw_add_link(self, source, destination):
         source_id = source
         destination_id = destination
-        if isinstance(source, str):
-            source_id = dpg.get_alias_id(source)
-        if isinstance(destination, str):
-            destination_id = dpg.get_alias_id(destination)
+
+        if isinstance(source, str) and not dpg.does_item_exist(source):
+            raise ValueError(f'Invalid source port tag: {source}')
+        if isinstance(destination, str) and not dpg.does_item_exist(destination):
+            raise ValueError(f'Invalid destination port tag: {destination}')
+
         return dpg.add_node_link(
             source_id,
             destination_id,

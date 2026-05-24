@@ -45,6 +45,8 @@ class DpgNodeEditor(object):
     _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
     _add_node_popup_tag = _node_editor_tag + 'AddNodePopup'
     _add_node_popup_anchor_tag = _add_node_popup_tag + 'Anchor'
+    _node_close_attr_suffix = ':CloseAttr'
+    _node_close_button_suffix = ':CloseButton'
 
     _node_id = 0
     _node_instance_list = {}
@@ -525,13 +527,37 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        node.add_node(
+        node_view_tag = node.add_node(
             self._node_editor_tag,
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
+
+        if node_tag == 'ExecPythonCode':
+            return
+
+        close_attr_tag = node_view_tag + self._node_close_attr_suffix
+        close_button_tag = node_view_tag + self._node_close_button_suffix
+        if dpg.does_item_exist(close_attr_tag):
+            dpg.delete_item(close_attr_tag)
+
+        with dpg.node_attribute(
+                parent=node_view_tag,
+                tag=close_attr_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(horizontal=True):
+                dpg.add_spacer(width=120)
+                dpg.add_button(
+                    tag=close_button_tag,
+                    label='x',
+                    width=20,
+                    height=20,
+                    callback=self._cntrl_delete_node_by_button,
+                    user_data=node_view_tag,
+                )
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -1273,10 +1299,7 @@ class DpgNodeEditor(object):
         reconnect_pairs = []
         for node_dpg_id in selected_nodes:
             node_tag = dpg.get_item_alias(node_dpg_id)
-            reconnect_pairs.extend(self._cntrl_reconnect_through_node(node_tag))
-            self._mdl_delete_node(node_tag)
-            self._vw_delete_links_for_node(node_tag)
-            self._vw_delete_item(node_dpg_id)
+            reconnect_pairs.extend(self._cntrl_delete_node_by_tag(node_tag))
 
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
@@ -1295,6 +1318,25 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list            : {self._node_list}')
             print(f'\tself._node_link_list       : {self._node_link_list}')
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
+
+    def _cntrl_delete_node_by_tag(self, node_tag):
+        reconnect_pairs = self._cntrl_reconnect_through_node(node_tag)
+
+        if node_tag not in self._node_list:
+            return []
+
+        self._mdl_delete_node(node_tag)
+        self._vw_delete_links_for_node(node_tag)
+        if dpg.does_item_exist(node_tag):
+            self._vw_delete_item(node_tag)
+        return reconnect_pairs
+
+    def _cntrl_delete_node_by_button(self, sender, data, user_data):
+        reconnect_pairs = self._cntrl_delete_node_by_tag(user_data)
+        for source_tag, dest_tag in reconnect_pairs:
+            if self._mdl_add_link(source_tag, dest_tag):
+                link_dpg_id = self._vw_add_link(source_tag, dest_tag)
+                self._vw_register_link(source_tag, dest_tag, link_dpg_id)
 
     # Public functions
     def get_node_list(self):

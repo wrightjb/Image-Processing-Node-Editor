@@ -27,6 +27,7 @@ class Node(DpgNodeABC):
     _playback_start_time = {}
     _playback_start_frame = {}
     _last_output_frame = {}
+    _preview_size = {}
 
     _min_val = 1
     _max_val = 10
@@ -301,10 +302,29 @@ class Node(DpgNodeABC):
 
         # Draw
         if frame is not None:
+            frame_h, frame_w = frame.shape[:2]
+            preview_w = int(max(1, small_window_w))
+            preview_h = int(max(1, round(preview_w * frame_h / max(1, frame_w))))
+            node_key = str(node_id)
+            prev_size = self._preview_size.get(node_key)
+            if prev_size != (preview_w, preview_h):
+                black_image = np.zeros((preview_h, preview_w, 3), dtype=np.uint8)
+                black_texture = convert_cv_to_dpg(black_image, preview_w, preview_h)
+                if dpg.does_item_exist(output_value01_tag):
+                    dpg.delete_item(output_value01_tag)
+                with dpg.texture_registry(show=False):
+                    dpg.add_raw_texture(
+                        preview_w,
+                        preview_h,
+                        black_texture,
+                        tag=output_value01_tag,
+                        format=dpg.mvFormat_Float_rgb,
+                    )
+                self._preview_size[node_key] = (preview_w, preview_h)
             texture = convert_cv_to_dpg(
                 frame,
-                small_window_w,
-                small_window_h,
+                preview_w,
+                preview_h,
             )
             dpg_set_value(output_value01_tag, texture)
 

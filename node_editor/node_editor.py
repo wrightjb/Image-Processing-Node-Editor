@@ -6,7 +6,6 @@ import json
 import platform
 import datetime
 import re
-from functools import partial
 from glob import glob
 from collections import OrderedDict
 from importlib import import_module
@@ -1339,9 +1338,13 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
+        delete_callback = (
+            lambda s=None, d=None, tag=user_data:
+            self._cntrl_delete_node_deferred(s, d, tag)
+        )
         dpg.set_frame_callback(
             dpg.get_frame_count() + 1,
-            partial(self._cntrl_delete_node_deferred, user_data=user_data),
+            delete_callback,
         )
 
     def _cntrl_delete_node_deferred(self, sender, data, user_data):

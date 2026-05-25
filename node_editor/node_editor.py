@@ -42,10 +42,13 @@ class AddNodeCommand:
     setting: dict
 
     def undo(self, editor):
-        editor._cntrl_delete_node_by_tag(f'{self.node_id}:{self.node_tag}')
+        node_id_name = editor._cntrl_resolve_history_node_id_name(
+            f'{self.node_id}:{self.node_tag}'
+        )
+        editor._cntrl_delete_node_by_tag(node_id_name)
 
     def redo(self, editor):
-        editor._cntrl_add_node_with_id(
+        editor._cntrl_add_node_from_history(
             self.node_tag,
             self.node_id,
             self.pos,
@@ -62,7 +65,7 @@ class DeleteNodesCommand:
 
     def undo(self, editor):
         for node_info in self.nodes:
-            editor._cntrl_add_node_with_id(
+            editor._cntrl_add_node_from_history(
                 node_info['node_tag'],
                 int(node_info['node_id']),
                 node_info['pos'],
@@ -79,9 +82,9 @@ class DeleteNodesCommand:
         for source_tag, dest_tag in self.removed_links:
             editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
         for node_info in self.nodes:
-            editor._cntrl_delete_node_by_tag(
+            editor._cntrl_delete_node_by_tag(editor._cntrl_resolve_history_node_id_name(
                 f"{node_info['node_id']}:{node_info['node_tag']}"
-            )
+            ))
         for source_tag, dest_tag in self.healed_links:
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
@@ -152,6 +155,7 @@ class DpgNodeEditor(object):
         self._redo_stack = []
         self._move_start_positions = {}
         self._node_position_cache = {}
+        self._history_node_id_remap = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -818,6 +822,25 @@ class DpgNodeEditor(object):
             pass
         return node_id_name
 
+    def _cntrl_add_node_from_history(self, node_tag, requested_node_id, pos, setting):
+        requested_node_id = int(requested_node_id)
+        requested_id_name = f'{requested_node_id}:{node_tag}'
+        try:
+            created = self._cntrl_add_node_with_id(
+                node_tag, requested_node_id, pos, setting
+            )
+            self._history_node_id_remap[requested_id_name] = created
+            return created
+        except Exception:
+            new_id, _ = self._mdl_add_node(node_tag)
+            created = self._cntrl_add_node_with_id(node_tag, new_id, pos, setting)
+            self._history_node_id_remap[requested_id_name] = created
+            return created
+
+    def _cntrl_resolve_history_node_id_name(self, node_id_name):
+        resolved = self._history_node_id_remap.get(node_id_name, node_id_name)
+        return resolved
+
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
             if not isinstance(data, dict):
@@ -1450,6 +1473,7 @@ class DpgNodeEditor(object):
             cmd.undo(self)
         elif isinstance(cmd, tuple) and cmd[0] == 'move':
             _, node_id_name, before_pos, _after_pos = cmd
+            node_id_name = self._cntrl_resolve_history_node_id_name(node_id_name)
             self._vw_set_node_pos(node_id_name, before_pos)
             self._node_position_cache[node_id_name] = list(before_pos)
         elif isinstance(cmd, tuple) and cmd[0] == 'add_link':
@@ -1471,6 +1495,7 @@ class DpgNodeEditor(object):
             cmd.redo(self)
         elif isinstance(cmd, tuple) and cmd[0] == 'move':
             _, node_id_name, _before_pos, after_pos = cmd
+            node_id_name = self._cntrl_resolve_history_node_id_name(node_id_name)
             self._vw_set_node_pos(node_id_name, after_pos)
             self._node_position_cache[node_id_name] = list(after_pos)
         elif isinstance(cmd, tuple) and cmd[0] == 'add_link':

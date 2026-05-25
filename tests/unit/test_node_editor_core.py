@@ -508,3 +508,24 @@ def test_set_get_terminate_flag(editor_and_dpg):
     assert editor.get_terminate_flag() is True
     editor.set_terminate_flag(False)
     assert editor.get_terminate_flag() is False
+
+
+def test_delete_multiple_nodes_heals_external_path(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = True
+    editor._cntrl_add_node(None, None, 'TestNode')  # 1
+    editor._cntrl_add_node(None, None, 'TestNode')  # 2
+    editor._cntrl_add_node(None, None, 'TestNode')  # 3
+    editor._cntrl_add_node(None, None, 'TestNode')  # 4
+
+    editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._mdl_add_link('2:TestNode:Int:Output01', '3:TestNode:Int:Input01')
+    editor._mdl_add_link('3:TestNode:Int:Output01', '4:TestNode:Int:Input01')
+
+    dpg.get_selected_nodes.return_value = ['2:TestNode', '3:TestNode']
+    dpg.get_selected_links.return_value = []
+    editor._cntrl_delete_selected(None, None)
+
+    assert '2:TestNode' not in editor._node_list
+    assert '3:TestNode' not in editor._node_list
+    assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list

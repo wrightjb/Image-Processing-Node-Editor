@@ -1316,6 +1316,39 @@ class DpgNodeEditor(object):
 
         return reconnect_pairs
 
+    def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
+        deleted_set = set(deleted_node_tags)
+        if not deleted_set:
+            return []
+
+        incoming_by_type = {}
+        outgoing_by_type = {}
+        for source_tag, dest_tag in self._node_link_list:
+            source_port = self._port_registry.get(source_tag)
+            dest_port = self._port_registry.get(dest_tag)
+            if source_port is None or dest_port is None:
+                continue
+            source_node = source_port.node_ref.node_id_name
+            dest_node = dest_port.node_ref.node_id_name
+            link_type = source_port.data_type
+
+            if source_node not in deleted_set and dest_node in deleted_set:
+                incoming_by_type.setdefault(link_type, []).append(source_tag)
+            elif source_node in deleted_set and dest_node not in deleted_set:
+                outgoing_by_type.setdefault(link_type, []).append(dest_tag)
+
+        reconnect_pairs = []
+        for link_type, outgoing_destinations in outgoing_by_type.items():
+            incoming_sources = incoming_by_type.get(link_type, [])
+            if len(incoming_sources) != 1:
+                continue
+            source_tag = incoming_sources[0]
+            for dest_tag in outgoing_destinations:
+                if source_tag == dest_tag:
+                    continue
+                reconnect_pairs.append((source_tag, dest_tag))
+        return reconnect_pairs
+
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
@@ -1323,9 +1356,9 @@ class DpgNodeEditor(object):
         self._cntrl_delete_targets(selected_node_tags, selected_links)
 
     def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
-        reconnect_pairs = []
+        reconnect_pairs = self._cntrl_reconnect_through_deleted_nodes(selected_node_tags)
         for node_tag in selected_node_tags:
-            reconnect_pairs.extend(self._cntrl_delete_node_by_tag(node_tag))
+            self._cntrl_delete_node_by_tag(node_tag)
 
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
@@ -1358,16 +1391,9 @@ class DpgNodeEditor(object):
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
         node_tag = user_data
-
-        def _deferred_delete_node():
-            if not node_tag or not dpg.does_item_exist(node_tag):
-                return
-            self._cntrl_delete_targets([node_tag], [])
-
-        dpg.set_frame_callback(
-            dpg.get_frame_count() + 1,
-            _deferred_delete_node,
-        )
+        if not node_tag or not dpg.does_item_exist(node_tag):
+            return
+        self._cntrl_delete_targets([node_tag], [])
 
     # Public functions
     def get_node_list(self):

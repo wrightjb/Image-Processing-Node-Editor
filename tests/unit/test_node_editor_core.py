@@ -553,3 +553,14 @@ def test_delete_multiple_nodes_heals_two_independent_paths(editor_and_dpg):
 
     assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list
     assert ['5:TestNode:Int:Output01', '8:TestNode:Int:Input01'] in editor._node_link_list
+
+
+def test_delete_selected_ignores_stale_selected_link_ids(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_selected_nodes.return_value = []
+    dpg.get_selected_links.return_value = [273]
+    dpg.does_item_exist.return_value = False
+
+    editor._cntrl_delete_selected(None, None)
+
+    assert editor._node_link_list == []

@@ -1289,33 +1289,6 @@ class DpgNodeEditor(object):
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
-    def _cntrl_reconnect_through_node(self, node_id_name):
-        incoming_by_type = {}
-        outgoing_by_type = {}
-
-        for source_tag, dest_tag in self._node_link_list:
-            source_port = self._port_registry.get(source_tag)
-            dest_port = self._port_registry.get(dest_tag)
-            if source_port is None or dest_port is None:
-                continue
-            if dest_port.node_ref.node_id_name == node_id_name:
-                incoming_by_type.setdefault(dest_port.data_type, []).append(source_tag)
-            elif source_port.node_ref.node_id_name == node_id_name:
-                outgoing_by_type.setdefault(source_port.data_type, []).append(dest_tag)
-
-        reconnect_pairs = []
-        for link_type, outgoing_destinations in outgoing_by_type.items():
-            incoming_sources = incoming_by_type.get(link_type, [])
-            if len(incoming_sources) != 1:
-                continue
-            source_tag = incoming_sources[0]
-            for dest_tag in outgoing_destinations:
-                if source_tag == dest_tag:
-                    continue
-                reconnect_pairs.append((source_tag, dest_tag))
-
-        return reconnect_pairs
-
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
         deleted_set = set(deleted_node_tags)
         if not deleted_set:
@@ -1367,6 +1340,8 @@ class DpgNodeEditor(object):
         reconnect_pairs = []
         for _src_tag, dest_tag, source_node, _dest_node, link_type in outgoing_edges:
             incoming_sources = _find_external_sources(source_node, link_type)
+            # Heal only when there is a single unambiguous external source.
+            # If there are 0 or >1 candidates, skip reconnection by design.
             if len(incoming_sources) != 1:
                 continue
             source_tag = next(iter(incoming_sources))
@@ -1409,16 +1384,13 @@ class DpgNodeEditor(object):
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
 
     def _cntrl_delete_node_by_tag(self, node_tag):
-        reconnect_pairs = self._cntrl_reconnect_through_node(node_tag)
-
         if node_tag not in self._node_list:
-            return []
+            return
 
         self._mdl_delete_node(node_tag)
         self._vw_delete_links_for_node(node_tag)
         if dpg.does_item_exist(node_tag):
             self._vw_delete_item(node_tag)
-        return reconnect_pairs
 
     def _cntrl_delete_node_by_button(self, sender, data, user_data):
         node_tag = user_data

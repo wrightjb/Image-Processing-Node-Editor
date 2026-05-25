@@ -72,6 +72,7 @@ def editor_and_dpg():
         dpg.set_value = Mock()
         dpg.show_item = Mock()
         dpg.hide_item = Mock()
+        dpg.set_item_pos = Mock()
 
         # load DummyNode from patched import
         mock_glob.return_value = ['node/test_node/test_node.py']
@@ -80,6 +81,52 @@ def editor_and_dpg():
 
         editor = DpgNodeEditor(use_debug_print=False)
         yield editor, dpg
+
+
+def test_move_undo_redo_single_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    pos_map = {'1:TestNode': [10, 20]}
+
+    def get_pos(tag):
+        return pos_map.get(tag, [0, 0])
+
+    def set_pos(tag, pos):
+        pos_map[tag] = list(pos)
+
+    dpg.get_selected_nodes.return_value = ['1:TestNode']
+    dpg.get_item_alias.side_effect = lambda tag: tag
+    dpg.get_item_pos.side_effect = get_pos
+    dpg.set_item_pos.side_effect = set_pos
+    dpg.does_item_exist.side_effect = lambda tag: tag in pos_map
+
+    editor._cntrl_capture_move_start_positions(None, None)
+    pos_map['1:TestNode'] = [110, 220]
+    editor._cntrl_commit_move_commands(None, None)
+
+    assert len(editor._undo_stack) == 1
+    assert len(editor._redo_stack) == 0
+
+    editor._cntrl_undo(None, None)
+    assert pos_map['1:TestNode'] == [10, 20]
+    assert len(editor._redo_stack) == 1
+
+    editor._cntrl_redo(None, None)
+    assert pos_map['1:TestNode'] == [110, 220]
+    assert len(editor._undo_stack) == 1
+
+
+def test_move_commit_skips_unchanged_positions(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    pos_map = {'1:TestNode': [10, 20]}
+    dpg.get_selected_nodes.return_value = ['1:TestNode']
+    dpg.get_item_alias.side_effect = lambda tag: tag
+    dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+    dpg.does_item_exist.side_effect = lambda tag: tag in pos_map
+
+    editor._cntrl_capture_move_start_positions(None, None)
+    editor._cntrl_commit_move_commands(None, None)
+
+    assert editor._undo_stack == []
 
 
 def test_add_node_increments_id(editor_and_dpg):

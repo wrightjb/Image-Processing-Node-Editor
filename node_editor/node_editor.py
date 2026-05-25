@@ -34,6 +34,19 @@ class PortRef:
     dpg_tag: str
 
 
+@dataclass
+class MoveNodeCommand:
+    node_id_name: str
+    before_pos: list
+    after_pos: list
+
+    def undo(self, editor):
+        editor._vw_set_node_pos(self.node_id_name, self.before_pos)
+
+    def redo(self, editor):
+        editor._vw_set_node_pos(self.node_id_name, self.after_pos)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -96,6 +109,9 @@ class DpgNodeEditor(object):
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
+        self._undo_stack = []
+        self._redo_stack = []
+        self._move_start_positions = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -620,6 +636,10 @@ class DpgNodeEditor(object):
     def _vw_delete_item(self, item_id):
         dpg.delete_item(item_id)
 
+    def _vw_set_node_pos(self, node_id_name, pos):
+        if dpg.does_item_exist(node_id_name):
+            dpg.set_item_pos(node_id_name, pos)
+
     def _vw_show_file_export(self):
         dpg.show_item('file_export')
 
@@ -655,6 +675,8 @@ class DpgNodeEditor(object):
         self._cntrl_discover_nodes(node_dir, menu_dict)
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
+            dpg.add_mouse_down_handler(callback=self._cntrl_capture_move_start_positions)
+            dpg.add_mouse_release_handler(callback=self._cntrl_commit_move_commands)
             dpg.add_mouse_click_handler(
                 button=dpg.mvMouseButton_Right,
                 callback=self._cntrl_open_insert_link_popup,
@@ -666,6 +688,14 @@ class DpgNodeEditor(object):
             dpg.add_key_press_handler(
                 dpg.mvKey_Escape,
                 callback=self._cntrl_close_insert_link_popup_on_escape,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_Z,
+                callback=self._cntrl_undo,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_Y,
+                callback=self._cntrl_redo,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -1288,6 +1318,69 @@ class DpgNodeEditor(object):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
+
+    def _cntrl_capture_move_start_positions(self, sender, data):
+        del sender, data
+        self._move_start_positions = {}
+        selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
+        for node_dpg_id in selected_nodes:
+            node_id_name = dpg.get_item_alias(node_dpg_id)
+            if not isinstance(node_id_name, str):
+                continue
+            if ':' not in node_id_name:
+                continue
+            self._move_start_positions[node_id_name] = dpg.get_item_pos(node_id_name)
+
+    def _cntrl_commit_move_commands(self, sender, data):
+        del sender, data
+        if not self._move_start_positions:
+            return
+        move_commands = []
+        for node_id_name, before_pos in self._move_start_positions.items():
+            if not dpg.does_item_exist(node_id_name):
+                continue
+            after_pos = dpg.get_item_pos(node_id_name)
+            if list(before_pos) == list(after_pos):
+                continue
+            move_commands.append(
+                MoveNodeCommand(
+                    node_id_name=node_id_name,
+                    before_pos=list(before_pos),
+                    after_pos=list(after_pos),
+                )
+            )
+
+        if len(move_commands) == 1:
+            self._undo_stack.append(move_commands[0])
+            self._redo_stack.clear()
+        elif len(move_commands) > 1:
+            self._undo_stack.append(move_commands)
+            self._redo_stack.clear()
+        self._move_start_positions = {}
+
+    def _cntrl_undo(self, sender, data):
+        del sender, data
+        if not self._undo_stack:
+            return
+        command = self._undo_stack.pop()
+        if isinstance(command, list):
+            for child_command in reversed(command):
+                child_command.undo(self)
+        else:
+            command.undo(self)
+        self._redo_stack.append(command)
+
+    def _cntrl_redo(self, sender, data):
+        del sender, data
+        if not self._redo_stack:
+            return
+        command = self._redo_stack.pop()
+        if isinstance(command, list):
+            for child_command in command:
+                child_command.redo(self)
+        else:
+            command.redo(self)
+        self._undo_stack.append(command)
 
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
         deleted_set = set(deleted_node_tags)

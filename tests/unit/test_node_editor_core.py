@@ -335,6 +335,36 @@ def test_insert_node_into_selected_link(editor_and_dpg):
     assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
 
 
+def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.get_item_pos.side_effect = lambda tag: [300, 200] if tag == '2:TestNode' else [0, 0]
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Output}
+        if tag == '4:TestNode:Int:Output01'
+        else {'attribute_type': dpg.mvNode_Attr_Input}
+    )
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    # Existing 1 -> 2 link
+    assert editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._vw_register_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01', 'link-old')
+
+    editor._pending_add_to_input_tag = '2:TestNode:Int:Input01'
+    editor._cntrl_add_node_to_input_port(None, None, 'TestNode')
+
+    assert ['4:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] not in editor._node_link_list
+
+    editor._cntrl_undo(None, None)
+
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert '4:TestNode' not in editor._node_list
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

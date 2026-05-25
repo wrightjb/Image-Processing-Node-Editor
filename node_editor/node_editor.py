@@ -1282,16 +1282,33 @@ class DpgNodeEditor(object):
             self._mdl_sort_node_graph()
             node = self.get_node_instance(user_data)
             node_setting = node.get_setting_dict(str(new_id))
-            self._undo_stack.append(
-                AddNodeCommand(
-                    new_id,
-                    user_data,
-                    list(new_pos),
-                    copy.deepcopy(node_setting),
-                    [(output_tag, dest_tag)],
-                    replaced_links,
+            if replaced_links:
+                self._undo_stack.append(
+                    CompositeCommand(
+                        [
+                            RemoveLinkCommand(replaced_links[0][0], replaced_links[0][1]),
+                            AddNodeCommand(
+                                new_id,
+                                user_data,
+                                list(new_pos),
+                                copy.deepcopy(node_setting),
+                                [(output_tag, dest_tag)],
+                                [],
+                            ),
+                        ]
+                    )
                 )
-            )
+            else:
+                self._undo_stack.append(
+                    AddNodeCommand(
+                        new_id,
+                        user_data,
+                        list(new_pos),
+                        copy.deepcopy(node_setting),
+                        [(output_tag, dest_tag)],
+                        [],
+                    )
+                )
             self._redo_stack.clear()
             self._vw_set_link_feedback('')
 

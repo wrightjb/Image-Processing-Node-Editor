@@ -41,12 +41,15 @@ class AddNodeCommand:
     pos: list
     setting: dict
     created_links: list
+    replaced_links: list
 
     def undo(self, editor):
         node_id_name = editor._cntrl_resolve_history_node_id_name(
             f'{self.node_id}:{self.node_tag}'
         )
         editor._cntrl_delete_node_by_tag(node_id_name)
+        for source_tag, dest_tag in self.replaced_links:
+            editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def redo(self, editor):
         recreated_node_id_name = editor._cntrl_add_node_from_history(
@@ -55,6 +58,8 @@ class AddNodeCommand:
             self.pos,
             self.setting,
         )
+        for source_tag, dest_tag in self.replaced_links:
+            editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
         for source_tag, dest_tag in self.created_links:
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
         return recreated_node_id_name
@@ -803,6 +808,7 @@ class DpgNodeEditor(object):
                 list(pos),
                 copy.deepcopy(node_setting),
                 [],
+                [],
             )
         )
         self._redo_stack.clear()
@@ -1145,6 +1151,7 @@ class DpgNodeEditor(object):
                     list(new_pos),
                     copy.deepcopy(node_setting),
                     [(source_tag, input_tag)],
+                    [],
                 )
             )
             self._redo_stack.clear()
@@ -1196,6 +1203,7 @@ class DpgNodeEditor(object):
                     list(new_pos),
                     copy.deepcopy(node_setting),
                     [(output_tag, dest_tag)],
+                    [],
                 )
             )
             self._redo_stack.clear()
@@ -1289,6 +1297,7 @@ class DpgNodeEditor(object):
                     (source_tag, input_tag),
                     (output_tag, dest_tag),
                 ],
+                [(source_tag, dest_tag)],
             )
         )
         self._redo_stack.clear()

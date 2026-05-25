@@ -180,7 +180,8 @@ def test_add_node_undo_redo(editor_and_dpg):
     assert editor._node_list == []
 
     editor._cntrl_redo(None, None)
-    assert editor._node_list == ['1:TestNode']
+    assert len(editor._node_list) == 1
+    assert editor._node_list[0].endswith(':TestNode')
 
 
 def test_add_node_uses_last_position(editor_and_dpg):
@@ -230,7 +231,8 @@ def test_delete_node_undo_redo(editor_and_dpg):
     assert editor._node_list == []
 
     editor._cntrl_undo(None, None)
-    assert editor._node_list == ['1:TestNode']
+    assert len(editor._node_list) == 1
+    assert editor._node_list[0].endswith(':TestNode')
 
     editor._cntrl_redo(None, None)
     assert editor._node_list == []

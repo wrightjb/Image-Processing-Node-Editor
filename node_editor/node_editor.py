@@ -1331,7 +1331,10 @@ class DpgNodeEditor(object):
         for node_id_name in list(self._node_list):
             self._cntrl_delete_node_by_tag(node_id_name)
 
-        self._node_id = 0
+        # Do not rewind `_node_id` here. Reusing old IDs during graph-state
+        # restore can recreate identical alias tags (e.g., texture aliases)
+        # before every resource is fully released, causing DPG "Alias already
+        # exists" failures on redo/import-like restores.
         self._node_list = []
         self._node_link_list = []
         self._link_view_id_map = {}

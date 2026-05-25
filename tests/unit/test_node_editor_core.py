@@ -198,7 +198,47 @@ def test_link_callback_basic(editor_and_dpg):
     assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     assert ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01') in editor._link_registry
     assert editor._link_by_dest_port['2:TestNode:Int:Input01'] == '1:TestNode:Int:Output01'
-    dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
+    dpg.add_node_link.assert_called_once_with(
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+        parent='NodeEditor',
+    )
+
+
+def test_link_add_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {101: '1:TestNode:Int:Output01', 102: '2:TestNode:Int:Input01'}.get
+    dpg.add_node_link.return_value = 'link-1'
+    dpg.does_item_exist.side_effect = lambda tag: True
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_link('NodeEditor', [101, 102])
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+    editor._cntrl_undo(None, None)
+    assert editor._node_link_list == []
+
+    editor._cntrl_redo(None, None)
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+
+def test_link_delete_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_item_alias.side_effect = {101: '1:TestNode:Int:Output01', 102: '2:TestNode:Int:Input01'}.get
+    dpg.get_item_configuration.return_value = {'attr_1': 101, 'attr_2': 102}
+    dpg.add_node_link.return_value = 'link-1'
+    dpg.get_selected_links.return_value = ['link-1']
+    dpg.does_item_exist.side_effect = lambda tag: True
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_link('NodeEditor', [101, 102])
+
+    editor._cntrl_delete_selected(None, None)
+    assert editor._node_link_list == []
+
+    editor._cntrl_undo(None, None)
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
 
 
 def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
@@ -260,8 +300,16 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     assert editor._link_view_id_map == {
         ('3:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'link-2'
     }
-    dpg.add_node_link.assert_any_call(101, 102, parent='NodeEditor')
-    dpg.add_node_link.assert_any_call(103, 102, parent='NodeEditor')
+    dpg.add_node_link.assert_any_call(
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+        parent='NodeEditor',
+    )
+    dpg.add_node_link.assert_any_call(
+        '3:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+        parent='NodeEditor',
+    )
     dpg.delete_item.assert_called_once_with('link-1')
     assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
     assert dpg.configure_item.call_args_list[-1].kwargs == {

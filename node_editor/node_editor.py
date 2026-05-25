@@ -47,6 +47,30 @@ class MoveNodeCommand:
         editor._vw_set_node_pos(self.node_id_name, self.after_pos)
 
 
+@dataclass(frozen=True)
+class AddLinkCommand:
+    source_tag: str
+    dest_tag: str
+
+    def undo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+
+    def redo(self, editor):
+        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+
+
+@dataclass(frozen=True)
+class RemoveLinkCommand:
+    source_tag: str
+    dest_tag: str
+
+    def undo(self, editor):
+        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+
+    def redo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -645,6 +669,27 @@ class DpgNodeEditor(object):
         if dpg.does_item_exist(node_id_name):
             self._node_position_cache[node_id_name] = list(dpg.get_item_pos(node_id_name))
 
+    def _cntrl_add_link_by_tags(self, source_tag, dest_tag):
+        if not self._mdl_add_link(source_tag, dest_tag):
+            return False
+        link_dpg_id = dpg.add_node_link(
+            source_tag,
+            dest_tag,
+            parent=self._node_editor_tag,
+        )
+        self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+        self._mdl_sort_node_graph()
+        return True
+
+    def _cntrl_remove_link_by_tags(self, source_tag, dest_tag):
+        link = [source_tag, dest_tag]
+        if link not in self._node_link_list:
+            return False
+        self._mdl_delete_link(link)
+        self._vw_delete_link(source_tag, dest_tag)
+        self._mdl_sort_node_graph()
+        return True
+
     def _vw_show_file_export(self):
         dpg.show_item('file_export')
 
@@ -1197,14 +1242,18 @@ class DpgNodeEditor(object):
                 )
                 self._mdl_sort_node_graph()
                 return
-            self._mdl_delete_link(existing_link)
-            self._vw_delete_link(*existing_link)
+            self._cntrl_remove_link_by_tags(existing_link[0], existing_link[1])
 
-        if self._mdl_add_link(source_tag, dest_tag):
-            link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
-            self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+        added = self._cntrl_add_link_by_tags(source_tag, dest_tag)
+        if added:
+            if existing_link is not None and existing_link[0] != source_tag:
+                self._undo_stack.append(
+                    [RemoveLinkCommand(*existing_link), AddLinkCommand(source_tag, dest_tag)]
+                )
+            else:
+                self._undo_stack.append(AddLinkCommand(source_tag, dest_tag))
+            self._redo_stack.clear()
             self._vw_set_link_feedback('')
-        self._mdl_sort_node_graph()
 
         if self._use_debug_print:
             print('**** _cntrl_link ****')
@@ -1409,12 +1458,14 @@ class DpgNodeEditor(object):
         if isinstance(command, list):
             for child_command in reversed(command):
                 child_command.undo(self)
-                self._node_position_cache[child_command.node_id_name] = list(
-                    child_command.before_pos
-                )
+                if hasattr(child_command, 'node_id_name') and hasattr(child_command, 'before_pos'):
+                    self._node_position_cache[child_command.node_id_name] = list(
+                        child_command.before_pos
+                    )
         else:
             command.undo(self)
-            self._node_position_cache[command.node_id_name] = list(command.before_pos)
+            if hasattr(command, 'node_id_name') and hasattr(command, 'before_pos'):
+                self._node_position_cache[command.node_id_name] = list(command.before_pos)
         self._redo_stack.append(command)
 
     def _cntrl_redo(self, sender, data):
@@ -1431,12 +1482,14 @@ class DpgNodeEditor(object):
         if isinstance(command, list):
             for child_command in command:
                 child_command.redo(self)
-                self._node_position_cache[child_command.node_id_name] = list(
-                    child_command.after_pos
-                )
+                if hasattr(child_command, 'node_id_name') and hasattr(child_command, 'after_pos'):
+                    self._node_position_cache[child_command.node_id_name] = list(
+                        child_command.after_pos
+                    )
         else:
             command.redo(self)
-            self._node_position_cache[command.node_id_name] = list(command.after_pos)
+            if hasattr(command, 'node_id_name') and hasattr(command, 'after_pos'):
+                self._node_position_cache[command.node_id_name] = list(command.after_pos)
         self._undo_stack.append(command)
 
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
@@ -1523,9 +1576,9 @@ class DpgNodeEditor(object):
                 link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
             except Exception:
                 continue
-            self._mdl_delete_link(link)
-            self._link_view_id_map.pop(tuple(link), None)
-            self._vw_delete_item(link_dpg_id)
+            if self._cntrl_remove_link_by_tags(link[0], link[1]):
+                self._undo_stack.append(RemoveLinkCommand(link[0], link[1]))
+                self._redo_stack.clear()
 
         if self._use_debug_print:
             print('**** _cntrl_delete_selected ****')

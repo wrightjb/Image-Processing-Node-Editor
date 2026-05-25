@@ -45,6 +45,8 @@ class DpgNodeEditor(object):
     _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
     _add_node_popup_tag = _node_editor_tag + 'AddNodePopup'
     _add_node_popup_anchor_tag = _add_node_popup_tag + 'Anchor'
+    _node_close_attr_suffix = ':CloseAttr'
+    _node_close_button_suffix = ':CloseButton'
 
     _node_id = 0
     _node_instance_list = {}
@@ -181,6 +183,14 @@ class DpgNodeEditor(object):
             dest_port = self._port_registry.get(link_info[1])
             source_node = source_port.node_ref.node_id_name if source_port else ''
             destination_node = dest_port.node_ref.node_id_name if dest_port else ''
+            if not source_node and isinstance(link_info[0], str):
+                source_parts = link_info[0].split(':')
+                if len(source_parts) >= 2:
+                    source_node = f'{source_parts[0]}:{source_parts[1]}'
+            if not destination_node and isinstance(link_info[1], str):
+                dest_parts = link_info[1].split(':')
+                if len(dest_parts) >= 2:
+                    destination_node = f'{dest_parts[0]}:{dest_parts[1]}'
             if source_node == node_id_name or destination_node == node_id_name:
                 self._link_registry.pop((link_info[0], link_info[1]), None)
                 self._link_by_dest_port.pop(link_info[1], None)
@@ -525,13 +535,43 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        node.add_node(
+        node_view_tag = node.add_node(
             self._node_editor_tag,
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
+
+        if node_tag == 'ExecPythonCode':
+            return
+
+        close_attr_tag = node_view_tag + self._node_close_attr_suffix
+        close_button_tag = node_view_tag + self._node_close_button_suffix
+        if dpg.does_item_exist(close_attr_tag):
+            dpg.delete_item(close_attr_tag)
+
+        with dpg.node_attribute(
+                parent=node_view_tag,
+                tag=close_attr_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(horizontal=True):
+                dpg.add_text(' ')
+                dpg.add_spacer(width=180)
+                dpg.add_button(
+                    tag=close_button_tag,
+                    label='x',
+                    width=20,
+                    height=20,
+                    callback=self._cntrl_delete_node_by_button,
+                    user_data=node_view_tag,
+                )
+        node_children = dpg.get_item_children(node_view_tag, 1)
+        if node_children:
+            first_attribute = node_children[0]
+            if first_attribute != close_attr_tag:
+                dpg.move_item(close_attr_tag, parent=node_view_tag, before=first_attribute)
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -561,12 +601,17 @@ class DpgNodeEditor(object):
         for source_tag, dest_tag in self._link_view_id_map:
             source_port = self._port_registry.get(source_tag)
             dest_port = self._port_registry.get(dest_tag)
-            if source_port is None or dest_port is None:
-                continue
-            if (
-                source_port.node_ref.node_id_name == node_id_name
-                or dest_port.node_ref.node_id_name == node_id_name
-            ):
+            source_node = source_port.node_ref.node_id_name if source_port else ''
+            destination_node = dest_port.node_ref.node_id_name if dest_port else ''
+            if not source_node and isinstance(source_tag, str):
+                source_parts = source_tag.split(':')
+                if len(source_parts) >= 2:
+                    source_node = f'{source_parts[0]}:{source_parts[1]}'
+            if not destination_node and isinstance(dest_tag, str):
+                dest_parts = dest_tag.split(':')
+                if len(dest_parts) >= 2:
+                    destination_node = f'{dest_parts[0]}:{dest_parts[1]}'
+            if source_node == node_id_name or destination_node == node_id_name:
                 delete_targets.append((source_tag, dest_tag))
 
         for source_tag, dest_tag in delete_targets:
@@ -1219,7 +1264,10 @@ class DpgNodeEditor(object):
                 new_destination = ':'.join(dest_parts)
                 link_dpg_id = self._vw_add_link(new_source, new_destination)
                 self._vw_register_link(new_source, new_destination, link_dpg_id)
-                new_link_list.append([new_source, new_destination])
+                if not self._mdl_add_link(new_source, new_destination):
+                    # Preserve serialized links for compatibility with older
+                    # graph formats (e.g., duplicate destination links).
+                    new_link_list.append([new_source, new_destination])
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
@@ -1241,51 +1289,90 @@ class DpgNodeEditor(object):
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
-    def _cntrl_reconnect_through_node(self, node_id_name):
-        incoming_by_type = {}
-        outgoing_by_type = {}
+    def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
+        deleted_set = set(deleted_node_tags)
+        if not deleted_set:
+            return []
 
+        links_by_dest_node = {}
+        outgoing_edges = []
         for source_tag, dest_tag in self._node_link_list:
             source_port = self._port_registry.get(source_tag)
             dest_port = self._port_registry.get(dest_tag)
             if source_port is None or dest_port is None:
                 continue
-            if dest_port.node_ref.node_id_name == node_id_name:
-                incoming_by_type.setdefault(dest_port.data_type, []).append(source_tag)
-            elif source_port.node_ref.node_id_name == node_id_name:
-                outgoing_by_type.setdefault(source_port.data_type, []).append(dest_tag)
+            source_node = source_port.node_ref.node_id_name
+            dest_node = dest_port.node_ref.node_id_name
+            link_type = source_port.data_type
+            links_by_dest_node.setdefault(dest_node, []).append(
+                (source_tag, dest_tag, source_node, dest_node, link_type)
+            )
+
+            if source_node in deleted_set and dest_node not in deleted_set:
+                outgoing_edges.append(
+                    (source_tag, dest_tag, source_node, dest_node, link_type)
+                )
+
+        def _find_external_sources(start_deleted_node, link_type):
+            stack = [start_deleted_node]
+            visited = set()
+            boundary_sources = set()
+            while stack:
+                current_node = stack.pop()
+                if current_node in visited:
+                    continue
+                visited.add(current_node)
+                for (
+                    src_tag,
+                    _dst_tag,
+                    src_node,
+                    _cur_dest,
+                    cur_type,
+                ) in links_by_dest_node.get(current_node, []):
+                    if cur_type != link_type:
+                        continue
+                    if src_node in deleted_set:
+                        stack.append(src_node)
+                    else:
+                        boundary_sources.add(src_tag)
+            return boundary_sources
 
         reconnect_pairs = []
-        for link_type, outgoing_destinations in outgoing_by_type.items():
-            incoming_sources = incoming_by_type.get(link_type, [])
+        for _src_tag, dest_tag, source_node, _dest_node, link_type in outgoing_edges:
+            incoming_sources = _find_external_sources(source_node, link_type)
+            # Heal only when there is a single unambiguous external source.
+            # If there are 0 or >1 candidates, skip reconnection by design.
             if len(incoming_sources) != 1:
                 continue
-            source_tag = incoming_sources[0]
-            for dest_tag in outgoing_destinations:
-                if source_tag == dest_tag:
-                    continue
-                reconnect_pairs.append((source_tag, dest_tag))
-
+            source_tag = next(iter(incoming_sources))
+            if source_tag == dest_tag:
+                continue
+            reconnect_pairs.append((source_tag, dest_tag))
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
-        reconnect_pairs = []
-        for node_dpg_id in selected_nodes:
-            node_tag = dpg.get_item_alias(node_dpg_id)
-            reconnect_pairs.extend(self._cntrl_reconnect_through_node(node_tag))
-            self._mdl_delete_node(node_tag)
-            self._vw_delete_links_for_node(node_tag)
-            self._vw_delete_item(node_dpg_id)
+        selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
+        selected_links = dpg.get_selected_links(self._node_editor_tag)
+        self._cntrl_delete_targets(selected_node_tags, selected_links)
+
+    def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
+        reconnect_pairs = self._cntrl_reconnect_through_deleted_nodes(selected_node_tags)
+        for node_tag in selected_node_tags:
+            self._cntrl_delete_node_by_tag(node_tag)
 
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
                 link_dpg_id = self._vw_add_link(source_tag, dest_tag)
                 self._vw_register_link(source_tag, dest_tag, link_dpg_id)
 
-        selected_links = dpg.get_selected_links(self._node_editor_tag)
-        for link_dpg_id in selected_links:
-            link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
+        for link_dpg_id in selected_link_ids:
+            if not dpg.does_item_exist(link_dpg_id):
+                continue
+            try:
+                link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
+            except Exception:
+                continue
             self._mdl_delete_link(link)
             self._link_view_id_map.pop(tuple(link), None)
             self._vw_delete_item(link_dpg_id)
@@ -1295,6 +1382,21 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list            : {self._node_list}')
             print(f'\tself._node_link_list       : {self._node_link_list}')
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
+
+    def _cntrl_delete_node_by_tag(self, node_tag):
+        if node_tag not in self._node_list:
+            return
+
+        self._mdl_delete_node(node_tag)
+        self._vw_delete_links_for_node(node_tag)
+        if dpg.does_item_exist(node_tag):
+            self._vw_delete_item(node_tag)
+
+    def _cntrl_delete_node_by_button(self, sender, data, user_data):
+        node_tag = user_data
+        if not node_tag or not dpg.does_item_exist(node_tag):
+            return
+        self._cntrl_delete_targets([node_tag], [])
 
     # Public functions
     def get_node_list(self):

@@ -482,3 +482,37 @@ class TestDpgNodeEditorImportExport:
         # and it should connect the two imported IDs
         src_id, dst_id = [int(x.split(':')[0]) for x in imported_links[0]]
         assert {src_id, dst_id} == set(new_ids)
+
+    def test_delete_linked_node_after_import_with_missing_port_registry(
+        self,
+        node_editor,
+        mock_dpg,
+        mock_node_instance,
+        tmp_path,
+    ):
+        imported = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': [['1:test_node:output', '2:test_node:input']],
+            '1:test_node': {
+                'id': '1', 'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [10, 20]}
+            },
+            '2:test_node': {
+                'id': '2', 'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [30, 40]}
+            }
+        }
+        path = tmp_path / "legacy_links.json"
+        path.write_text(json.dumps(imported))
+        node_editor._cntrl_file_import(
+            None, {'file_name': path.name, 'file_path_name': str(path)}
+        )
+
+        node_editor._port_registry.clear()
+        mock_dpg.get_selected_nodes.return_value = ['1:test_node']
+        mock_dpg.get_selected_links.return_value = []
+        node_editor._cntrl_delete_selected(None, None)
+
+        assert '1:test_node' not in node_editor._node_list
+        assert node_editor._node_link_list == []
+        assert node_editor._link_registry == {}

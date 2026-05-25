@@ -171,6 +171,18 @@ def test_add_node_increments_id(editor_and_dpg):
     assert editor._node_list == ['1:TestNode']
 
 
+def test_add_node_undo_redo(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._cntrl_add_node(None, None, 'TestNode')
+    assert editor._node_list == ['1:TestNode']
+
+    editor._cntrl_undo(None, None)
+    assert editor._node_list == []
+
+    editor._cntrl_redo(None, None)
+    assert editor._node_list == ['1:TestNode']
+
+
 def test_add_node_uses_last_position(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_nodes.return_value = ['1:TestNode']
@@ -203,6 +215,25 @@ def test_link_callback_basic(editor_and_dpg):
         '2:TestNode:Int:Input01',
         parent='NodeEditor',
     )
+
+
+def test_delete_node_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.get_selected_nodes.return_value = ['1:TestNode']
+    dpg.get_item_alias.side_effect = lambda tag: tag
+    dpg.does_item_exist.side_effect = lambda tag: True
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    assert editor._node_list == ['1:TestNode']
+
+    editor._cntrl_delete_selected(None, None)
+    assert editor._node_list == []
+
+    editor._cntrl_undo(None, None)
+    assert editor._node_list == ['1:TestNode']
+
+    editor._cntrl_redo(None, None)
+    assert editor._node_list == []
 
 
 def test_link_add_undo_redo(editor_and_dpg):

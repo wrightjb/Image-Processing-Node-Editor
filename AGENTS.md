@@ -43,5 +43,13 @@ python -m pytest --use-cv2-stub
 - Parse node inputs defensively (`None` / malformed UI values can occur during delete/import races).
 - See `docs/async-dpg-race-guide.md` for details and architecture recommendations.
 
+## Import parity maintenance (important)
+- Keep import behavior in lockstep with interactive/editor state behavior.
+- When adding/changing editor state that affects runtime interactions (history stacks, caches, transient selections, etc.), update import flow (`_cntrl_import_setting_dict`) to:
+  1) rebuild graph objects,
+  2) resync derived caches/state,
+  3) reset transient interaction/history state as needed.
+- Rationale: first interaction after import must mirror behavior of the same graph built manually.
+
 ## Commit messages
 Write clear commit messages in English. Use a short summary line followed by a blank line and additional details if necessary.

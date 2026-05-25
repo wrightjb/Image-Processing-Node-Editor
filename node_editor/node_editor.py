@@ -71,6 +71,18 @@ class RemoveLinkCommand:
         editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
 
 
+@dataclass(frozen=True)
+class GraphStateCommand:
+    before_setting: dict
+    after_setting: dict
+
+    def undo(self, editor):
+        editor._cntrl_restore_graph_state(self.before_setting)
+
+    def redo(self, editor):
+        editor._cntrl_restore_graph_state(self.after_setting)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -784,6 +796,7 @@ class DpgNodeEditor(object):
                     self._cntrl_extract_node_port_capabilities(node, node_source)
 
     def _cntrl_add_node(self, sender, data, user_data):
+        before_state = self._cntrl_capture_graph_state()
         new_id, new_node_id_name = self._mdl_add_node(user_data)
         self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
         pos = [0, 0]
@@ -793,6 +806,9 @@ class DpgNodeEditor(object):
         # Must add to list AFTER fully init because update's always async
         self._node_list.append(new_node_id_name)
         self._cntrl_update_node_position_cache(new_node_id_name)
+        after_state = self._cntrl_capture_graph_state()
+        self._undo_stack.append(GraphStateCommand(before_state, after_state))
+        self._redo_stack.clear()
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
@@ -1300,6 +1316,28 @@ class DpgNodeEditor(object):
         self._redo_stack = []
         self._move_start_positions = {}
 
+    def _cntrl_capture_graph_state(self):
+        return copy.deepcopy(self._mdl_get_export_settings())
+
+    def _cntrl_clear_graph_state(self):
+        for node_id_name in list(self._node_list):
+            self._cntrl_delete_node_by_tag(node_id_name)
+
+        self._node_id = 0
+        self._node_list = []
+        self._node_link_list = []
+        self._link_view_id_map = {}
+        self._node_connection_dict = OrderedDict([])
+        self._node_registry = {}
+        self._port_registry = {}
+        self._link_registry = {}
+        self._link_by_dest_port = {}
+        self._node_position_cache = {}
+
+    def _cntrl_restore_graph_state(self, setting_dict):
+        self._cntrl_clear_graph_state()
+        self._cntrl_import_setting_dict(copy.deepcopy(setting_dict))
+
     def _cntrl_import_setting_dict(self, setting_dict):
         if setting_dict is None:
             return
@@ -1560,6 +1598,7 @@ class DpgNodeEditor(object):
         self._cntrl_delete_targets(selected_node_tags, selected_links)
 
     def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
+        before_state = self._cntrl_capture_graph_state()
         reconnect_pairs = self._cntrl_reconnect_through_deleted_nodes(selected_node_tags)
         for node_tag in selected_node_tags:
             self._cntrl_delete_node_by_tag(node_tag)
@@ -1579,6 +1618,11 @@ class DpgNodeEditor(object):
             if self._cntrl_remove_link_by_tags(link[0], link[1]):
                 self._undo_stack.append(RemoveLinkCommand(link[0], link[1]))
                 self._redo_stack.clear()
+
+        after_state = self._cntrl_capture_graph_state()
+        if before_state != after_state and selected_node_tags:
+            self._undo_stack.append(GraphStateCommand(before_state, after_state))
+            self._redo_stack.clear()
 
         if self._use_debug_print:
             print('**** _cntrl_delete_selected ****')

@@ -245,6 +245,33 @@ def test_link_invalid_payload_sets_feedback(editor_and_dpg):
     )
 
 
+def test_link_cycle_is_rejected(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    alias_map = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+        103: '2:TestNode:Int:Output01',
+        104: '1:TestNode:Int:Input01',
+    }
+    dpg.get_item_alias.side_effect = alias_map.get
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.add_node_link.side_effect = ['link-a']
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_link('NodeEditor', [101, 102])
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+
+    editor._cntrl_link('NodeEditor', [103, 104])
+
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    dpg.set_value.assert_any_call(
+        'NodeEditorLinkFeedback',
+        'Link rejected: this connection would create a cycle.',
+    )
+
+
 def test_insert_node_into_selected_link(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_item_alias.side_effect = {

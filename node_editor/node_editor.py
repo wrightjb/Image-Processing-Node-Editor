@@ -1126,6 +1126,12 @@ class DpgNodeEditor(object):
             link_dpg_id = self._vw_add_link(source_tag, input_tag)
             self._vw_register_link(source_tag, input_tag, link_dpg_id)
             self._mdl_sort_node_graph()
+            node = self.get_node_instance(user_data)
+            node_setting = node.get_setting_dict(str(new_id))
+            self._undo_stack.append(
+                AddNodeCommand(new_id, user_data, list(new_pos), copy.deepcopy(node_setting))
+            )
+            self._redo_stack.clear()
             self._vw_set_link_feedback('')
 
     def _cntrl_add_node_to_input_port(self, sender, data, user_data):
@@ -1165,6 +1171,12 @@ class DpgNodeEditor(object):
             link_dpg_id = self._vw_add_link(output_tag, dest_tag)
             self._vw_register_link(output_tag, dest_tag, link_dpg_id)
             self._mdl_sort_node_graph()
+            node = self.get_node_instance(user_data)
+            node_setting = node.get_setting_dict(str(new_id))
+            self._undo_stack.append(
+                AddNodeCommand(new_id, user_data, list(new_pos), copy.deepcopy(node_setting))
+            )
+            self._redo_stack.clear()
             self._vw_set_link_feedback('')
 
     def _cntrl_insert_node_into_selected_link(self, sender, data, user_data):
@@ -1243,6 +1255,12 @@ class DpgNodeEditor(object):
                 self._vw_register_link(new_source, new_dest, link_dpg_id)
 
         self._mdl_sort_node_graph()
+        node = self.get_node_instance(user_data)
+        node_setting = node.get_setting_dict(str(new_id))
+        self._undo_stack.append(
+            AddNodeCommand(new_id, user_data, list(insert_pos), copy.deepcopy(node_setting))
+        )
+        self._redo_stack.clear()
         self._vw_set_link_feedback('')
 
         if self._use_debug_print:

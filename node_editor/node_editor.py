@@ -1317,7 +1317,10 @@ class DpgNodeEditor(object):
         self._move_start_positions = {}
 
     def _cntrl_capture_graph_state(self):
-        return copy.deepcopy(self._mdl_get_export_settings())
+        try:
+            return copy.deepcopy(self._mdl_get_export_settings())
+        except Exception:
+            return None
 
     def _cntrl_clear_graph_state(self):
         for node_id_name in list(self._node_list):
@@ -1335,10 +1338,12 @@ class DpgNodeEditor(object):
         self._node_position_cache = {}
 
     def _cntrl_restore_graph_state(self, setting_dict):
+        if setting_dict is None:
+            return
         self._cntrl_clear_graph_state()
-        self._cntrl_import_setting_dict(copy.deepcopy(setting_dict))
+        self._cntrl_import_setting_dict(copy.deepcopy(setting_dict), reset_history=False)
 
-    def _cntrl_import_setting_dict(self, setting_dict):
+    def _cntrl_import_setting_dict(self, setting_dict, reset_history=True):
         if setting_dict is None:
             return
 
@@ -1400,7 +1405,8 @@ class DpgNodeEditor(object):
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
-        self._cntrl_reset_history_state()
+        if reset_history:
+            self._cntrl_reset_history_state()
 
     def _cntrl_sync_position_cache(self):
         self._node_position_cache = {}

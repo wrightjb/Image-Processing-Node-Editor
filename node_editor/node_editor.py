@@ -139,6 +139,21 @@ class RemoveLinkCommand:
         editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
 
 
+@dataclass(frozen=True)
+class ReplaceLinkCommand:
+    old_source_tag: str
+    new_source_tag: str
+    dest_tag: str
+
+    def undo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.new_source_tag, self.dest_tag)
+        editor._cntrl_add_link_by_tags(self.old_source_tag, self.dest_tag)
+
+    def redo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.old_source_tag, self.dest_tag)
+        editor._cntrl_add_link_by_tags(self.new_source_tag, self.dest_tag)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -1233,6 +1248,14 @@ class DpgNodeEditor(object):
             )
             return
 
+        replaced_links = []
+        existing_link = self._mdl_get_link_by_destination(dest_tag)
+        if existing_link is not None:
+            self._cntrl_remove_link_by_tags(
+                existing_link[0], existing_link[1], record_history=False
+            )
+            replaced_links.append((existing_link[0], existing_link[1]))
+
         if self._mdl_add_link(output_tag, dest_tag):
             link_dpg_id = self._vw_add_link(output_tag, dest_tag)
             self._vw_register_link(output_tag, dest_tag, link_dpg_id)
@@ -1246,7 +1269,7 @@ class DpgNodeEditor(object):
                     list(new_pos),
                     copy.deepcopy(node_setting),
                     [(output_tag, dest_tag)],
-                    [],
+                    replaced_links,
                 )
             )
             self._redo_stack.clear()
@@ -1397,12 +1420,23 @@ class DpgNodeEditor(object):
                 )
                 self._mdl_sort_node_graph()
                 return
-            self._cntrl_remove_link_by_tags(existing_link[0], existing_link[1], record_history=True)
+            self._cntrl_remove_link_by_tags(
+                existing_link[0], existing_link[1], record_history=False
+            )
 
         if self._mdl_add_link(source_tag, dest_tag):
             link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
             self._vw_register_link(source_tag, dest_tag, link_dpg_id)
-            self._undo_stack.append(AddLinkCommand(source_tag, dest_tag))
+            if existing_link is not None:
+                self._undo_stack.append(
+                    ReplaceLinkCommand(
+                        existing_link[0],
+                        source_tag,
+                        dest_tag,
+                    )
+                )
+            else:
+                self._undo_stack.append(AddLinkCommand(source_tag, dest_tag))
             self._redo_stack.clear()
             self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
@@ -1600,6 +1634,8 @@ class DpgNodeEditor(object):
             cmd.undo(self)
         elif isinstance(cmd, RemoveLinkCommand):
             cmd.undo(self)
+        elif isinstance(cmd, ReplaceLinkCommand):
+            cmd.undo(self)
         self._redo_stack.append(cmd)
 
     def _cntrl_redo(self, sender, data):
@@ -1616,6 +1652,8 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, AddLinkCommand):
             cmd.redo(self)
         elif isinstance(cmd, RemoveLinkCommand):
+            cmd.redo(self)
+        elif isinstance(cmd, ReplaceLinkCommand):
             cmd.redo(self)
         self._undo_stack.append(cmd)
 

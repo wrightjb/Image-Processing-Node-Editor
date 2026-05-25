@@ -154,6 +154,19 @@ class ReplaceLinkCommand:
         editor._cntrl_add_link_by_tags(self.new_source_tag, self.dest_tag)
 
 
+@dataclass(frozen=True)
+class CompositeCommand:
+    commands: list
+
+    def undo(self, editor):
+        for command in reversed(self.commands):
+            command.undo(editor)
+
+    def redo(self, editor):
+        for command in self.commands:
+            command.redo(editor)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -1362,16 +1375,21 @@ class DpgNodeEditor(object):
         node = self.get_node_instance(user_data)
         node_setting = node.get_setting_dict(str(new_id))
         self._undo_stack.append(
-            AddNodeCommand(
-                new_id,
-                user_data,
-                list(insert_pos),
-                copy.deepcopy(node_setting),
+            CompositeCommand(
                 [
-                    (source_tag, input_tag),
-                    (output_tag, dest_tag),
-                ],
-                [(source_tag, dest_tag)],
+                    RemoveLinkCommand(source_tag, dest_tag),
+                    AddNodeCommand(
+                        new_id,
+                        user_data,
+                        list(insert_pos),
+                        copy.deepcopy(node_setting),
+                        [
+                            (source_tag, input_tag),
+                            (output_tag, dest_tag),
+                        ],
+                        [],
+                    ),
+                ]
             )
         )
         self._redo_stack.clear()
@@ -1655,6 +1673,8 @@ class DpgNodeEditor(object):
             cmd.undo(self)
         elif isinstance(cmd, ReplaceLinkCommand):
             cmd.undo(self)
+        elif isinstance(cmd, CompositeCommand):
+            cmd.undo(self)
         self._redo_stack.append(cmd)
 
     def _cntrl_redo(self, sender, data):
@@ -1673,6 +1693,8 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, RemoveLinkCommand):
             cmd.redo(self)
         elif isinstance(cmd, ReplaceLinkCommand):
+            cmd.redo(self)
+        elif isinstance(cmd, CompositeCommand):
             cmd.redo(self)
         self._undo_stack.append(cmd)
 

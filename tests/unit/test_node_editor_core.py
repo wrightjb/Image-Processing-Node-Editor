@@ -208,10 +208,11 @@ def test_link_mismatched_type_ignored(editor_and_dpg):
 
 def test_link_duplicate_same_source_sets_feedback(editor_and_dpg):
     editor, dpg = editor_and_dpg
-    dpg.get_item_alias.side_effect = {
+    alias_map = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
-    }.get
+    }
+    dpg.get_item_alias.side_effect = lambda item: alias_map.get(item, item)
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
 
@@ -301,7 +302,7 @@ def test_insert_node_into_selected_link(editor_and_dpg):
             '3:TestNode:Int:Output01',
         }
     )
-    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2']
+    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2', 'restored-link', 'redo-link-1', 'redo-link-2']
 
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
@@ -363,6 +364,66 @@ def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
 
     assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
     assert '4:TestNode' not in editor._node_list
+
+
+def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    alias_map = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }
+    dpg.get_item_alias.side_effect = lambda item: alias_map.get(item, item)
+    dpg.get_selected_links.return_value = ['existing-link']
+    pos_map = {
+        '1:TestNode': [0, 0],
+        '2:TestNode': [120, 60],
+        '3:TestNode': [60, 30],
+    }
+
+    def config_side_effect(tag):
+        if tag == 'existing-link':
+            return {'attr_1': 101, 'attr_2': 102}
+        if tag == '3:TestNode:Int:Input01':
+            return {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == '3:TestNode:Int:Output01':
+            return {'attribute_type': dpg.mvNode_Attr_Output}
+        return {}
+
+    dpg.get_item_configuration.side_effect = config_side_effect
+    dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+    dpg.set_item_pos.side_effect = lambda tag, pos: pos_map.__setitem__(tag, list(pos))
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.add_node_link.side_effect = [
+        'new-link-1', 'new-link-2', 'restored-link', 'redo-link-1', 'redo-link-2'
+    ]
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._link_view_id_map = {
+        ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'existing-link'
+    }
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+    dpg.get_selected_nodes.return_value = ['3:TestNode']
+    editor._cntrl_capture_move_start_positions(None, None)
+    pos_map['3:TestNode'] = [200, 150]
+    editor._cntrl_commit_move_commands(None, None)
+
+    editor._cntrl_undo(None, None)  # undo move
+    assert pos_map['3:TestNode'] == [60, 30]
+
+    editor._cntrl_undo(None, None)  # undo insert
+    assert '3:TestNode' not in editor._node_list
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+    editor._cntrl_redo(None, None)  # redo insert
+    assert '3:TestNode' in editor._node_list
+    assert ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'] in editor._node_link_list
+    assert ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+    editor._cntrl_redo(None, None)  # redo move
+    assert pos_map['3:TestNode'] == [200, 150]
 
 
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):

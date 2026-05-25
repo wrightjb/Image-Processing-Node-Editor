@@ -854,7 +854,6 @@ class DpgNodeEditor(object):
                     self._cntrl_extract_node_port_capabilities(node, node_source)
 
     def _cntrl_add_node(self, sender, data, user_data):
-        self._cntrl_commit_move_commands(None, None)
         new_id, new_node_id_name = self._mdl_add_node(user_data)
         self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
         pos = [0, 0]
@@ -1387,7 +1386,6 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_link(self, sender, data):
-        self._cntrl_commit_move_commands(None, None)
         if not isinstance(data, (list, tuple)) or len(data) != 2:
             self._vw_set_link_feedback(
                 'Link rejected: invalid link data from DearPyGui.'
@@ -1418,6 +1416,12 @@ class DpgNodeEditor(object):
             self._vw_set_link_feedback(
                 f'Link rejected: {source_type} output cannot connect to '
                 f'{dest_type} input.'
+            )
+            return
+
+        if self._cntrl_would_create_cycle(source_tag, dest_tag):
+            self._vw_set_link_feedback(
+                'Link rejected: this connection would create a cycle.'
             )
             return
 
@@ -1551,6 +1555,12 @@ class DpgNodeEditor(object):
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
+        self._cntrl_sync_position_cache()
+
+    def _cntrl_sync_position_cache(self):
+        self._node_position_cache = {}
+        for node_id_name in self._node_list:
+            self._cntrl_update_node_position_cache(node_id_name)
 
     def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':
@@ -1728,7 +1738,6 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
-        self._cntrl_commit_move_commands(None, None)
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -1789,6 +1798,40 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list            : {self._node_list}')
             print(f'\tself._node_link_list       : {self._node_link_list}')
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
+
+    def _cntrl_would_create_cycle(self, source_tag, dest_tag):
+        source_port = self._cntrl_parse_port_tag(source_tag)
+        dest_port = self._cntrl_parse_port_tag(dest_tag)
+        if source_port is None or dest_port is None:
+            return False
+
+        source_node = source_port.node_ref.node_id_name
+        dest_node = dest_port.node_ref.node_id_name
+        if source_node == dest_node:
+            return True
+
+        adjacency = {}
+        for existing_source_tag, existing_dest_tag in self._node_link_list:
+            existing_source = self._cntrl_parse_port_tag(existing_source_tag)
+            existing_dest = self._cntrl_parse_port_tag(existing_dest_tag)
+            if existing_source is None or existing_dest is None:
+                continue
+            adjacency.setdefault(existing_source.node_ref.node_id_name, set()).add(
+                existing_dest.node_ref.node_id_name
+            )
+        adjacency.setdefault(source_node, set()).add(dest_node)
+
+        stack = [dest_node]
+        visited = set()
+        while stack:
+            node = stack.pop()
+            if node == source_node:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            stack.extend(adjacency.get(node, []))
+        return False
 
     def _cntrl_delete_node_by_tag(self, node_tag):
         if node_tag not in self._node_list:

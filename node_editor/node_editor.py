@@ -1321,8 +1321,8 @@ class DpgNodeEditor(object):
         if not deleted_set:
             return []
 
-        incoming_by_type = {}
-        outgoing_by_type = {}
+        links_by_dest_node = {}
+        outgoing_edges = []
         for source_tag, dest_tag in self._node_link_list:
             source_port = self._port_registry.get(source_tag)
             dest_port = self._port_registry.get(dest_tag)
@@ -1331,22 +1331,48 @@ class DpgNodeEditor(object):
             source_node = source_port.node_ref.node_id_name
             dest_node = dest_port.node_ref.node_id_name
             link_type = source_port.data_type
+            links_by_dest_node.setdefault(dest_node, []).append(
+                (source_tag, dest_tag, source_node, dest_node, link_type)
+            )
 
-            if source_node not in deleted_set and dest_node in deleted_set:
-                incoming_by_type.setdefault(link_type, []).append(source_tag)
-            elif source_node in deleted_set and dest_node not in deleted_set:
-                outgoing_by_type.setdefault(link_type, []).append(dest_tag)
+            if source_node in deleted_set and dest_node not in deleted_set:
+                outgoing_edges.append(
+                    (source_tag, dest_tag, source_node, dest_node, link_type)
+                )
+
+        def _find_external_sources(start_deleted_node, link_type):
+            stack = [start_deleted_node]
+            visited = set()
+            boundary_sources = set()
+            while stack:
+                current_node = stack.pop()
+                if current_node in visited:
+                    continue
+                visited.add(current_node)
+                for (
+                    src_tag,
+                    _dst_tag,
+                    src_node,
+                    _cur_dest,
+                    cur_type,
+                ) in links_by_dest_node.get(current_node, []):
+                    if cur_type != link_type:
+                        continue
+                    if src_node in deleted_set:
+                        stack.append(src_node)
+                    else:
+                        boundary_sources.add(src_tag)
+            return boundary_sources
 
         reconnect_pairs = []
-        for link_type, outgoing_destinations in outgoing_by_type.items():
-            incoming_sources = incoming_by_type.get(link_type, [])
+        for _src_tag, dest_tag, source_node, _dest_node, link_type in outgoing_edges:
+            incoming_sources = _find_external_sources(source_node, link_type)
             if len(incoming_sources) != 1:
                 continue
-            source_tag = incoming_sources[0]
-            for dest_tag in outgoing_destinations:
-                if source_tag == dest_tag:
-                    continue
-                reconnect_pairs.append((source_tag, dest_tag))
+            source_tag = next(iter(incoming_sources))
+            if source_tag == dest_tag:
+                continue
+            reconnect_pairs.append((source_tag, dest_tag))
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
@@ -1366,7 +1392,12 @@ class DpgNodeEditor(object):
                 self._vw_register_link(source_tag, dest_tag, link_dpg_id)
 
         for link_dpg_id in selected_link_ids:
-            link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
+            if not dpg.does_item_exist(link_dpg_id):
+                continue
+            try:
+                link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
+            except Exception:
+                continue
             self._mdl_delete_link(link)
             self._link_view_id_map.pop(tuple(link), None)
             self._vw_delete_item(link_dpg_id)

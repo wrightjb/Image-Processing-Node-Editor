@@ -529,3 +529,27 @@ def test_delete_multiple_nodes_heals_external_path(editor_and_dpg):
     assert '2:TestNode' not in editor._node_list
     assert '3:TestNode' not in editor._node_list
     assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list
+
+
+def test_delete_multiple_nodes_heals_two_independent_paths(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = True
+    for _ in range(8):
+        editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._mdl_add_link('2:TestNode:Int:Output01', '3:TestNode:Int:Input01')
+    editor._mdl_add_link('3:TestNode:Int:Output01', '4:TestNode:Int:Input01')
+
+    editor._mdl_add_link('5:TestNode:Int:Output01', '6:TestNode:Int:Input01')
+    editor._mdl_add_link('6:TestNode:Int:Output01', '7:TestNode:Int:Input01')
+    editor._mdl_add_link('7:TestNode:Int:Output01', '8:TestNode:Int:Input01')
+
+    dpg.get_selected_nodes.return_value = [
+        '2:TestNode', '3:TestNode', '6:TestNode', '7:TestNode'
+    ]
+    dpg.get_selected_links.return_value = []
+    editor._cntrl_delete_selected(None, None)
+
+    assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list
+    assert ['5:TestNode:Int:Output01', '8:TestNode:Int:Input01'] in editor._node_link_list

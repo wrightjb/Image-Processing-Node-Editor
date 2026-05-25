@@ -98,6 +98,47 @@ class DeleteNodesCommand:
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
 
+@dataclass(frozen=True)
+class MoveNodeCommand:
+    node_id_name: str
+    before_pos: list
+    after_pos: list
+
+    def undo(self, editor):
+        resolved = editor._cntrl_resolve_history_node_id_name(self.node_id_name)
+        editor._vw_set_node_pos(resolved, self.before_pos)
+        editor._node_position_cache[resolved] = list(self.before_pos)
+
+    def redo(self, editor):
+        resolved = editor._cntrl_resolve_history_node_id_name(self.node_id_name)
+        editor._vw_set_node_pos(resolved, self.after_pos)
+        editor._node_position_cache[resolved] = list(self.after_pos)
+
+
+@dataclass(frozen=True)
+class AddLinkCommand:
+    source_tag: str
+    dest_tag: str
+
+    def undo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+
+    def redo(self, editor):
+        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+
+
+@dataclass(frozen=True)
+class RemoveLinkCommand:
+    source_tag: str
+    dest_tag: str
+
+    def undo(self, editor):
+        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+
+    def redo(self, editor):
+        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -1361,7 +1402,7 @@ class DpgNodeEditor(object):
         if self._mdl_add_link(source_tag, dest_tag):
             link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
             self._vw_register_link(source_tag, dest_tag, link_dpg_id)
-            self._undo_stack.append(('add_link', source_tag, dest_tag))
+            self._undo_stack.append(AddLinkCommand(source_tag, dest_tag))
             self._redo_stack.clear()
             self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
@@ -1503,7 +1544,7 @@ class DpgNodeEditor(object):
         self._mdl_delete_link(link)
         self._vw_delete_link(source_tag, dest_tag)
         if record_history:
-            self._undo_stack.append(('remove_link', source_tag, dest_tag))
+            self._undo_stack.append(RemoveLinkCommand(source_tag, dest_tag))
             self._redo_stack.clear()
         return True
 
@@ -1537,7 +1578,9 @@ class DpgNodeEditor(object):
                 continue
             after_pos = list(dpg.get_item_pos(node_id_name))
             if before_pos != after_pos:
-                self._undo_stack.append(('move', node_id_name, before_pos, after_pos))
+                self._undo_stack.append(
+                    MoveNodeCommand(node_id_name, list(before_pos), list(after_pos))
+                )
                 self._redo_stack.clear()
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
@@ -1551,17 +1594,12 @@ class DpgNodeEditor(object):
             cmd.undo(self)
         elif isinstance(cmd, DeleteNodesCommand):
             cmd.undo(self)
-        elif isinstance(cmd, tuple) and cmd[0] == 'move':
-            _, node_id_name, before_pos, _after_pos = cmd
-            node_id_name = self._cntrl_resolve_history_node_id_name(node_id_name)
-            self._vw_set_node_pos(node_id_name, before_pos)
-            self._node_position_cache[node_id_name] = list(before_pos)
-        elif isinstance(cmd, tuple) and cmd[0] == 'add_link':
-            _, s, d = cmd
-            self._cntrl_remove_link_by_tags(s, d, record_history=False)
-        elif isinstance(cmd, tuple) and cmd[0] == 'remove_link':
-            _, s, d = cmd
-            self._cntrl_add_link_by_tags(s, d)
+        elif isinstance(cmd, MoveNodeCommand):
+            cmd.undo(self)
+        elif isinstance(cmd, AddLinkCommand):
+            cmd.undo(self)
+        elif isinstance(cmd, RemoveLinkCommand):
+            cmd.undo(self)
         self._redo_stack.append(cmd)
 
     def _cntrl_redo(self, sender, data):
@@ -1573,17 +1611,12 @@ class DpgNodeEditor(object):
             cmd.redo(self)
         elif isinstance(cmd, DeleteNodesCommand):
             cmd.redo(self)
-        elif isinstance(cmd, tuple) and cmd[0] == 'move':
-            _, node_id_name, _before_pos, after_pos = cmd
-            node_id_name = self._cntrl_resolve_history_node_id_name(node_id_name)
-            self._vw_set_node_pos(node_id_name, after_pos)
-            self._node_position_cache[node_id_name] = list(after_pos)
-        elif isinstance(cmd, tuple) and cmd[0] == 'add_link':
-            _, s, d = cmd
-            self._cntrl_add_link_by_tags(s, d)
-        elif isinstance(cmd, tuple) and cmd[0] == 'remove_link':
-            _, s, d = cmd
-            self._cntrl_remove_link_by_tags(s, d, record_history=False)
+        elif isinstance(cmd, MoveNodeCommand):
+            cmd.redo(self)
+        elif isinstance(cmd, AddLinkCommand):
+            cmd.redo(self)
+        elif isinstance(cmd, RemoveLinkCommand):
+            cmd.redo(self)
         self._undo_stack.append(cmd)
 
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):

@@ -841,6 +841,21 @@ class DpgNodeEditor(object):
         resolved = self._history_node_id_remap.get(node_id_name, node_id_name)
         return resolved
 
+    def _cntrl_resolve_history_port_tag(self, port_tag):
+        if not isinstance(port_tag, str):
+            return port_tag
+        parts = port_tag.split(':')
+        if len(parts) < 4:
+            return port_tag
+        node_id_name = f'{parts[0]}:{parts[1]}'
+        resolved_node_id_name = self._cntrl_resolve_history_node_id_name(node_id_name)
+        if ':' not in resolved_node_id_name:
+            return port_tag
+        resolved_id, resolved_tag = resolved_node_id_name.split(':', 1)
+        parts[0] = resolved_id
+        parts[1] = resolved_tag
+        return ':'.join(parts)
+
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
             if not isinstance(data, dict):
@@ -1410,6 +1425,8 @@ class DpgNodeEditor(object):
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
     def _cntrl_add_link_by_tags(self, source_tag, dest_tag):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
         if not self._mdl_add_link(source_tag, dest_tag):
             return False
         link_dpg_id = self._vw_add_link(source_tag, dest_tag)
@@ -1417,6 +1434,8 @@ class DpgNodeEditor(object):
         return True
 
     def _cntrl_remove_link_by_tags(self, source_tag, dest_tag, record_history=False):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
         link = [source_tag, dest_tag]
         if link not in self._node_link_list:
             return False

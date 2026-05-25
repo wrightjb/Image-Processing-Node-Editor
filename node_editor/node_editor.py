@@ -151,6 +151,7 @@ class DpgNodeEditor(object):
         self._undo_stack = []
         self._redo_stack = []
         self._move_start_positions = {}
+        self._node_position_cache = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -679,6 +680,10 @@ class DpgNodeEditor(object):
         if dpg.does_item_exist(node_id_name):
             dpg.set_item_pos(node_id_name, pos)
 
+    def _cntrl_update_node_position_cache(self, node_id_name):
+        if dpg.does_item_exist(node_id_name):
+            self._node_position_cache[node_id_name] = list(dpg.get_item_pos(node_id_name))
+
     def _vw_show_file_export(self):
         dpg.show_item('file_export')
 
@@ -781,6 +786,7 @@ class DpgNodeEditor(object):
         self._vw_add_node(user_data, new_id, pos)
         # Must add to list AFTER fully init because update's always async
         self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
         node_setting = self.get_node_instance(user_data).get_setting_dict(str(new_id))
         self._undo_stack.append(
             AddNodeCommand(new_id, user_data, list(pos), copy.deepcopy(node_setting))
@@ -804,6 +810,7 @@ class DpgNodeEditor(object):
         self._mdl_register_node_ref(NodeRef(str(node_id), node_tag))
         self._vw_add_node(node_tag, int(node_id), pos)
         self._node_list.append(node_id_name)
+        self._cntrl_update_node_position_cache(node_id_name)
         node = self.get_node_instance(node_tag)
         try:
             node.set_setting_dict(str(node_id), copy.deepcopy(setting))
@@ -1403,7 +1410,22 @@ class DpgNodeEditor(object):
         for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
             node_id_name = dpg.get_item_alias(node_dpg_id)
             if isinstance(node_id_name, str) and ':' in node_id_name:
-                self._move_start_positions[node_id_name] = list(dpg.get_item_pos(node_id_name))
+                before_pos = self._node_position_cache.get(
+                    node_id_name,
+                    list(dpg.get_item_pos(node_id_name)),
+                )
+                self._move_start_positions[node_id_name] = list(before_pos)
+
+        if self._move_start_positions:
+            return
+        for node_id_name in self._node_list:
+            if dpg.does_item_exist(node_id_name) and dpg.is_item_hovered(node_id_name):
+                before_pos = self._node_position_cache.get(
+                    node_id_name,
+                    list(dpg.get_item_pos(node_id_name)),
+                )
+                self._move_start_positions[node_id_name] = list(before_pos)
+                break
 
     def _cntrl_commit_move_commands(self, sender, data):
         del sender, data
@@ -1414,6 +1436,7 @@ class DpgNodeEditor(object):
             if before_pos != after_pos:
                 self._undo_stack.append(('move', node_id_name, before_pos, after_pos))
                 self._redo_stack.clear()
+            self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
 
     def _cntrl_undo(self, sender, data):
@@ -1428,6 +1451,7 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, tuple) and cmd[0] == 'move':
             _, node_id_name, before_pos, _after_pos = cmd
             self._vw_set_node_pos(node_id_name, before_pos)
+            self._node_position_cache[node_id_name] = list(before_pos)
         elif isinstance(cmd, tuple) and cmd[0] == 'add_link':
             _, s, d = cmd
             self._cntrl_remove_link_by_tags(s, d, record_history=False)
@@ -1448,6 +1472,7 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, tuple) and cmd[0] == 'move':
             _, node_id_name, _before_pos, after_pos = cmd
             self._vw_set_node_pos(node_id_name, after_pos)
+            self._node_position_cache[node_id_name] = list(after_pos)
         elif isinstance(cmd, tuple) and cmd[0] == 'add_link':
             _, s, d = cmd
             self._cntrl_add_link_by_tags(s, d)
@@ -1584,6 +1609,7 @@ class DpgNodeEditor(object):
             return
 
         self._mdl_delete_node(node_tag)
+        self._node_position_cache.pop(node_tag, None)
         self._vw_delete_links_for_node(node_tag)
         if dpg.does_item_exist(node_tag):
             self._vw_delete_item(node_tag)

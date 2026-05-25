@@ -112,6 +112,7 @@ class DpgNodeEditor(object):
         self._undo_stack = []
         self._redo_stack = []
         self._move_start_positions = {}
+        self._node_position_cache = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -640,6 +641,10 @@ class DpgNodeEditor(object):
         if dpg.does_item_exist(node_id_name):
             dpg.set_item_pos(node_id_name, pos)
 
+    def _cntrl_update_node_position_cache(self, node_id_name):
+        if dpg.does_item_exist(node_id_name):
+            self._node_position_cache[node_id_name] = list(dpg.get_item_pos(node_id_name))
+
     def _vw_show_file_export(self):
         dpg.show_item('file_export')
 
@@ -742,6 +747,7 @@ class DpgNodeEditor(object):
         self._vw_add_node(user_data, new_id, pos)
         # Must add to list AFTER fully init because update's always async
         self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
@@ -1329,7 +1335,11 @@ class DpgNodeEditor(object):
                 continue
             if ':' not in node_id_name:
                 continue
-            self._move_start_positions[node_id_name] = dpg.get_item_pos(node_id_name)
+            before_pos = self._node_position_cache.get(
+                node_id_name,
+                dpg.get_item_pos(node_id_name),
+            )
+            self._move_start_positions[node_id_name] = list(before_pos)
 
         # If nothing is selected yet, fall back to hovered node so drag-start
         # on an unselected node is still captured as one undoable move.
@@ -1337,7 +1347,11 @@ class DpgNodeEditor(object):
             return
         for node_id_name in self._node_list:
             if dpg.does_item_exist(node_id_name) and dpg.is_item_hovered(node_id_name):
-                self._move_start_positions[node_id_name] = dpg.get_item_pos(node_id_name)
+                before_pos = self._node_position_cache.get(
+                    node_id_name,
+                    dpg.get_item_pos(node_id_name),
+                )
+                self._move_start_positions[node_id_name] = list(before_pos)
                 break
 
     def _cntrl_commit_move_commands(self, sender, data):
@@ -1365,6 +1379,8 @@ class DpgNodeEditor(object):
         elif len(move_commands) > 1:
             self._undo_stack.append(move_commands)
             self._redo_stack.clear()
+        for node_id_name in self._move_start_positions.keys():
+            self._cntrl_update_node_position_cache(node_id_name)
         self._move_start_positions = {}
 
     def _cntrl_undo(self, sender, data):
@@ -1381,8 +1397,12 @@ class DpgNodeEditor(object):
         if isinstance(command, list):
             for child_command in reversed(command):
                 child_command.undo(self)
+                self._node_position_cache[child_command.node_id_name] = list(
+                    child_command.before_pos
+                )
         else:
             command.undo(self)
+            self._node_position_cache[command.node_id_name] = list(command.before_pos)
         self._redo_stack.append(command)
 
     def _cntrl_redo(self, sender, data):
@@ -1399,8 +1419,12 @@ class DpgNodeEditor(object):
         if isinstance(command, list):
             for child_command in command:
                 child_command.redo(self)
+                self._node_position_cache[child_command.node_id_name] = list(
+                    child_command.after_pos
+                )
         else:
             command.redo(self)
+            self._node_position_cache[command.node_id_name] = list(command.after_pos)
         self._undo_stack.append(command)
 
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):

@@ -146,6 +146,24 @@ def test_move_capture_falls_back_to_hovered_node(editor_and_dpg):
     assert len(editor._undo_stack) == 1
 
 
+def test_move_uses_cached_pre_drag_position(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    pos_map = {'1:TestNode': [50, 60]}
+    editor._node_position_cache['1:TestNode'] = [10, 20]
+    dpg.get_selected_nodes.return_value = ['1:TestNode']
+    dpg.get_item_alias.side_effect = lambda tag: tag
+    dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+    dpg.set_item_pos.side_effect = lambda tag, pos: pos_map.__setitem__(tag, list(pos))
+    dpg.does_item_exist.side_effect = lambda tag: tag in pos_map
+
+    editor._cntrl_capture_move_start_positions(None, None)
+    pos_map['1:TestNode'] = [100, 120]
+    editor._cntrl_commit_move_commands(None, None)
+
+    editor._cntrl_undo(None, None)
+    assert pos_map['1:TestNode'] == [10, 20]
+
+
 def test_add_node_increments_id(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._cntrl_add_node(None, None, 'TestNode')

@@ -40,6 +40,7 @@ class AddNodeCommand:
     node_tag: str
     pos: list
     setting: dict
+    created_links: list
 
     def undo(self, editor):
         node_id_name = editor._cntrl_resolve_history_node_id_name(
@@ -48,12 +49,15 @@ class AddNodeCommand:
         editor._cntrl_delete_node_by_tag(node_id_name)
 
     def redo(self, editor):
-        editor._cntrl_add_node_from_history(
+        recreated_node_id_name = editor._cntrl_add_node_from_history(
             self.node_tag,
             self.node_id,
             self.pos,
             self.setting,
         )
+        for source_tag, dest_tag in self.created_links:
+            editor._cntrl_add_link_by_tags(source_tag, dest_tag)
+        return recreated_node_id_name
 
 
 @dataclass(frozen=True)
@@ -793,7 +797,13 @@ class DpgNodeEditor(object):
         self._cntrl_update_node_position_cache(new_node_id_name)
         node_setting = self.get_node_instance(user_data).get_setting_dict(str(new_id))
         self._undo_stack.append(
-            AddNodeCommand(new_id, user_data, list(pos), copy.deepcopy(node_setting))
+            AddNodeCommand(
+                new_id,
+                user_data,
+                list(pos),
+                copy.deepcopy(node_setting),
+                [],
+            )
         )
         self._redo_stack.clear()
 
@@ -1129,7 +1139,13 @@ class DpgNodeEditor(object):
             node = self.get_node_instance(user_data)
             node_setting = node.get_setting_dict(str(new_id))
             self._undo_stack.append(
-                AddNodeCommand(new_id, user_data, list(new_pos), copy.deepcopy(node_setting))
+                AddNodeCommand(
+                    new_id,
+                    user_data,
+                    list(new_pos),
+                    copy.deepcopy(node_setting),
+                    [(source_tag, input_tag)],
+                )
             )
             self._redo_stack.clear()
             self._vw_set_link_feedback('')
@@ -1174,7 +1190,13 @@ class DpgNodeEditor(object):
             node = self.get_node_instance(user_data)
             node_setting = node.get_setting_dict(str(new_id))
             self._undo_stack.append(
-                AddNodeCommand(new_id, user_data, list(new_pos), copy.deepcopy(node_setting))
+                AddNodeCommand(
+                    new_id,
+                    user_data,
+                    list(new_pos),
+                    copy.deepcopy(node_setting),
+                    [(output_tag, dest_tag)],
+                )
             )
             self._redo_stack.clear()
             self._vw_set_link_feedback('')
@@ -1258,7 +1280,16 @@ class DpgNodeEditor(object):
         node = self.get_node_instance(user_data)
         node_setting = node.get_setting_dict(str(new_id))
         self._undo_stack.append(
-            AddNodeCommand(new_id, user_data, list(insert_pos), copy.deepcopy(node_setting))
+            AddNodeCommand(
+                new_id,
+                user_data,
+                list(insert_pos),
+                copy.deepcopy(node_setting),
+                [
+                    (source_tag, input_tag),
+                    (output_tag, dest_tag),
+                ],
+            )
         )
         self._redo_stack.clear()
         self._vw_set_link_feedback('')

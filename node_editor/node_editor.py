@@ -149,6 +149,7 @@ class DpgNodeEditor(object):
         self._redo_stack = []
         self._move_start_positions = {}
         self._node_position_cache = {}
+        self._last_graph_snapshot = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -1318,9 +1319,13 @@ class DpgNodeEditor(object):
 
     def _cntrl_capture_graph_state(self):
         try:
-            return copy.deepcopy(self._mdl_get_export_settings())
+            snapshot = copy.deepcopy(self._mdl_get_export_settings())
+            self._last_graph_snapshot = copy.deepcopy(snapshot)
+            return snapshot
         except Exception:
-            return None
+            if self._last_graph_snapshot is None:
+                return None
+            return copy.deepcopy(self._last_graph_snapshot)
 
     def _cntrl_clear_graph_state(self):
         for node_id_name in list(self._node_list):
@@ -1405,6 +1410,7 @@ class DpgNodeEditor(object):
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
+        self._last_graph_snapshot = copy.deepcopy(self._mdl_get_export_settings())
         if reset_history:
             self._cntrl_reset_history_state()
 

@@ -401,12 +401,14 @@ class Node(DpgNodeABC):
         tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
         tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
         tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
 
         pos = dpg.get_item_pos(tag_node_name)
 
         loop_flag = dpg_get_value(tag_node_input02_value_name)
         skip_rate = int(dpg_get_value(tag_node_input03_value_name))
         natural_fps_mode = bool(dpg_get_value(tag_node_input04_value_name))
+        cache_source = bool(dpg_get_value(tag_node_input05_value_name))
 
         setting_dict = {}
         setting_dict['ver'] = self._ver

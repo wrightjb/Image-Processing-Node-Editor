@@ -359,7 +359,14 @@ class DpgNodeEditor(object):
 
         # Reorder processing from input to output
         index = 0
+        guard = 0
+        max_guard = max(1, len(node_id_list) * len(node_id_list) * 4)
         while index < len(node_id_list):
+            guard += 1
+            if guard > max_guard:
+                # Cyclic graphs can cause endless swapping here. Keep current
+                # ordering as a safe fallback instead of hanging the app.
+                break
             swap_flag = False
             for check_id in node_id_list[index][1]:
                 for check_index in range(index + 1, len(node_id_list)):
@@ -847,6 +854,7 @@ class DpgNodeEditor(object):
                     self._cntrl_extract_node_port_capabilities(node, node_source)
 
     def _cntrl_add_node(self, sender, data, user_data):
+        self._cntrl_commit_move_commands(None, None)
         new_id, new_node_id_name = self._mdl_add_node(user_data)
         self._mdl_register_node_ref(NodeRef(str(new_id), user_data))
         pos = [0, 0]
@@ -1379,6 +1387,7 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_link(self, sender, data):
+        self._cntrl_commit_move_commands(None, None)
         if not isinstance(data, (list, tuple)) or len(data) != 2:
             self._vw_set_link_feedback(
                 'Link rejected: invalid link data from DearPyGui.'
@@ -1719,6 +1728,7 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
+        self._cntrl_commit_move_commands(None, None)
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
         selected_links = dpg.get_selected_links(self._node_editor_tag)

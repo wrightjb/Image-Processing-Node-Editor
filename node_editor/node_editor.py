@@ -1128,6 +1128,7 @@ class DpgNodeEditor(object):
         new_pos = [source_pos[0] + 260, source_pos[1]]
         self._vw_add_node(user_data, new_id, new_pos)
         self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
 
         input_tag = self._cntrl_find_node_port(new_node_id_name, link_type, 'Input')
         if input_tag is None:
@@ -1180,6 +1181,7 @@ class DpgNodeEditor(object):
         new_pos = [dest_pos[0] - 260, dest_pos[1]]
         self._vw_add_node(user_data, new_id, new_pos)
         self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
 
         output_tag = self._cntrl_find_node_port(new_node_id_name, link_type, 'Output')
         if output_tag is None:
@@ -1250,6 +1252,7 @@ class DpgNodeEditor(object):
         insert_pos = self._cntrl_get_insert_node_pos(source_tag, dest_tag)
         self._vw_add_node(user_data, new_id, insert_pos)
         self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
 
         input_tag = self._cntrl_find_node_port(
             new_node_id_name,

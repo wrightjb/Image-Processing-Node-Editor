@@ -18,6 +18,8 @@ class TestDpgNodeEditorImportExport:
             mock_dpg.get_item_alias.side_effect = lambda x: x
             mock_dpg.get_selected_nodes.return_value = []
             mock_dpg.get_selected_links.return_value = []
+            mock_dpg.does_item_exist.return_value = True
+            mock_dpg.get_item_pos.return_value = [0, 0]
             yield mock_dpg
     
     @pytest.fixture
@@ -181,6 +183,43 @@ class TestDpgNodeEditorImportExport:
             '2:test_node:input', 
             parent=node_editor._node_editor_tag
         )
+
+    def test_import_syncs_position_cache_and_resets_history(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node'],
+            'link_list': [],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {
+                    'ver': '1.0.0',
+                    'pos': [123, 456],
+                }
+            },
+        }
+        temp_path = tmp_path / "import_cache.json"
+        with open(temp_path, 'w') as f:
+            json.dump(test_data, f)
+
+        node_editor._undo_stack = ['dummy']
+        node_editor._redo_stack = ['dummy']
+        node_editor._move_start_positions = {'1:test_node': [0, 0]}
+        mock_dpg.get_item_pos.side_effect = lambda tag: [123, 456] if tag == '1:test_node' else [0, 0]
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_position_cache['1:test_node'] == [123, 456]
+        assert node_editor._undo_stack == []
+        assert node_editor._redo_stack == []
+        assert node_editor._move_start_positions == {}
 
     def test_import_version_warning(
         self, 

@@ -1246,6 +1246,11 @@ class DpgNodeEditor(object):
         self._cntrl_import_setting_dict(setting_dict)
         return setting_dict
 
+    def _cntrl_reset_history_state(self):
+        self._undo_stack = []
+        self._redo_stack = []
+        self._move_start_positions = {}
+
     def _cntrl_import_setting_dict(self, setting_dict):
         if setting_dict is None:
             return
@@ -1307,6 +1312,13 @@ class DpgNodeEditor(object):
 
         self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
+        self._cntrl_sync_position_cache()
+        self._cntrl_reset_history_state()
+
+    def _cntrl_sync_position_cache(self):
+        self._node_position_cache = {}
+        for node_id_name in self._node_list:
+            self._cntrl_update_node_position_cache(node_id_name)
 
     def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':

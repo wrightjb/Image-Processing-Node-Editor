@@ -64,6 +64,7 @@ def editor_and_dpg():
         dpg.is_item_shown.return_value = False
         dpg.get_item_configuration.return_value = {}
         dpg.get_item_pos.return_value = [0, 0]
+        dpg.is_key_down.return_value = True
         dpg.add_node_link = Mock()
         dpg.configure_item = Mock()
         dpg.delete_item = Mock()
@@ -127,6 +128,22 @@ def test_move_commit_skips_unchanged_positions(editor_and_dpg):
     editor._cntrl_commit_move_commands(None, None)
 
     assert editor._undo_stack == []
+
+
+def test_move_capture_falls_back_to_hovered_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    pos_map = {'1:TestNode': [10, 20]}
+    editor._node_list = ['1:TestNode']
+    dpg.get_selected_nodes.return_value = []
+    dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+    dpg.does_item_exist.side_effect = lambda tag: tag in pos_map
+    dpg.is_item_hovered.side_effect = lambda tag: tag == '1:TestNode'
+
+    editor._cntrl_capture_move_start_positions(None, None)
+    pos_map['1:TestNode'] = [40, 60]
+    editor._cntrl_commit_move_commands(None, None)
+
+    assert len(editor._undo_stack) == 1
 
 
 def test_add_node_increments_id(editor_and_dpg):

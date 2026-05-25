@@ -1331,6 +1331,15 @@ class DpgNodeEditor(object):
                 continue
             self._move_start_positions[node_id_name] = dpg.get_item_pos(node_id_name)
 
+        # If nothing is selected yet, fall back to hovered node so drag-start
+        # on an unselected node is still captured as one undoable move.
+        if self._move_start_positions:
+            return
+        for node_id_name in self._node_list:
+            if dpg.does_item_exist(node_id_name) and dpg.is_item_hovered(node_id_name):
+                self._move_start_positions[node_id_name] = dpg.get_item_pos(node_id_name)
+                break
+
     def _cntrl_commit_move_commands(self, sender, data):
         del sender, data
         if not self._move_start_positions:
@@ -1360,6 +1369,12 @@ class DpgNodeEditor(object):
 
     def _cntrl_undo(self, sender, data):
         del sender, data
+        if (
+            not dpg.is_key_down(dpg.mvKey_ModCtrl)
+            and not dpg.is_key_down(dpg.mvKey_LControl)
+            and not dpg.is_key_down(dpg.mvKey_RControl)
+        ):
+            return
         if not self._undo_stack:
             return
         command = self._undo_stack.pop()
@@ -1372,6 +1387,12 @@ class DpgNodeEditor(object):
 
     def _cntrl_redo(self, sender, data):
         del sender, data
+        if (
+            not dpg.is_key_down(dpg.mvKey_ModCtrl)
+            and not dpg.is_key_down(dpg.mvKey_LControl)
+            and not dpg.is_key_down(dpg.mvKey_RControl)
+        ):
+            return
         if not self._redo_stack:
             return
         command = self._redo_stack.pop()

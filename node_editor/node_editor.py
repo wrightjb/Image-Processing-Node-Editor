@@ -289,6 +289,7 @@ class DpgNodeEditor(object):
         self._node_position_cache = {}
         self._parameter_last_values = {}
         self._parameter_last_coalesce_hint = {}
+        self._parameter_drag_stream_active = set()
         self._suspend_parameter_history = False
         self._history_node_id_remap = {}
 
@@ -1140,6 +1141,25 @@ class DpgNodeEditor(object):
             and isinstance(before_value, list)
             and isinstance(after_value, list)
         )
+        if is_curves_drag_edit and value_tag.endswith(':CurvesPointsValue'):
+            if value_tag in self._parameter_drag_stream_active:
+                for idx in range(len(self._undo_stack) - 1, -1, -1):
+                    cmd = self._undo_stack[idx]
+                    if not isinstance(cmd, SetParameterCommand):
+                        break
+                    if cmd.value_tag != value_tag:
+                        continue
+                    self._undo_stack[idx] = SetParameterCommand(
+                        cmd.node_id_name,
+                        value_tag,
+                        cmd.before_value,
+                        after_value,
+                    )
+                    self._redo_stack.clear()
+                    self._cntrl_refresh_history_menu_items()
+                    return
+            else:
+                self._parameter_drag_stream_active.add(value_tag)
         if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
             last_cmd = self._undo_stack[-1]
             can_merge_curves_drag = bool(is_curves_drag_edit)
@@ -1174,6 +1194,8 @@ class DpgNodeEditor(object):
             )
         )
         self._parameter_last_coalesce_hint[value_tag] = bool(coalesce_hint)
+        if not bool(coalesce_hint):
+            self._parameter_drag_stream_active.discard(value_tag)
 
     def _cntrl_toggle_result_node(
         self,

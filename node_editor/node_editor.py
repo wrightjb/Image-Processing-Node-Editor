@@ -167,6 +167,22 @@ class CompositeCommand:
             command.redo(editor)
 
 
+@dataclass(frozen=True)
+class SetParameterCommand:
+    node_id_name: str
+    value_tag: str
+    before_value: object
+    after_value: object
+
+    def undo(self, editor):
+        resolved_tag = editor._cntrl_resolve_history_port_tag(self.value_tag)
+        editor._cntrl_set_parameter_value(resolved_tag, self.before_value)
+
+    def redo(self, editor):
+        resolved_tag = editor._cntrl_resolve_history_port_tag(self.value_tag)
+        editor._cntrl_set_parameter_value(resolved_tag, self.after_value)
+
+
 def _history_command_label(command):
     if isinstance(command, AddNodeCommand):
         return f'Add node: {command.node_tag}'
@@ -190,6 +206,8 @@ def _history_command_label(command):
         if add_node_command is not None:
             return f'Insert node: {add_node_command.node_tag}'
         return f'Composite: {_history_command_label(command.commands[0])}'
+    if isinstance(command, SetParameterCommand):
+        return f'Set parameter: {command.value_tag}'
     return command.__class__.__name__
 
 
@@ -1020,6 +1038,53 @@ class DpgNodeEditor(object):
                 str(data.get('result_node_tag', '')),
                 bool(data.get('enabled', False)),
             )
+            return
+        if event_name == 'parameter_changed':
+            if not isinstance(data, dict):
+                return
+            self._cntrl_record_parameter_change(
+                str(data.get('node_id_name', '')),
+                str(data.get('value_tag', '')),
+                data.get('before_value'),
+                data.get('after_value'),
+            )
+
+    def _cntrl_set_parameter_value(self, value_tag, value):
+        if not dpg.does_item_exist(value_tag):
+            return
+        dpg.set_value(value_tag, value)
+
+    def _cntrl_record_parameter_change(
+        self,
+        node_id_name,
+        value_tag,
+        before_value,
+        after_value,
+    ):
+        if not isinstance(value_tag, str) or ':' not in value_tag:
+            return
+        if before_value == after_value:
+            return
+        if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
+            last_cmd = self._undo_stack[-1]
+            if last_cmd.value_tag == value_tag:
+                self._undo_stack[-1] = SetParameterCommand(
+                    last_cmd.node_id_name,
+                    value_tag,
+                    last_cmd.before_value,
+                    after_value,
+                )
+                self._redo_stack.clear()
+                self._cntrl_refresh_history_menu_items()
+                return
+        self._cntrl_push_undo_command(
+            SetParameterCommand(
+                node_id_name,
+                value_tag,
+                before_value,
+                after_value,
+            )
+        )
 
     def _cntrl_toggle_result_node(
         self,
@@ -1807,6 +1872,8 @@ class DpgNodeEditor(object):
             cmd.undo(self)
         elif isinstance(cmd, CompositeCommand):
             cmd.undo(self)
+        elif isinstance(cmd, SetParameterCommand):
+            cmd.undo(self)
         self._redo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()
 
@@ -1828,6 +1895,8 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, ReplaceLinkCommand):
             cmd.redo(self)
         elif isinstance(cmd, CompositeCommand):
+            cmd.redo(self)
+        elif isinstance(cmd, SetParameterCommand):
             cmd.redo(self)
         self._undo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()

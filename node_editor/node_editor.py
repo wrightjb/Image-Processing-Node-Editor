@@ -288,6 +288,7 @@ class DpgNodeEditor(object):
         self._move_start_positions = {}
         self._node_position_cache = {}
         self._parameter_last_values = {}
+        self._parameter_last_coalesce_hint = {}
         self._suspend_parameter_history = False
         self._history_node_id_remap = {}
 
@@ -1141,12 +1142,12 @@ class DpgNodeEditor(object):
         )
         if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
             last_cmd = self._undo_stack[-1]
-            can_merge_curves_drag = (
-                is_curves_drag_edit
-                and isinstance(last_cmd.before_value, list)
-                and isinstance(last_cmd.after_value, list)
-                and len(last_cmd.before_value) == len(last_cmd.after_value)
-            )
+            can_merge_curves_drag = bool(is_curves_drag_edit)
+            if (
+                can_merge_curves_drag
+                and self._parameter_last_coalesce_hint.get(value_tag, False) is False
+            ):
+                can_merge_curves_drag = False
             if (
                 (is_numeric_edit or can_merge_curves_drag)
                 and last_cmd.value_tag == value_tag
@@ -1160,6 +1161,7 @@ class DpgNodeEditor(object):
                         last_cmd.before_value,
                         after_value,
                     )
+                self._parameter_last_coalesce_hint[value_tag] = bool(coalesce_hint)
                 self._redo_stack.clear()
                 self._cntrl_refresh_history_menu_items()
                 return
@@ -1171,6 +1173,7 @@ class DpgNodeEditor(object):
                 after_value,
             )
         )
+        self._parameter_last_coalesce_hint[value_tag] = bool(coalesce_hint)
 
     def _cntrl_toggle_result_node(
         self,

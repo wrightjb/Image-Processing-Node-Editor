@@ -147,7 +147,8 @@ class TestDpgNodeEditorImportExport:
                 'setting': {
                     'ver': '1.0.0',
                     'pos': [100, 200],
-                    'param1': 'value1'
+                    'param1': 'value1',
+                    '1:test_node:Int:Input01Value': 15,
                 }
             },
             '2:test_node': {
@@ -156,7 +157,8 @@ class TestDpgNodeEditorImportExport:
                 'setting': {
                     'ver': '1.0.0',
                     'pos': [300, 400],
-                    'param2': 'value2'
+                    'param2': 'value2',
+                    '2:test_node:Float:Input01Value': 0.75,
                 }
             }
         }
@@ -176,6 +178,8 @@ class TestDpgNodeEditorImportExport:
         assert node_editor._node_id == 2
         assert mock_node_instance.add_node.call_count == 2
         assert mock_node_instance.set_setting_dict.call_count == 2
+        assert node_editor._parameter_last_values['1:test_node:Int:Input01Value'] == 15
+        assert node_editor._parameter_last_values['2:test_node:Float:Input01Value'] == 0.75
         mock_dpg.add_node_link.assert_called_once_with(
             '1:test_node:output',
             '2:test_node:input', 

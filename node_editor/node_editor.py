@@ -1719,6 +1719,7 @@ class DpgNodeEditor(object):
                     new_setting[key] = value
 
             node.set_setting_dict(new_id, new_setting)
+            self._cntrl_prime_parameter_last_values_from_setting(new_setting)
             new_node_list.append(f'{new_id}:{node_name}')
 
         for link_info in setting_dict['link_list']:
@@ -1745,6 +1746,13 @@ class DpgNodeEditor(object):
         self._node_position_cache = {}
         for node_id_name in self._node_list:
             self._cntrl_update_node_position_cache(node_id_name)
+
+    def _cntrl_prime_parameter_last_values_from_setting(self, setting_dict):
+        if not isinstance(setting_dict, dict):
+            return
+        for key, value in setting_dict.items():
+            if isinstance(key, str) and key.endswith('Value'):
+                self._parameter_last_values[key] = value
 
     def _cntrl_file_import(self, sender, data):
         if data['file_name'] == '.':

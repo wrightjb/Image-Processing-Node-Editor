@@ -632,6 +632,28 @@ def test_curves_points_parameter_coalesces_and_undo_redo(editor_and_dpg):
     assert value_state[value_tag] == [[0, 0], [180, 210], [255, 255]]
 
 
+def test_parameter_undo_uses_node_history_apply_for_custom_controls(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: False
+    curves_node = Mock()
+    curves_node.apply_history_value.return_value = True
+    editor._node_instance_list['Curves'] = curves_node
+
+    cmd = SetParameterCommand(
+        node_id_name='1:Curves',
+        value_tag='1:Curves:Text:CurvesPointsValue',
+        before_value=[[0, 0], [255, 255]],
+        after_value=[[0, 0], [100, 180], [255, 255]],
+    )
+    editor._cntrl_push_undo_command(cmd)
+    editor._cntrl_undo(None, None)
+
+    curves_node.apply_history_value.assert_called_with(
+        '1:Curves:Text:CurvesPointsValue',
+        [[0, 0], [255, 255]],
+    )
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

@@ -195,6 +195,21 @@ class Node(DeclarativeImageProcessNodeBase):
             },
         )
 
+    def apply_history_value(self, value_tag, value):
+        if not isinstance(value_tag, str):
+            return False
+        if not value_tag.endswith(':CurvesPointsValue'):
+            return False
+        node_id_text = value_tag.split(':', maxsplit=1)[0]
+        try:
+            node_id = int(node_id_text)
+        except ValueError:
+            return False
+        if not isinstance(value, list):
+            return False
+        self._reset_points_from_setting(node_id, value)
+        return True
+
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback
 

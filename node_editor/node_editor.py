@@ -1072,11 +1072,25 @@ class DpgNodeEditor(object):
             )
 
     def _cntrl_set_parameter_value(self, value_tag, value):
-        if not dpg.does_item_exist(value_tag):
+        if dpg.does_item_exist(value_tag):
+            dpg.set_value(value_tag, value)
+            self._parameter_last_values[value_tag] = value
+            self._cntrl_apply_parameter_side_effects(value_tag, value)
             return
-        dpg.set_value(value_tag, value)
-        self._parameter_last_values[value_tag] = value
-        self._cntrl_apply_parameter_side_effects(value_tag, value)
+
+        if not isinstance(value_tag, str) or ':' not in value_tag:
+            return
+        node_parts = value_tag.split(':')
+        if len(node_parts) < 2:
+            return
+        node_tag = node_parts[1]
+        node = self._node_instance_list.get(node_tag)
+        if node is None:
+            return
+        if hasattr(node, 'apply_history_value') and callable(node.apply_history_value):
+            applied = node.apply_history_value(value_tag, value)
+            if applied:
+                self._parameter_last_values[value_tag] = value
 
     def _cntrl_apply_parameter_side_effects(self, value_tag, value):
         if not isinstance(value_tag, str) or not value_tag.endswith('Value'):

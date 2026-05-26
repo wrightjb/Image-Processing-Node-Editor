@@ -547,6 +547,33 @@ def test_raw_widget_callback_records_parameter_history(editor_and_dpg):
     assert value_state[param_tag] == 1.0
 
 
+def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    toggle_tag = '1:TestNode:Text:ResultImageValue'
+    value_state = {toggle_tag: False}
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+
+    node = editor._node_instance_list['TestNode']
+    node._on_result_image_toggle = Mock()
+
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:TestNode',
+            'value_tag': toggle_tag,
+            'before_value': False,
+            'after_value': True,
+        },
+    )
+
+    editor._cntrl_undo(None, None)
+    node._on_result_image_toggle.assert_called_with(toggle_tag, False, '1')
+    editor._cntrl_redo(None, None)
+    node._on_result_image_toggle.assert_called_with(toggle_tag, True, '1')
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

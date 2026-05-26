@@ -197,8 +197,22 @@ class Node(DeclarativeImageProcessNodeBase):
 
 
     def _slider_touched_callback(self, sender, app_data, user_data):
-        del app_data
-        self._last_touched_slider_tag_by_node[user_data] = dpg.get_item_alias(sender)
+        slider_tag = dpg.get_item_alias(sender)
+        self._last_touched_slider_tag_by_node[user_data] = slider_tag
+        if self._ui_callback is not None and slider_tag:
+            node_id_name = ':'.join(slider_tag.split(':')[:2])
+            before_value = self._last_parameter_values.get(slider_tag, app_data)
+            self._last_parameter_values[slider_tag] = app_data
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': slider_tag[:-5],
+                    'value_tag': slider_tag,
+                    'before_value': before_value,
+                    'after_value': app_data,
+                },
+            )
 
     def _nudge_slider(self, sender, app_data, user_data):
         del sender, app_data
@@ -232,6 +246,7 @@ class Node(DeclarativeImageProcessNodeBase):
     def _reset_all_callback(self, sender, app_data, user_data):
         del sender, app_data
         tag_node_name = self._node_name(user_data)
+        batch_changes = []
         for parameter in self.parameters:
             parameter_value_tag = self._value_tag(
                 self._port_tag(tag_node_name, parameter['type'], parameter['port'])
@@ -239,14 +254,20 @@ class Node(DeclarativeImageProcessNodeBase):
             before_value = dpg.get_value(parameter_value_tag)
             after_value = parameter['default']
             dpg.set_value(parameter_value_tag, after_value)
-            if self._ui_callback is not None:
-                self._ui_callback(
-                    'parameter_changed',
+            self._last_parameter_values[parameter_value_tag] = after_value
+            if before_value != after_value:
+                batch_changes.append(
                     {
-                        'node_id_name': tag_node_name,
-                        'port_tag': parameter_value_tag[:-5],
                         'value_tag': parameter_value_tag,
                         'before_value': before_value,
                         'after_value': after_value,
-                    },
+                    }
                 )
+        if self._ui_callback is not None and batch_changes:
+            self._ui_callback(
+                'parameter_batch_changed',
+                {
+                    'node_id_name': tag_node_name,
+                    'changes': batch_changes,
+                },
+            )

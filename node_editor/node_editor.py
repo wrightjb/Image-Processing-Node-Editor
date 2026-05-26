@@ -1061,6 +1061,36 @@ class DpgNodeEditor(object):
                 data.get('coalesce', None),
             )
             return
+        if event_name == 'parameter_batch_changed':
+            if not isinstance(data, dict):
+                return
+            node_id_name = str(data.get('node_id_name', ''))
+            changes = data.get('changes', [])
+            if not isinstance(changes, list) or not changes:
+                return
+            commands = []
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+                value_tag = str(change.get('value_tag', ''))
+                before_value = change.get('before_value')
+                after_value = change.get('after_value')
+                if not value_tag or before_value == after_value:
+                    continue
+                commands.append(
+                    SetParameterCommand(
+                        node_id_name=node_id_name,
+                        value_tag=value_tag,
+                        before_value=before_value,
+                        after_value=after_value,
+                    )
+                )
+            if commands:
+                if len(commands) == 1:
+                    self._cntrl_push_undo_command(commands[0])
+                else:
+                    self._cntrl_push_undo_command(CompositeCommand(commands))
+            return
         if isinstance(event_name, str) and ':' in event_name and event_name.endswith('Value'):
             value_tag = event_name
             before_value = self._parameter_last_values.get(value_tag, dpg.get_value(value_tag))

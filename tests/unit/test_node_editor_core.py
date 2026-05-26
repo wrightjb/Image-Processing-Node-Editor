@@ -7,7 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
-from node_editor.node_editor import DpgNodeEditor
+from node_editor.node_editor import (
+    AddNodeCommand,
+    CompositeCommand,
+    DpgNodeEditor,
+    RemoveLinkCommand,
+)
 
 
 class DummyNode:
@@ -453,6 +458,22 @@ def test_history_menu_labels_track_undo_redo_top(editor_and_dpg):
     dpg.configure_item.assert_any_call(
         'Menu_Edit_Redo',
         label='Redo (Add node: TestNode)',
+        enabled=True,
+    )
+
+
+def test_composite_insert_label_prefers_insert_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag == 'Menu_Edit_Undo'
+    editor._cntrl_push_undo_command(
+        CompositeCommand([
+            RemoveLinkCommand('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'),
+            AddNodeCommand(3, 'TestNode', [0, 0], {}, [], []),
+        ])
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Insert node: TestNode)',
         enabled=True,
     )
 

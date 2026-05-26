@@ -183,6 +183,12 @@ def _history_command_label(command):
     if isinstance(command, CompositeCommand):
         if not command.commands:
             return 'Composite (empty)'
+        add_node_command = next(
+            (cmd for cmd in command.commands if isinstance(cmd, AddNodeCommand)),
+            None,
+        )
+        if add_node_command is not None:
+            return f'Insert node: {add_node_command.node_tag}'
         return f'Composite: {_history_command_label(command.commands[0])}'
     return command.__class__.__name__
 
@@ -198,6 +204,9 @@ class DpgNodeEditor(object):
     _insert_link_popup_anchor_tag = _insert_link_popup_tag + 'Anchor'
     _add_node_popup_tag = _node_editor_tag + 'AddNodePopup'
     _add_node_popup_anchor_tag = _add_node_popup_tag + 'Anchor'
+    _history_window_tag = _node_editor_tag + 'HistoryWindow'
+    _history_undo_text_tag = _node_editor_tag + 'HistoryUndoText'
+    _history_redo_text_tag = _node_editor_tag + 'HistoryRedoText'
     _node_close_attr_suffix = ':CloseAttr'
     _node_close_button_suffix = ':CloseButton'
 
@@ -538,6 +547,7 @@ class DpgNodeEditor(object):
                     tag=self._add_node_popup_tag,
             ):
                 self._vw_create_add_node_popup_menu()
+        self._vw_create_history_window()
         dpg.set_primary_window(self._window_tag, True)
 
     def _vw_create_node_menus(self):
@@ -566,6 +576,12 @@ class DpgNodeEditor(object):
                 enabled=False,
             )
             dpg.add_separator()
+            dpg.add_menu_item(
+                tag='Menu_Edit_History',
+                label='History...',
+                callback=self._cntrl_toggle_history_window,
+            )
+            dpg.add_separator()
             with dpg.menu(label='Insert'):
                 for menu_label, nodes in self._menu_nodes.items():
                     with dpg.menu(label=menu_label):
@@ -584,6 +600,21 @@ class DpgNodeEditor(object):
     def _vw_create_add_node_popup_menu(self):
         dpg.add_text('Add Node')
         dpg.add_separator()
+
+    def _vw_create_history_window(self):
+        with dpg.window(
+            tag=self._history_window_tag,
+            label='Undo/Redo History',
+            width=460,
+            height=360,
+            pos=[40, 40],
+            show=False,
+        ):
+            dpg.add_text('Undo stack (top first):')
+            dpg.add_text(default_value='(empty)', tag=self._history_undo_text_tag)
+            dpg.add_separator()
+            dpg.add_text('Redo stack (top first):')
+            dpg.add_text(default_value='(empty)', tag=self._history_redo_text_tag)
 
     def _vw_clear_popup_menu_items(self, popup_tag):
         popup_children = dpg.get_item_children(popup_tag, 1)
@@ -1725,6 +1756,37 @@ class DpgNodeEditor(object):
                 label=redo_label,
                 enabled=redo_enabled,
             )
+        self._cntrl_refresh_history_window()
+
+    def _cntrl_history_lines(self, stack):
+        if not stack:
+            return '(empty)'
+        lines = []
+        for index, command in enumerate(reversed(stack), start=1):
+            lines.append(f'{index}. {_history_command_label(command)}')
+        return '\n'.join(lines)
+
+    def _cntrl_refresh_history_window(self):
+        if dpg.does_item_exist(self._history_undo_text_tag):
+            dpg.set_value(
+                self._history_undo_text_tag,
+                self._cntrl_history_lines(self._undo_stack),
+            )
+        if dpg.does_item_exist(self._history_redo_text_tag):
+            dpg.set_value(
+                self._history_redo_text_tag,
+                self._cntrl_history_lines(self._redo_stack),
+            )
+
+    def _cntrl_toggle_history_window(self, sender, data):
+        del sender, data
+        if not dpg.does_item_exist(self._history_window_tag):
+            return
+        if dpg.is_item_shown(self._history_window_tag):
+            dpg.hide_item(self._history_window_tag)
+            return
+        self._cntrl_refresh_history_window()
+        dpg.show_item(self._history_window_tag)
 
     def _cntrl_undo(self, sender, data):
         del sender, data

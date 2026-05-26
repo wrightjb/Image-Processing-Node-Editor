@@ -68,6 +68,7 @@ class Node(DeclarativeImageProcessNodeBase):
     def _callback_add_point(self, sender, app_data, user_data):
         del sender, app_data
         node_id, static_x = user_data
+        before_points = self._get_drag_points(node_id)
         plot_tag = self._get_tag_plot_name(node_id)
         if static_x is not None:
             y = x = static_x
@@ -83,10 +84,12 @@ class Node(DeclarativeImageProcessNodeBase):
             user_data=(node_id, static_x),
         )
         self._redraw_line(node_id)
+        self._emit_points_changed(node_id, before_points, self._get_drag_points(node_id))
 
     def _callback_moved_point(self, sender, app_data, user_data):
         del app_data
         node_id, static_x = user_data
+        before_points = self._get_drag_points(node_id)
 
         point_value = dpg_get_value(sender)
         if not isinstance(point_value, (list, tuple)) or len(point_value) != 2:
@@ -98,10 +101,12 @@ class Node(DeclarativeImageProcessNodeBase):
         y = max(self._min_val, min(self._max_val, int(y)))
         dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
+        self._emit_points_changed(node_id, before_points, self._get_drag_points(node_id))
 
     def _callback_delete_point(self, sender, app_data, user_data):
         del sender, app_data
         node_id = user_data[0]
+        before_points = self._get_drag_points(node_id)
         plot_tag = self._get_tag_plot_name(node_id)
         point_items = dpg_get_item_children(plot_tag, slot=0)
         mouse_x, mouse_y = dpg.get_plot_mouse_pos()
@@ -135,6 +140,11 @@ class Node(DeclarativeImageProcessNodeBase):
         if closest_point_tag is not None:
             dpg.delete_item(closest_point_tag)
             self._redraw_line(node_id)
+            self._emit_points_changed(
+                node_id,
+                before_points,
+                self._get_drag_points(node_id),
+            )
 
     def _redraw_line(self, node_id):
         points = self._get_drag_points(node_id)
@@ -166,6 +176,24 @@ class Node(DeclarativeImageProcessNodeBase):
             )
 
         self._redraw_line(node_id)
+
+    def _emit_points_changed(self, node_id, before_points, after_points):
+        if self._ui_callback is None:
+            return
+        if before_points == after_points:
+            return
+        node_id_name = self._node_name(node_id)
+        value_tag = f'{node_id_name}:Text:CurvesPointsValue'
+        self._ui_callback(
+            'parameter_changed',
+            {
+                'node_id_name': node_id_name,
+                'port_tag': f'{node_id_name}:Text:CurvesPoints',
+                'value_tag': value_tag,
+                'before_value': before_points,
+                'after_value': after_points,
+            },
+        )
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback

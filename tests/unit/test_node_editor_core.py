@@ -592,6 +592,46 @@ def test_parameter_history_label_is_human_readable(editor_and_dpg):
     )
 
 
+def test_curves_points_parameter_coalesces_and_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    value_tag = '1:Curves:Text:CurvesPointsValue'
+    value_state = {
+        value_tag: [[0, 0], [255, 255]],
+    }
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [255, 255]],
+            'after_value': [[0, 0], [128, 200], [255, 255]],
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [128, 200], [255, 255]],
+            'after_value': [[0, 0], [180, 210], [255, 255]],
+        },
+    )
+
+    assert len(editor._undo_stack) == 1
+    assert isinstance(editor._undo_stack[-1], SetParameterCommand)
+    assert editor._undo_stack[-1].before_value == [[0, 0], [255, 255]]
+    assert editor._undo_stack[-1].after_value == [[0, 0], [180, 210], [255, 255]]
+
+    editor._cntrl_undo(None, None)
+    assert value_state[value_tag] == [[0, 0], [255, 255]]
+    editor._cntrl_redo(None, None)
+    assert value_state[value_tag] == [[0, 0], [180, 210], [255, 255]]
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

@@ -574,6 +574,24 @@ def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
     node._on_result_image_toggle.assert_called_with(toggle_tag, True, '1')
 
 
+def test_parameter_history_label_is_human_readable(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag == 'Menu_Edit_Undo'
+    editor._cntrl_push_undo_command(
+        SetParameterCommand(
+            node_id_name='1:TestNode',
+            value_tag='1:TestNode:Text:ResultImageValue',
+            before_value=False,
+            after_value=True,
+        )
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Set parameter: 1:TestNode.ResultImage)',
+        enabled=True,
+    )
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

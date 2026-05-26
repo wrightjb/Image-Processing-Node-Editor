@@ -207,6 +207,13 @@ def _history_command_label(command):
             return f'Insert node: {add_node_command.node_tag}'
         return f'Composite: {_history_command_label(command.commands[0])}'
     if isinstance(command, SetParameterCommand):
+        parts = str(command.value_tag).split(':')
+        if len(parts) >= 4:
+            node_name = f'{parts[0]}:{parts[1]}'
+            parameter_name = parts[3]
+            if parameter_name.endswith('Value'):
+                parameter_name = parameter_name[:-5]
+            return f'Set parameter: {node_name}.{parameter_name}'
         return f'Set parameter: {command.value_tag}'
     return command.__class__.__name__
 

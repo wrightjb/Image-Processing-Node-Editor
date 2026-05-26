@@ -288,6 +288,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         dpg_set_value(cache_toggle_value_tag, cache_enabled)
         dpg_set_value(result_image_toggle_value_tag, result_image_enabled)
         dpg_set_value(result_large_image_toggle_value_tag, result_large_image_enabled)
+        self._last_parameter_values[cache_toggle_value_tag] = cache_enabled
+        self._last_parameter_values[result_image_toggle_value_tag] = result_image_enabled
+        self._last_parameter_values[result_large_image_toggle_value_tag] = result_large_image_enabled
         self._emit_result_node_toggle(node_id, 'ResultImage', result_image_enabled)
         self._emit_result_node_toggle(
             node_id, 'ResultImageLarge', result_large_image_enabled
@@ -312,19 +315,58 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         del tag_node_name
 
     def _on_cache_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._cache_enabled_by_node.get(str(user_data), True)
+        self._last_parameter_values[sender] = bool(app_data)
         self._cache_enabled_by_node[str(user_data)] = bool(app_data)
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'Cache'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': bool(app_data),
+                },
+            )
 
     def _on_result_image_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._result_image_enabled_by_node.get(str(user_data), False)
+        self._last_parameter_values[sender] = bool(app_data)
         enabled = bool(app_data)
         self._result_image_enabled_by_node[str(user_data)] = enabled
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImage'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': enabled,
+                },
+            )
         self._emit_result_node_toggle(user_data, 'ResultImage', enabled)
 
     def _on_result_large_image_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._result_large_image_enabled_by_node.get(str(user_data), False)
+        self._last_parameter_values[sender] = bool(app_data)
         enabled = bool(app_data)
         self._result_large_image_enabled_by_node[str(user_data)] = enabled
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImageLarge'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': enabled,
+                },
+            )
         self._emit_result_node_toggle(user_data, 'ResultImageLarge', enabled)
 
     def _emit_result_node_toggle(self, node_id, result_node_tag, enabled):

@@ -281,6 +281,7 @@ class DpgNodeEditor(object):
         self._move_start_positions = {}
         self._node_position_cache = {}
         self._parameter_last_values = {}
+        self._suspend_parameter_history = False
         self._history_node_id_remap = {}
 
     def _mdl_add_node(self, node_tag):
@@ -1076,6 +1077,8 @@ class DpgNodeEditor(object):
         before_value,
         after_value,
     ):
+        if self._suspend_parameter_history:
+            return
         if not isinstance(value_tag, str) or ':' not in value_tag:
             return
         if before_value == after_value:
@@ -1669,6 +1672,13 @@ class DpgNodeEditor(object):
         return setting_dict
 
     def _cntrl_import_setting_dict(self, setting_dict):
+        self._suspend_parameter_history = True
+        try:
+            self._cntrl_import_setting_dict_body(setting_dict)
+        finally:
+            self._suspend_parameter_history = False
+
+    def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
             return
 
@@ -1873,22 +1883,26 @@ class DpgNodeEditor(object):
         if not self._undo_stack:
             return
         cmd = self._undo_stack.pop()
-        if isinstance(cmd, AddNodeCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, DeleteNodesCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, MoveNodeCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, AddLinkCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, RemoveLinkCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, ReplaceLinkCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, CompositeCommand):
-            cmd.undo(self)
-        elif isinstance(cmd, SetParameterCommand):
-            cmd.undo(self)
+        self._suspend_parameter_history = True
+        try:
+            if isinstance(cmd, AddNodeCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, DeleteNodesCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, MoveNodeCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, AddLinkCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, RemoveLinkCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, ReplaceLinkCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, CompositeCommand):
+                cmd.undo(self)
+            elif isinstance(cmd, SetParameterCommand):
+                cmd.undo(self)
+        finally:
+            self._suspend_parameter_history = False
         self._redo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()
 
@@ -1897,22 +1911,26 @@ class DpgNodeEditor(object):
         if not self._redo_stack:
             return
         cmd = self._redo_stack.pop()
-        if isinstance(cmd, AddNodeCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, DeleteNodesCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, MoveNodeCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, AddLinkCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, RemoveLinkCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, ReplaceLinkCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, CompositeCommand):
-            cmd.redo(self)
-        elif isinstance(cmd, SetParameterCommand):
-            cmd.redo(self)
+        self._suspend_parameter_history = True
+        try:
+            if isinstance(cmd, AddNodeCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, DeleteNodesCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, MoveNodeCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, AddLinkCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, RemoveLinkCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, ReplaceLinkCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, CompositeCommand):
+                cmd.redo(self)
+            elif isinstance(cmd, SetParameterCommand):
+                cmd.redo(self)
+        finally:
+            self._suspend_parameter_history = False
         self._undo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()
 

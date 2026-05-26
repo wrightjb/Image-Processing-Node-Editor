@@ -1160,6 +1160,32 @@ class DpgNodeEditor(object):
                     return
             else:
                 self._parameter_drag_stream_active.add(value_tag)
+        if is_curves_drag_edit:
+            for idx in range(len(self._undo_stack) - 1, -1, -1):
+                cmd = self._undo_stack[idx]
+                if not isinstance(cmd, SetParameterCommand):
+                    break
+                if cmd.value_tag != value_tag:
+                    continue
+                if (
+                    isinstance(cmd.before_value, list)
+                    and isinstance(cmd.after_value, list)
+                    and len(cmd.before_value) != len(cmd.after_value)
+                ):
+                    # Don't merge drag updates into click add/delete edits.
+                    break
+                self._undo_stack[idx] = SetParameterCommand(
+                    cmd.node_id_name,
+                    value_tag,
+                    cmd.before_value,
+                    after_value,
+                )
+                del self._undo_stack[idx + 1:]
+                self._parameter_last_coalesce_hint[value_tag] = True
+                self._redo_stack.clear()
+                self._cntrl_refresh_history_menu_items()
+                return
+
         if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
             last_cmd = self._undo_stack[-1]
             can_merge_curves_drag = bool(is_curves_drag_edit)

@@ -1056,6 +1056,7 @@ class DpgNodeEditor(object):
                 str(data.get('value_tag', '')),
                 data.get('before_value'),
                 data.get('after_value'),
+                data.get('coalesce', None),
             )
             return
         if isinstance(event_name, str) and ':' in event_name and event_name.endswith('Value'):
@@ -1069,6 +1070,7 @@ class DpgNodeEditor(object):
                 value_tag,
                 before_value,
                 after_value,
+                None,
             )
 
     def _cntrl_set_parameter_value(self, value_tag, value):
@@ -1118,6 +1120,7 @@ class DpgNodeEditor(object):
         value_tag,
         before_value,
         after_value,
+        coalesce_hint=None,
     ):
         if self._suspend_parameter_history:
             return
@@ -1131,9 +1134,23 @@ class DpgNodeEditor(object):
             and not isinstance(before_value, bool)
             and not isinstance(after_value, bool)
         )
+        is_curves_drag_edit = (
+            bool(coalesce_hint)
+            and isinstance(before_value, list)
+            and isinstance(after_value, list)
+        )
         if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
             last_cmd = self._undo_stack[-1]
-            if is_numeric_edit and last_cmd.value_tag == value_tag:
+            can_merge_curves_drag = (
+                is_curves_drag_edit
+                and isinstance(last_cmd.before_value, list)
+                and isinstance(last_cmd.after_value, list)
+                and len(last_cmd.before_value) == len(last_cmd.after_value)
+            )
+            if (
+                (is_numeric_edit or can_merge_curves_drag)
+                and last_cmd.value_tag == value_tag
+            ):
                 if last_cmd.before_value == after_value:
                     self._undo_stack.pop()
                 else:

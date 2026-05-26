@@ -636,6 +636,52 @@ def test_curves_points_parameter_records_each_edit_and_undo_redo(editor_and_dpg)
     assert value_state[value_tag] == [[0, 0], [180, 210], [255, 255]]
 
 
+def test_curves_drag_coalesces_but_clicks_stay_separate(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    value_tag = '1:Curves:Text:CurvesPointsValue'
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [255, 255]],
+            'after_value': [[0, 0], [100, 160], [255, 255]],
+            'coalesce': False,  # click add
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [100, 160], [255, 255]],
+            'after_value': [[0, 0], [105, 162], [255, 255]],
+            'coalesce': True,  # drag update
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [105, 162], [255, 255]],
+            'after_value': [[0, 0], [115, 170], [255, 255]],
+            'coalesce': True,  # same drag continues
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [115, 170], [255, 255]],
+            'after_value': [[0, 0], [115, 170], [180, 200], [255, 255]],
+            'coalesce': False,  # click add again
+        },
+    )
+    assert len(editor._undo_stack) == 3
+
+
 def test_parameter_undo_uses_node_history_apply_for_custom_controls(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: False

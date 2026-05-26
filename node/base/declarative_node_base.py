@@ -263,6 +263,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 continue
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
             dpg_set_value(parameter_value_tag, value)
+            self._last_parameter_values[parameter_value_tag] = value
 
         self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
 

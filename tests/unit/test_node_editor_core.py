@@ -479,7 +479,7 @@ def test_composite_insert_label_prefers_insert_node(editor_and_dpg):
     )
 
 
-def test_parameter_change_coalesces_and_undo_redo(editor_and_dpg):
+def test_parameter_change_records_each_edit_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True
     param_tag = '1:TestNode:Int:Input01Value'
@@ -516,13 +516,17 @@ def test_parameter_change_coalesces_and_undo_redo(editor_and_dpg):
         },
     )
 
-    assert len(editor._undo_stack) == 1
+    assert len(editor._undo_stack) == 2
     assert isinstance(editor._undo_stack[-1], SetParameterCommand)
-    assert editor._undo_stack[-1].before_value == 5
+    assert editor._undo_stack[-1].before_value == 6
     assert editor._undo_stack[-1].after_value == 7
 
     editor._cntrl_undo(None, None)
+    assert value_state[param_tag] == 6
+    editor._cntrl_undo(None, None)
     assert value_state[param_tag] == 5
+    editor._cntrl_redo(None, None)
+    assert value_state[param_tag] == 6
     editor._cntrl_redo(None, None)
     assert value_state[param_tag] == 7
 
@@ -592,7 +596,7 @@ def test_parameter_history_label_is_human_readable(editor_and_dpg):
     )
 
 
-def test_curves_points_parameter_coalesces_and_undo_redo(editor_and_dpg):
+def test_curves_points_parameter_records_each_edit_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True
     value_tag = '1:Curves:Text:CurvesPointsValue'
@@ -621,13 +625,17 @@ def test_curves_points_parameter_coalesces_and_undo_redo(editor_and_dpg):
         },
     )
 
-    assert len(editor._undo_stack) == 1
+    assert len(editor._undo_stack) == 2
     assert isinstance(editor._undo_stack[-1], SetParameterCommand)
-    assert editor._undo_stack[-1].before_value == [[0, 0], [255, 255]]
+    assert editor._undo_stack[-1].before_value == [[0, 0], [128, 200], [255, 255]]
     assert editor._undo_stack[-1].after_value == [[0, 0], [180, 210], [255, 255]]
 
     editor._cntrl_undo(None, None)
+    assert value_state[value_tag] == [[0, 0], [128, 200], [255, 255]]
+    editor._cntrl_undo(None, None)
     assert value_state[value_tag] == [[0, 0], [255, 255]]
+    editor._cntrl_redo(None, None)
+    assert value_state[value_tag] == [[0, 0], [128, 200], [255, 255]]
     editor._cntrl_redo(None, None)
     assert value_state[value_tag] == [[0, 0], [180, 210], [255, 255]]
 

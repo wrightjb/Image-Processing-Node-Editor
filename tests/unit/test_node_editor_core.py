@@ -527,6 +527,26 @@ def test_parameter_change_coalesces_and_undo_redo(editor_and_dpg):
     assert value_state[param_tag] == 7
 
 
+def test_raw_widget_callback_records_parameter_history(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    param_tag = '1:FloatValue:Float:Output01Value'
+    value_state = {param_tag: 1.0}
+
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_node_callback(param_tag, 2.5)
+
+    assert len(editor._undo_stack) == 1
+    assert isinstance(editor._undo_stack[-1], SetParameterCommand)
+    assert editor._undo_stack[-1].before_value == 1.0
+    assert editor._undo_stack[-1].after_value == 2.5
+
+    editor._cntrl_undo(None, None)
+    assert value_state[param_tag] == 1.0
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

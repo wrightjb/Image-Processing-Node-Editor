@@ -280,6 +280,7 @@ class DpgNodeEditor(object):
         self._redo_stack = []
         self._move_start_positions = {}
         self._node_position_cache = {}
+        self._parameter_last_values = {}
         self._history_node_id_remap = {}
 
     def _mdl_add_node(self, node_tag):
@@ -1048,11 +1049,25 @@ class DpgNodeEditor(object):
                 data.get('before_value'),
                 data.get('after_value'),
             )
+            return
+        if isinstance(event_name, str) and ':' in event_name and event_name.endswith('Value'):
+            value_tag = event_name
+            before_value = self._parameter_last_values.get(value_tag, dpg.get_value(value_tag))
+            after_value = data
+            self._parameter_last_values[value_tag] = after_value
+            node_id_name = ':'.join(value_tag.split(':')[:2])
+            self._cntrl_record_parameter_change(
+                node_id_name,
+                value_tag,
+                before_value,
+                after_value,
+            )
 
     def _cntrl_set_parameter_value(self, value_tag, value):
         if not dpg.does_item_exist(value_tag):
             return
         dpg.set_value(value_tag, value)
+        self._parameter_last_values[value_tag] = value
 
     def _cntrl_record_parameter_change(
         self,

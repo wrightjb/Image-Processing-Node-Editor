@@ -1125,6 +1125,27 @@ class DpgNodeEditor(object):
             return
         if before_value == after_value:
             return
+        is_numeric_edit = (
+            isinstance(before_value, (int, float))
+            and isinstance(after_value, (int, float))
+            and not isinstance(before_value, bool)
+            and not isinstance(after_value, bool)
+        )
+        if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
+            last_cmd = self._undo_stack[-1]
+            if is_numeric_edit and last_cmd.value_tag == value_tag:
+                if last_cmd.before_value == after_value:
+                    self._undo_stack.pop()
+                else:
+                    self._undo_stack[-1] = SetParameterCommand(
+                        last_cmd.node_id_name,
+                        value_tag,
+                        last_cmd.before_value,
+                        after_value,
+                    )
+                self._redo_stack.clear()
+                self._cntrl_refresh_history_menu_items()
+                return
         self._cntrl_push_undo_command(
             SetParameterCommand(
                 node_id_name,

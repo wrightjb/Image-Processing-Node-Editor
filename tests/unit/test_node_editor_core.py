@@ -426,6 +426,37 @@ def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
     assert pos_map['3:TestNode'] == [200, 150]
 
 
+def test_history_menu_labels_track_undo_redo_top(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag in {'Menu_Edit_Undo', 'Menu_Edit_Redo'}
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Add node: TestNode)',
+        enabled=True,
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Redo',
+        label='Redo',
+        enabled=False,
+    )
+
+    editor._cntrl_undo(None, None)
+
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo',
+        enabled=False,
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Redo',
+        label='Redo (Add node: TestNode)',
+        enabled=True,
+    )
+
+
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_links.return_value = []

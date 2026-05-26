@@ -167,6 +167,26 @@ class CompositeCommand:
             command.redo(editor)
 
 
+def _history_command_label(command):
+    if isinstance(command, AddNodeCommand):
+        return f'Add node: {command.node_tag}'
+    if isinstance(command, DeleteNodesCommand):
+        return f'Delete node(s): {len(command.nodes)}'
+    if isinstance(command, MoveNodeCommand):
+        return f'Move node: {command.node_id_name}'
+    if isinstance(command, AddLinkCommand):
+        return 'Add link'
+    if isinstance(command, RemoveLinkCommand):
+        return 'Remove link'
+    if isinstance(command, ReplaceLinkCommand):
+        return 'Replace link'
+    if isinstance(command, CompositeCommand):
+        if not command.commands:
+            return 'Composite (empty)'
+        return f'Composite: {_history_command_label(command.commands[0])}'
+    return command.__class__.__name__
+
+
 class DpgNodeEditor(object):
     _ver = '0.0.1'
 
@@ -533,6 +553,19 @@ class DpgNodeEditor(object):
 
     def _vw_create_insert_link_menu(self):
         with dpg.menu(label='Edit'):
+            dpg.add_menu_item(
+                tag='Menu_Edit_Undo',
+                label='Undo',
+                callback=self._cntrl_undo,
+                enabled=False,
+            )
+            dpg.add_menu_item(
+                tag='Menu_Edit_Redo',
+                label='Redo',
+                callback=self._cntrl_redo,
+                enabled=False,
+            )
+            dpg.add_separator()
             with dpg.menu(label='Insert'):
                 for menu_label, nodes in self._menu_nodes.items():
                     with dpg.menu(label=menu_label):
@@ -877,7 +910,7 @@ class DpgNodeEditor(object):
         self._node_list.append(new_node_id_name)
         self._cntrl_update_node_position_cache(new_node_id_name)
         node_setting = self.get_node_instance(user_data).get_setting_dict(str(new_id))
-        self._undo_stack.append(
+        self._cntrl_push_undo_command(
             AddNodeCommand(
                 new_id,
                 user_data,
@@ -887,7 +920,6 @@ class DpgNodeEditor(object):
                 [],
             )
         )
-        self._redo_stack.clear()
 
         if self._use_debug_print:
             print('**** _cntrl_add_node ****')
@@ -1221,7 +1253,7 @@ class DpgNodeEditor(object):
             self._mdl_sort_node_graph()
             node = self.get_node_instance(user_data)
             node_setting = node.get_setting_dict(str(new_id))
-            self._undo_stack.append(
+            self._cntrl_push_undo_command(
                 AddNodeCommand(
                     new_id,
                     user_data,
@@ -1231,7 +1263,6 @@ class DpgNodeEditor(object):
                     [],
                 )
             )
-            self._redo_stack.clear()
             self._vw_set_link_feedback('')
 
     def _cntrl_add_node_to_input_port(self, sender, data, user_data):
@@ -1283,7 +1314,7 @@ class DpgNodeEditor(object):
             node = self.get_node_instance(user_data)
             node_setting = node.get_setting_dict(str(new_id))
             if replaced_links:
-                self._undo_stack.append(
+                self._cntrl_push_undo_command(
                     CompositeCommand(
                         [
                             RemoveLinkCommand(replaced_links[0][0], replaced_links[0][1]),
@@ -1299,7 +1330,7 @@ class DpgNodeEditor(object):
                     )
                 )
             else:
-                self._undo_stack.append(
+                self._cntrl_push_undo_command(
                     AddNodeCommand(
                         new_id,
                         user_data,
@@ -1309,7 +1340,6 @@ class DpgNodeEditor(object):
                         [],
                     )
                 )
-            self._redo_stack.clear()
             self._vw_set_link_feedback('')
 
     def _cntrl_insert_node_into_selected_link(self, sender, data, user_data):
@@ -1391,7 +1421,7 @@ class DpgNodeEditor(object):
         self._mdl_sort_node_graph()
         node = self.get_node_instance(user_data)
         node_setting = node.get_setting_dict(str(new_id))
-        self._undo_stack.append(
+        self._cntrl_push_undo_command(
             CompositeCommand(
                 [
                     RemoveLinkCommand(source_tag, dest_tag),
@@ -1409,7 +1439,6 @@ class DpgNodeEditor(object):
                 ]
             )
         )
-        self._redo_stack.clear()
         self._vw_set_link_feedback('')
 
         if self._use_debug_print:
@@ -1476,7 +1505,7 @@ class DpgNodeEditor(object):
             link_dpg_id = self._vw_add_link(source_dpg_id, dest_dpg_id)
             self._vw_register_link(source_tag, dest_tag, link_dpg_id)
             if existing_link is not None:
-                self._undo_stack.append(
+                self._cntrl_push_undo_command(
                     ReplaceLinkCommand(
                         existing_link[0],
                         source_tag,
@@ -1484,8 +1513,7 @@ class DpgNodeEditor(object):
                     )
                 )
             else:
-                self._undo_stack.append(AddLinkCommand(source_tag, dest_tag))
-            self._redo_stack.clear()
+                self._cntrl_push_undo_command(AddLinkCommand(source_tag, dest_tag))
             self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
 
@@ -1632,8 +1660,7 @@ class DpgNodeEditor(object):
         self._mdl_delete_link(link)
         self._vw_delete_link(source_tag, dest_tag)
         if record_history:
-            self._undo_stack.append(RemoveLinkCommand(source_tag, dest_tag))
-            self._redo_stack.clear()
+            self._cntrl_push_undo_command(RemoveLinkCommand(source_tag, dest_tag))
         return True
 
     def _cntrl_capture_move_start_positions(self, sender, data):
@@ -1666,12 +1693,38 @@ class DpgNodeEditor(object):
                 continue
             after_pos = list(dpg.get_item_pos(node_id_name))
             if before_pos != after_pos:
-                self._undo_stack.append(
+                self._cntrl_push_undo_command(
                     MoveNodeCommand(node_id_name, list(before_pos), list(after_pos))
                 )
-                self._redo_stack.clear()
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
+
+    def _cntrl_push_undo_command(self, command):
+        self._undo_stack.append(command)
+        self._redo_stack.clear()
+        self._cntrl_refresh_history_menu_items()
+
+    def _cntrl_refresh_history_menu_items(self):
+        undo_label = 'Undo'
+        redo_label = 'Redo'
+        undo_enabled = len(self._undo_stack) > 0
+        redo_enabled = len(self._redo_stack) > 0
+        if undo_enabled:
+            undo_label += f' ({_history_command_label(self._undo_stack[-1])})'
+        if redo_enabled:
+            redo_label += f' ({_history_command_label(self._redo_stack[-1])})'
+        if dpg.does_item_exist('Menu_Edit_Undo'):
+            dpg.configure_item(
+                'Menu_Edit_Undo',
+                label=undo_label,
+                enabled=undo_enabled,
+            )
+        if dpg.does_item_exist('Menu_Edit_Redo'):
+            dpg.configure_item(
+                'Menu_Edit_Redo',
+                label=redo_label,
+                enabled=redo_enabled,
+            )
 
     def _cntrl_undo(self, sender, data):
         del sender, data
@@ -1693,6 +1746,7 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, CompositeCommand):
             cmd.undo(self)
         self._redo_stack.append(cmd)
+        self._cntrl_refresh_history_menu_items()
 
     def _cntrl_redo(self, sender, data):
         del sender, data
@@ -1714,6 +1768,7 @@ class DpgNodeEditor(object):
         elif isinstance(cmd, CompositeCommand):
             cmd.redo(self)
         self._undo_stack.append(cmd)
+        self._cntrl_refresh_history_menu_items()
 
     def _cntrl_reconnect_through_deleted_nodes(self, deleted_node_tags):
         deleted_set = set(deleted_node_tags)
@@ -1822,7 +1877,7 @@ class DpgNodeEditor(object):
                 removed_selected_links.append((link[0], link[1]))
 
         if deleted_nodes_payload:
-            self._undo_stack.append(
+            self._cntrl_push_undo_command(
                 DeleteNodesCommand(
                     deleted_nodes_payload,
                     removed_links,
@@ -1830,7 +1885,6 @@ class DpgNodeEditor(object):
                     removed_selected_links,
                 )
             )
-            self._redo_stack.clear()
 
         if self._use_debug_print:
             print('**** _cntrl_delete_selected ****')

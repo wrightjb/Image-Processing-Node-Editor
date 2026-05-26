@@ -214,7 +214,20 @@ class Node(DeclarativeImageProcessNodeBase):
                 next_value = int(current) + step
             min_value = item_conf.get('min_value', next_value)
             max_value = item_conf.get('max_value', next_value)
-            dpg.set_value(slider_tag, max(min_value, min(max_value, next_value)))
+            updated_value = max(min_value, min(max_value, next_value))
+            dpg.set_value(slider_tag, updated_value)
+            if self._ui_callback is not None:
+                node_id_name = ':'.join(slider_tag.split(':')[:2])
+                self._ui_callback(
+                    'parameter_changed',
+                    {
+                        'node_id_name': node_id_name,
+                        'port_tag': slider_tag[:-5],
+                        'value_tag': slider_tag,
+                        'before_value': current,
+                        'after_value': updated_value,
+                    },
+                )
 
     def _reset_all_callback(self, sender, app_data, user_data):
         del sender, app_data
@@ -223,4 +236,17 @@ class Node(DeclarativeImageProcessNodeBase):
             parameter_value_tag = self._value_tag(
                 self._port_tag(tag_node_name, parameter['type'], parameter['port'])
             )
-            dpg.set_value(parameter_value_tag, parameter['default'])
+            before_value = dpg.get_value(parameter_value_tag)
+            after_value = parameter['default']
+            dpg.set_value(parameter_value_tag, after_value)
+            if self._ui_callback is not None:
+                self._ui_callback(
+                    'parameter_changed',
+                    {
+                        'node_id_name': tag_node_name,
+                        'port_tag': parameter_value_tag[:-5],
+                        'value_tag': parameter_value_tag,
+                        'before_value': before_value,
+                        'after_value': after_value,
+                    },
+                )

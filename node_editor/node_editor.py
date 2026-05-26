@@ -1126,12 +1126,6 @@ class DpgNodeEditor(object):
     ):
         if self._suspend_parameter_history:
             return
-        if self._use_debug_print:
-            print('[History] parameter_changed')
-            print(f'  node={node_id_name}')
-            print(f'  tag={value_tag}')
-            print(f'  coalesce_hint={coalesce_hint}')
-            print(f'  before_type={type(before_value).__name__} after_type={type(after_value).__name__}')
         if not isinstance(value_tag, str) or ':' not in value_tag:
             return
         if before_value == after_value:

@@ -195,12 +195,6 @@ class Node(DeclarativeImageProcessNodeBase):
             return
         node_id_name = self._node_name(node_id)
         value_tag = f'{node_id_name}:Text:CurvesPointsValue'
-        if getattr(self, '_use_debug_print', False):
-            print('[Curves] parameter_changed')
-            print(f'  node={node_id_name}')
-            print(f'  tag={value_tag}')
-            print(f'  coalesce={bool(coalesce)}')
-            print(f'  before_len={len(before_points)} after_len={len(after_points)}')
         self._ui_callback(
             'parameter_changed',
             {

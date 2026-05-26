@@ -65,6 +65,19 @@ class Node(DeclarativeImageProcessNodeBase):
 
         def _toggle_sigma(_sender, app_data, user_data):
             dpg.configure_item(user_data, enabled=not app_data)
+            if self._ui_callback is not None:
+                before_value = self._last_parameter_values.get(auto_sigma_tag, bool(app_data))
+                self._last_parameter_values[auto_sigma_tag] = bool(app_data)
+                self._ui_callback(
+                    'parameter_changed',
+                    {
+                        'node_id_name': tag_node_name,
+                        'port_tag': self._port_tag(tag_node_name, self.TYPE_INT, 'Input04'),
+                        'value_tag': auto_sigma_tag,
+                        'before_value': bool(before_value),
+                        'after_value': bool(app_data),
+                    },
+                )
 
         dpg.configure_item(auto_sigma_tag, callback=_toggle_sigma, user_data=sigma_tag)
         auto_sigma = bool(dpg.get_value(auto_sigma_tag))

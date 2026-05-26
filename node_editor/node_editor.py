@@ -1104,15 +1104,23 @@ class DpgNodeEditor(object):
             return
         if before_value == after_value:
             return
-        if self._undo_stack and isinstance(self._undo_stack[-1], SetParameterCommand):
+        if (
+            self._undo_stack
+            and isinstance(self._undo_stack[-1], SetParameterCommand)
+            and not isinstance(before_value, bool)
+            and not isinstance(after_value, bool)
+        ):
             last_cmd = self._undo_stack[-1]
             if last_cmd.value_tag == value_tag:
-                self._undo_stack[-1] = SetParameterCommand(
-                    last_cmd.node_id_name,
-                    value_tag,
-                    last_cmd.before_value,
-                    after_value,
-                )
+                if last_cmd.before_value == after_value:
+                    self._undo_stack.pop()
+                else:
+                    self._undo_stack[-1] = SetParameterCommand(
+                        last_cmd.node_id_name,
+                        value_tag,
+                        last_cmd.before_value,
+                        after_value,
+                    )
                 self._redo_stack.clear()
                 self._cntrl_refresh_history_menu_items()
                 return

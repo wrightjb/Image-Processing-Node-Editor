@@ -84,7 +84,12 @@ class Node(DeclarativeImageProcessNodeBase):
             user_data=(node_id, static_x),
         )
         self._redraw_line(node_id)
-        self._emit_points_changed(node_id, before_points, self._get_drag_points(node_id))
+        self._emit_points_changed(
+            node_id,
+            before_points,
+            self._get_drag_points(node_id),
+            coalesce=False,
+        )
 
     def _callback_moved_point(self, sender, app_data, user_data):
         del app_data
@@ -101,7 +106,12 @@ class Node(DeclarativeImageProcessNodeBase):
         y = max(self._min_val, min(self._max_val, int(y)))
         dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
-        self._emit_points_changed(node_id, before_points, self._get_drag_points(node_id))
+        self._emit_points_changed(
+            node_id,
+            before_points,
+            self._get_drag_points(node_id),
+            coalesce=True,
+        )
 
     def _callback_delete_point(self, sender, app_data, user_data):
         del sender, app_data
@@ -144,6 +154,7 @@ class Node(DeclarativeImageProcessNodeBase):
                 node_id,
                 before_points,
                 self._get_drag_points(node_id),
+                coalesce=False,
             )
 
     def _redraw_line(self, node_id):
@@ -177,13 +188,19 @@ class Node(DeclarativeImageProcessNodeBase):
 
         self._redraw_line(node_id)
 
-    def _emit_points_changed(self, node_id, before_points, after_points):
+    def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         if self._ui_callback is None:
             return
         if before_points == after_points:
             return
         node_id_name = self._node_name(node_id)
         value_tag = f'{node_id_name}:Text:CurvesPointsValue'
+        if getattr(self, '_use_debug_print', False):
+            print('[Curves] parameter_changed')
+            print(f'  node={node_id_name}')
+            print(f'  tag={value_tag}')
+            print(f'  coalesce={bool(coalesce)}')
+            print(f'  before_len={len(before_points)} after_len={len(after_points)}')
         self._ui_callback(
             'parameter_changed',
             {
@@ -192,6 +209,7 @@ class Node(DeclarativeImageProcessNodeBase):
                 'value_tag': value_tag,
                 'before_value': before_points,
                 'after_value': after_points,
+                'coalesce': bool(coalesce),
             },
         )
 

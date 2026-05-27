@@ -7,7 +7,13 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
-from node_editor.node_editor import DpgNodeEditor
+from node_editor.node_editor import (
+    AddNodeCommand,
+    CompositeCommand,
+    DpgNodeEditor,
+    RemoveLinkCommand,
+    SetParameterCommand,
+)
 
 
 class DummyNode:
@@ -208,10 +214,11 @@ def test_link_mismatched_type_ignored(editor_and_dpg):
 
 def test_link_duplicate_same_source_sets_feedback(editor_and_dpg):
     editor, dpg = editor_and_dpg
-    dpg.get_item_alias.side_effect = {
+    alias_map = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
-    }.get
+    }
+    dpg.get_item_alias.side_effect = lambda item: alias_map.get(item, item)
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
 
@@ -245,6 +252,33 @@ def test_link_invalid_payload_sets_feedback(editor_and_dpg):
     )
 
 
+def test_link_cycle_is_rejected(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    alias_map = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+        103: '2:TestNode:Int:Output01',
+        104: '1:TestNode:Int:Input01',
+    }
+    dpg.get_item_alias.side_effect = alias_map.get
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.add_node_link.side_effect = ['link-a']
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    editor._cntrl_link('NodeEditor', [101, 102])
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+
+    editor._cntrl_link('NodeEditor', [103, 104])
+
+    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    dpg.set_value.assert_any_call(
+        'NodeEditorLinkFeedback',
+        'Link rejected: this connection would create a cycle.',
+    )
+
+
 def test_insert_node_into_selected_link(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_item_alias.side_effect = {
@@ -274,7 +308,7 @@ def test_insert_node_into_selected_link(editor_and_dpg):
             '3:TestNode:Int:Output01',
         }
     )
-    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2']
+    dpg.add_node_link.side_effect = ['new-link-1', 'new-link-2', 'restored-link', 'redo-link-1', 'redo-link-2']
 
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
@@ -306,6 +340,392 @@ def test_insert_node_into_selected_link(editor_and_dpg):
     )
     dpg.delete_item.assert_called_once_with('existing-link')
     assert dpg.set_value.call_args_list[-1].args == ('NodeEditorLinkFeedback', '')
+
+
+def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.get_item_pos.side_effect = lambda tag: [300, 200] if tag == '2:TestNode' else [0, 0]
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Output}
+        if tag == '4:TestNode:Int:Output01'
+        else {'attribute_type': dpg.mvNode_Attr_Input}
+    )
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    # Existing 1 -> 2 link
+    assert editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._vw_register_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01', 'link-old')
+
+    editor._pending_add_to_input_tag = '2:TestNode:Int:Input01'
+    editor._cntrl_add_node_to_input_port(None, None, 'TestNode')
+
+    assert ['4:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] not in editor._node_link_list
+
+    editor._cntrl_undo(None, None)
+
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert '4:TestNode' not in editor._node_list
+
+
+def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    alias_map = {
+        101: '1:TestNode:Int:Output01',
+        102: '2:TestNode:Int:Input01',
+    }
+    dpg.get_item_alias.side_effect = lambda item: alias_map.get(item, item)
+    dpg.get_selected_links.return_value = ['existing-link']
+    pos_map = {
+        '1:TestNode': [0, 0],
+        '2:TestNode': [120, 60],
+        '3:TestNode': [60, 30],
+    }
+
+    def config_side_effect(tag):
+        if tag == 'existing-link':
+            return {'attr_1': 101, 'attr_2': 102}
+        if tag == '3:TestNode:Int:Input01':
+            return {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == '3:TestNode:Int:Output01':
+            return {'attribute_type': dpg.mvNode_Attr_Output}
+        return {}
+
+    dpg.get_item_configuration.side_effect = config_side_effect
+    dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+    dpg.set_item_pos.side_effect = lambda tag, pos: pos_map.__setitem__(tag, list(pos))
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    dpg.add_node_link.side_effect = [
+        'new-link-1', 'new-link-2', 'restored-link', 'redo-link-1', 'redo-link-2'
+    ]
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._mdl_add_link('1:TestNode:Int:Output01', '2:TestNode:Int:Input01')
+    editor._link_view_id_map = {
+        ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'existing-link'
+    }
+
+    editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
+    dpg.get_selected_nodes.return_value = ['3:TestNode']
+    editor._cntrl_capture_move_start_positions(None, None)
+    pos_map['3:TestNode'] = [200, 150]
+    editor._cntrl_commit_move_commands(None, None)
+
+    editor._cntrl_undo(None, None)  # undo move
+    assert pos_map['3:TestNode'] == [60, 30]
+
+    editor._cntrl_undo(None, None)  # undo insert
+    assert '3:TestNode' not in editor._node_list
+    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+    editor._cntrl_redo(None, None)  # redo insert
+    assert '3:TestNode' in editor._node_list
+    assert ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'] in editor._node_link_list
+    assert ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+
+    editor._cntrl_redo(None, None)  # redo move
+    assert pos_map['3:TestNode'] == [200, 150]
+
+
+def test_history_menu_labels_track_undo_redo_top(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag in {'Menu_Edit_Undo', 'Menu_Edit_Redo'}
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Add node: TestNode)',
+        enabled=True,
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Redo',
+        label='Redo',
+        enabled=False,
+    )
+
+    editor._cntrl_undo(None, None)
+
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo',
+        enabled=False,
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Redo',
+        label='Redo (Add node: TestNode)',
+        enabled=True,
+    )
+
+
+def test_composite_insert_label_prefers_insert_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag == 'Menu_Edit_Undo'
+    editor._cntrl_push_undo_command(
+        CompositeCommand([
+            RemoveLinkCommand('1:TestNode:Int:Output01', '2:TestNode:Int:Input01'),
+            AddNodeCommand(3, 'TestNode', [0, 0], {}, [], []),
+        ])
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Insert node: TestNode)',
+        enabled=True,
+    )
+
+
+def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    param_tag = '1:TestNode:Int:Input01Value'
+    value_state = {param_tag: 5}
+
+    def set_value_side_effect(tag, value):
+        value_state[tag] = value
+
+    def get_value_side_effect(tag):
+        return value_state.get(tag)
+
+    dpg.set_value.side_effect = set_value_side_effect
+    dpg.get_value.side_effect = get_value_side_effect
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._undo_stack.clear()
+    editor._redo_stack.clear()
+
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:TestNode',
+            'value_tag': param_tag,
+            'before_value': 5,
+            'after_value': 6,
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:TestNode',
+            'value_tag': param_tag,
+            'before_value': 6,
+            'after_value': 7,
+        },
+    )
+
+    assert len(editor._undo_stack) == 1
+    assert isinstance(editor._undo_stack[-1], SetParameterCommand)
+    assert editor._undo_stack[-1].before_value == 5
+    assert editor._undo_stack[-1].after_value == 7
+
+    editor._cntrl_undo(None, None)
+    assert value_state[param_tag] == 5
+    editor._cntrl_redo(None, None)
+    assert value_state[param_tag] == 7
+
+
+def test_raw_widget_callback_records_parameter_history(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    param_tag = '1:FloatValue:Float:Output01Value'
+    value_state = {param_tag: 1.0}
+
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_node_callback(param_tag, 2.5)
+
+    assert len(editor._undo_stack) == 1
+    assert isinstance(editor._undo_stack[-1], SetParameterCommand)
+    assert editor._undo_stack[-1].before_value == 1.0
+    assert editor._undo_stack[-1].after_value == 2.5
+
+    editor._cntrl_undo(None, None)
+    assert value_state[param_tag] == 1.0
+
+
+def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    toggle_tag = '1:TestNode:Text:ResultImageValue'
+    value_state = {toggle_tag: False}
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+
+    node = editor._node_instance_list['TestNode']
+    node._on_result_image_toggle = Mock()
+
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:TestNode',
+            'value_tag': toggle_tag,
+            'before_value': False,
+            'after_value': True,
+        },
+    )
+
+    editor._cntrl_undo(None, None)
+    node._on_result_image_toggle.assert_called_with(toggle_tag, False, '1')
+    editor._cntrl_redo(None, None)
+    node._on_result_image_toggle.assert_called_with(toggle_tag, True, '1')
+
+
+def test_parameter_history_label_is_human_readable(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag == 'Menu_Edit_Undo'
+    editor._cntrl_push_undo_command(
+        SetParameterCommand(
+            node_id_name='1:TestNode',
+            value_tag='1:TestNode:Text:ResultImageValue',
+            before_value=False,
+            after_value=True,
+        )
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Set parameter: 1:TestNode.ResultImage)',
+        enabled=True,
+    )
+
+
+def test_parameter_history_prefers_widget_label_when_available(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag in {
+        'Menu_Edit_Undo',
+        '1:TestNode:Text:ResultImageValue',
+    }
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'label': 'Result Image'} if tag == '1:TestNode:Text:ResultImageValue' else {}
+    )
+    editor._cntrl_push_undo_command(
+        SetParameterCommand(
+            node_id_name='1:TestNode',
+            value_tag='1:TestNode:Text:ResultImageValue',
+            before_value=False,
+            after_value=True,
+        )
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Set parameter: 1:TestNode.Result Image)',
+        enabled=True,
+    )
+
+
+def test_curves_points_parameter_records_each_edit_and_undo_redo(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    value_tag = '1:Curves:Text:CurvesPointsValue'
+    value_state = {
+        value_tag: [[0, 0], [255, 255]],
+    }
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [255, 255]],
+            'after_value': [[0, 0], [128, 200], [255, 255]],
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [128, 200], [255, 255]],
+            'after_value': [[0, 0], [180, 210], [255, 255]],
+        },
+    )
+
+    assert len(editor._undo_stack) == 2
+    assert isinstance(editor._undo_stack[-1], SetParameterCommand)
+    assert editor._undo_stack[-1].before_value == [[0, 0], [128, 200], [255, 255]]
+    assert editor._undo_stack[-1].after_value == [[0, 0], [180, 210], [255, 255]]
+
+    editor._cntrl_undo(None, None)
+    assert value_state[value_tag] == [[0, 0], [128, 200], [255, 255]]
+    editor._cntrl_undo(None, None)
+    assert value_state[value_tag] == [[0, 0], [255, 255]]
+    editor._cntrl_redo(None, None)
+    assert value_state[value_tag] == [[0, 0], [128, 200], [255, 255]]
+    editor._cntrl_redo(None, None)
+    assert value_state[value_tag] == [[0, 0], [180, 210], [255, 255]]
+
+
+def test_curves_drag_coalesces_but_clicks_stay_separate(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    value_tag = '1:Curves:Text:CurvesPointsValue'
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [255, 255]],
+            'after_value': [[0, 0], [100, 160], [255, 255]],
+            'coalesce': False,  # click add
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [100, 160], [255, 255]],
+            'after_value': [[0, 0], [105, 162], [255, 255]],
+            'coalesce': True,  # drag update
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [105, 162], [255, 255]],
+            'after_value': [[0, 0], [115, 170], [255, 255]],
+            'coalesce': True,  # same drag continues
+        },
+    )
+    editor._cntrl_node_callback(
+        'parameter_changed',
+        {
+            'node_id_name': '1:Curves',
+            'value_tag': value_tag,
+            'before_value': [[0, 0], [115, 170], [255, 255]],
+            'after_value': [[0, 0], [115, 170], [180, 200], [255, 255]],
+            'coalesce': False,  # click add again
+        },
+    )
+    assert len(editor._undo_stack) == 3
+
+
+def test_parameter_undo_uses_node_history_apply_for_custom_controls(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda _tag: False
+    curves_node = Mock()
+    curves_node.apply_history_value.return_value = True
+    editor._node_instance_list['Curves'] = curves_node
+
+    cmd = SetParameterCommand(
+        node_id_name='1:Curves',
+        value_tag='1:Curves:Text:CurvesPointsValue',
+        before_value=[[0, 0], [255, 255]],
+        after_value=[[0, 0], [100, 180], [255, 255]],
+    )
+    editor._cntrl_push_undo_command(cmd)
+    editor._cntrl_undo(None, None)
+
+    curves_node.apply_history_value.assert_called_with(
+        '1:Curves:Text:CurvesPointsValue',
+        [[0, 0], [255, 255]],
+    )
 
 
 def test_insert_node_into_selected_link_requires_selection(editor_and_dpg):

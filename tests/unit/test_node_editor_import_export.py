@@ -147,7 +147,8 @@ class TestDpgNodeEditorImportExport:
                 'setting': {
                     'ver': '1.0.0',
                     'pos': [100, 200],
-                    'param1': 'value1'
+                    'param1': 'value1',
+                    '1:test_node:Int:Input01Value': 15,
                 }
             },
             '2:test_node': {
@@ -156,7 +157,8 @@ class TestDpgNodeEditorImportExport:
                 'setting': {
                     'ver': '1.0.0',
                     'pos': [300, 400],
-                    'param2': 'value2'
+                    'param2': 'value2',
+                    '2:test_node:Float:Input01Value': 0.75,
                 }
             }
         }
@@ -176,11 +178,54 @@ class TestDpgNodeEditorImportExport:
         assert node_editor._node_id == 2
         assert mock_node_instance.add_node.call_count == 2
         assert mock_node_instance.set_setting_dict.call_count == 2
+        assert node_editor._parameter_last_values['1:test_node:Int:Input01Value'] == 15
+        assert node_editor._parameter_last_values['2:test_node:Float:Input01Value'] == 0.75
         mock_dpg.add_node_link.assert_called_once_with(
             '1:test_node:output',
             '2:test_node:input', 
             parent=node_editor._node_editor_tag
         )
+
+    def test_import_primes_move_cache_for_first_drag_undo(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node'],
+            'link_list': [],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {
+                    'ver': '1.0.0',
+                    'pos': [10, 20],
+                }
+            },
+        }
+        temp_path = tmp_path / "import_move_cache.json"
+        with open(temp_path, 'w') as f:
+            json.dump(test_data, f)
+
+        pos_map = {'1:test_node': [10, 20]}
+        mock_dpg.get_item_alias.side_effect = lambda tag: tag
+        mock_dpg.get_selected_nodes.return_value = ['1:test_node']
+        mock_dpg.does_item_exist.side_effect = lambda tag: tag in pos_map
+        mock_dpg.get_item_pos.side_effect = lambda tag: pos_map.get(tag, [0, 0])
+        mock_dpg.set_item_pos.side_effect = lambda tag, pos: pos_map.__setitem__(tag, list(pos))
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        node_editor._cntrl_capture_move_start_positions(None, None)
+        pos_map['1:test_node'] = [100, 120]
+        node_editor._cntrl_commit_move_commands(None, None)
+        node_editor._cntrl_undo(None, None)
+
+        assert pos_map['1:test_node'] == [10, 20]
 
     def test_import_version_warning(
         self, 

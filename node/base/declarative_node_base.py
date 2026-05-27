@@ -24,6 +24,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     _result_image_enabled_by_node = {}
     _result_large_image_enabled_by_node = {}
     _ui_callback = None
+    _suspend_parameter_event_tags = set()
+    _last_parameter_values = {}
 
     def add_node(
         self,
@@ -261,6 +263,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 continue
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
             dpg_set_value(parameter_value_tag, value)
+            self._last_parameter_values[parameter_value_tag] = value
 
         self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
 
@@ -286,6 +289,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         dpg_set_value(cache_toggle_value_tag, cache_enabled)
         dpg_set_value(result_image_toggle_value_tag, result_image_enabled)
         dpg_set_value(result_large_image_toggle_value_tag, result_large_image_enabled)
+        self._last_parameter_values[cache_toggle_value_tag] = cache_enabled
+        self._last_parameter_values[result_image_toggle_value_tag] = result_image_enabled
+        self._last_parameter_values[result_large_image_toggle_value_tag] = result_large_image_enabled
         self._emit_result_node_toggle(node_id, 'ResultImage', result_image_enabled)
         self._emit_result_node_toggle(
             node_id, 'ResultImageLarge', result_large_image_enabled
@@ -310,19 +316,58 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         del tag_node_name
 
     def _on_cache_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._cache_enabled_by_node.get(str(user_data), True)
+        self._last_parameter_values[sender] = bool(app_data)
         self._cache_enabled_by_node[str(user_data)] = bool(app_data)
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'Cache'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': bool(app_data),
+                },
+            )
 
     def _on_result_image_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._result_image_enabled_by_node.get(str(user_data), False)
+        self._last_parameter_values[sender] = bool(app_data)
         enabled = bool(app_data)
         self._result_image_enabled_by_node[str(user_data)] = enabled
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImage'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': enabled,
+                },
+            )
         self._emit_result_node_toggle(user_data, 'ResultImage', enabled)
 
     def _on_result_large_image_toggle(self, sender, app_data, user_data):
-        del sender
+        node_id_name = self._node_name(user_data)
+        before_value = self._result_large_image_enabled_by_node.get(str(user_data), False)
+        self._last_parameter_values[sender] = bool(app_data)
         enabled = bool(app_data)
         self._result_large_image_enabled_by_node[str(user_data)] = enabled
+        if self._ui_callback is not None:
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImageLarge'),
+                    'value_tag': sender,
+                    'before_value': bool(before_value),
+                    'after_value': enabled,
+                },
+            )
         self._emit_result_node_toggle(user_data, 'ResultImageLarge', enabled)
 
     def _emit_result_node_toggle(self, node_id, result_node_tag, enabled):
@@ -375,6 +420,14 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     def _add_parameter_ui(self, tag_node_name, parameter, width, callback):
         port_tag = self._port_tag(tag_node_name, parameter['type'], parameter['port'])
         value_tag = self._value_tag(port_tag)
+        callback_payload = {
+            'node_id_name': tag_node_name,
+            'port_tag': port_tag,
+            'value_tag': value_tag,
+            'parameter': parameter,
+            'callback': parameter.get('callback', callback),
+        }
+        self._last_parameter_values[value_tag] = parameter.get('default', None)
 
         with dpg.node_attribute(
             tag=port_tag,
@@ -388,7 +441,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     default_value=parameter['default'],
                     min_value=parameter['min'],
                     max_value=parameter['max'],
-                    callback=parameter.get('callback', callback),
+                    callback=self._on_parameter_widget_changed,
+                    user_data=callback_payload,
                 )
             elif parameter['widget'] == 'slider_float':
                 dpg.add_slider_float(
@@ -398,7 +452,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     default_value=parameter['default'],
                     min_value=parameter['min'],
                     max_value=parameter['max'],
-                    callback=parameter.get('callback', callback),
+                    callback=self._on_parameter_widget_changed,
+                    user_data=callback_payload,
                 )
             elif parameter['widget'] == 'input_int':
                 dpg.add_input_int(
@@ -406,15 +461,16 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     label=parameter['label'],
                     width=width - 64,
                     default_value=parameter['default'],
-                    callback=callback,
+                    callback=self._on_parameter_widget_changed,
+                    user_data=callback_payload,
                 )
             elif parameter['widget'] == 'checkbox':
                 dpg.add_checkbox(
                     tag=value_tag,
                     label=parameter['label'],
                     default_value=parameter['default'],
-                    callback=parameter.get('callback', None),
-                    user_data=parameter.get('user_data', None),
+                    callback=self._on_parameter_widget_changed,
+                    user_data=callback_payload,
                 )
             elif parameter['widget'] == 'combo':
                 items = parameter['items']
@@ -424,7 +480,32 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     width=width - 40,
                     label=parameter['label'],
                     tag=value_tag,
+                    callback=self._on_parameter_widget_changed,
+                    user_data=callback_payload,
                 )
+
+    def _on_parameter_widget_changed(self, sender, app_data, user_data):
+        if sender in self._suspend_parameter_event_tags:
+            return
+        parameter_callback = None
+        if isinstance(user_data, dict):
+            parameter_callback = user_data.get('callback', None)
+        if callable(parameter_callback):
+            parameter_callback(sender, app_data)
+        if callable(self._ui_callback) and isinstance(user_data, dict):
+            value_tag = str(user_data.get('value_tag'))
+            before_value = self._last_parameter_values.get(value_tag, app_data)
+            self._last_parameter_values[value_tag] = app_data
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': user_data.get('node_id_name'),
+                    'port_tag': user_data.get('port_tag'),
+                    'value_tag': sender,
+                    'before_value': before_value,
+                    'after_value': app_data,
+                },
+            )
 
     def _find_parameter(self, value_type, port_name):
         for parameter in self.parameters:

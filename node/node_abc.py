@@ -34,6 +34,12 @@ class DpgNodeABC(metaclass=ABCMeta):
             return ''
         return tag_tokens[3]
 
+    def _extract_node_id(self, tag):
+        tag_tokens = tag.split(':')
+        if len(tag_tokens) < 2:
+            return ''
+        return tag_tokens[0]
+
     def _iter_connections(self, connection_list):
         for connection_info in connection_list:
             if not isinstance(connection_info, (list, tuple)) or len(connection_info) < 2:
@@ -83,3 +89,12 @@ class DpgNodeABC(metaclass=ABCMeta):
     @abstractmethod
     def close(self, node_id):
         pass
+
+    def on_editor_parameter_value_applied(self, value_tag, value):
+        """Hook called when editor applies a parameter value (e.g. undo/redo).
+
+        Returns:
+            bool: True if the node handled additional side effects, else False.
+        """
+        del value_tag, value
+        return False

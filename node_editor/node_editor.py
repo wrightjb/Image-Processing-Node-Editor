@@ -961,19 +961,12 @@ class DpgNodeEditor(object):
         parts = value_tag[:-5].split(':')
         if len(parts) < 4:
             return
-        node_id, node_tag, _, port_name = parts[0], parts[1], parts[2], parts[3]
+        node_tag = parts[1]
         node = self._node_instance_list.get(node_tag)
         if node is None:
             return
-        if port_name == 'Cache' and hasattr(node, '_on_cache_toggle'):
-            node._on_cache_toggle(value_tag, bool(value), node_id)
-        elif port_name == 'ResultImage' and hasattr(node, '_on_result_image_toggle'):
-            node._on_result_image_toggle(value_tag, bool(value), node_id)
-        elif (
-            port_name == 'ResultImageLarge'
-            and hasattr(node, '_on_result_large_image_toggle')
-        ):
-            node._on_result_large_image_toggle(value_tag, bool(value), node_id)
+        if hasattr(node, 'on_editor_parameter_value_applied'):
+            node.on_editor_parameter_value_applied(value_tag, value)
 
     def _cntrl_record_parameter_change(
         self,

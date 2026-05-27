@@ -382,6 +382,32 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             },
         )
 
+    def on_editor_parameter_value_applied(self, value_tag, value):
+        if not isinstance(value_tag, str) or not value_tag.endswith('Value'):
+            return False
+        port_name = self._extract_port_name(value_tag[:-5])
+        node_id = self._extract_node_id(value_tag)
+        if not node_id:
+            return False
+
+        if port_name == 'Cache':
+            self._cache_enabled_by_node[str(node_id)] = bool(value)
+            return True
+
+        if port_name == 'ResultImage':
+            enabled = bool(value)
+            self._result_image_enabled_by_node[str(node_id)] = enabled
+            self._emit_result_node_toggle(node_id, 'ResultImage', enabled)
+            return True
+
+        if port_name == 'ResultImageLarge':
+            enabled = bool(value)
+            self._result_large_image_enabled_by_node[str(node_id)] = enabled
+            self._emit_result_node_toggle(node_id, 'ResultImageLarge', enabled)
+            return True
+
+        return False
+
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name
         return parameter_values

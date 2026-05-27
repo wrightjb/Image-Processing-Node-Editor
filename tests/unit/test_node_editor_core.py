@@ -556,7 +556,7 @@ def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
     dpg.get_value.side_effect = lambda tag: value_state.get(tag)
 
     node = editor._node_instance_list['TestNode']
-    node._on_result_image_toggle = Mock()
+    node.on_editor_parameter_value_applied = Mock(return_value=True)
 
     editor._cntrl_node_callback(
         'parameter_changed',
@@ -569,9 +569,9 @@ def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
     )
 
     editor._cntrl_undo(None, None)
-    node._on_result_image_toggle.assert_called_with(toggle_tag, False, '1')
+    node.on_editor_parameter_value_applied.assert_called_with(toggle_tag, False)
     editor._cntrl_redo(None, None)
-    node._on_result_image_toggle.assert_called_with(toggle_tag, True, '1')
+    node.on_editor_parameter_value_applied.assert_called_with(toggle_tag, True)
 
 
 def test_parameter_history_label_is_human_readable(editor_and_dpg):

@@ -592,6 +592,30 @@ def test_parameter_history_label_is_human_readable(editor_and_dpg):
     )
 
 
+def test_parameter_history_prefers_widget_label_when_available(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.side_effect = lambda tag: tag in {
+        'Menu_Edit_Undo',
+        '1:TestNode:Text:ResultImageValue',
+    }
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'label': 'Result Image'} if tag == '1:TestNode:Text:ResultImageValue' else {}
+    )
+    editor._cntrl_push_undo_command(
+        SetParameterCommand(
+            node_id_name='1:TestNode',
+            value_tag='1:TestNode:Text:ResultImageValue',
+            before_value=False,
+            after_value=True,
+        )
+    )
+    dpg.configure_item.assert_any_call(
+        'Menu_Edit_Undo',
+        label='Undo (Set parameter: 1:TestNode.Result Image)',
+        enabled=True,
+    )
+
+
 def test_curves_points_parameter_records_each_edit_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True

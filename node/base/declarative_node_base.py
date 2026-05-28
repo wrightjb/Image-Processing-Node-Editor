@@ -24,6 +24,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     _result_image_enabled_by_node = {}
     _result_large_image_enabled_by_node = {}
     _toolbar_attr_suffix = ':ToolbarAttr'
+    _toolbar_group_suffix = ':ToolbarGroup'
     _ui_callback = None
     _suspend_parameter_event_tags = set()
     _last_parameter_values = {}
@@ -44,6 +45,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         elapsed_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         elapsed_value_tag = self._value_tag(elapsed_tag)
         toolbar_attr_tag = f'{tag_node_name}{self._toolbar_attr_suffix}'
+        toolbar_group_tag = f'{tag_node_name}{self._toolbar_group_suffix}'
         cache_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
         cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
         result_image_toggle_tag = self._port_tag(
@@ -83,9 +85,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 tag=toolbar_attr_tag,
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
-                with dpg.group(horizontal=True):
+                with dpg.group(horizontal=True, tag=toolbar_group_tag):
                     dpg.add_checkbox(
-                        label='◻',
+                        label='□',
                         tag=result_image_toggle_value_tag,
                         default_value=False,
                         callback=self._on_result_image_toggle,
@@ -93,7 +95,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                     )
                     self._result_image_enabled_by_node[str(node_id)] = False
                     dpg.add_checkbox(
-                        label='⬜',
+                        label='▭',
                         tag=result_large_image_toggle_value_tag,
                         default_value=False,
                         callback=self._on_result_large_image_toggle,
@@ -404,6 +406,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
     def get_editor_toolbar_attr_tag(self, node_id):
         return f'{self._node_name(node_id)}{self._toolbar_attr_suffix}'
+
+    def get_editor_toolbar_group_tag(self, node_id):
+        return f'{self._node_name(node_id)}{self._toolbar_group_suffix}'
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

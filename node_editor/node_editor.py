@@ -623,6 +623,9 @@ class DpgNodeEditor(object):
         toolbar_attr_tag = None
         if hasattr(node, 'get_editor_toolbar_attr_tag'):
             toolbar_attr_tag = node.get_editor_toolbar_attr_tag(str(new_id))
+        toolbar_group_tag = None
+        if hasattr(node, 'get_editor_toolbar_group_tag'):
+            toolbar_group_tag = node.get_editor_toolbar_group_tag(str(new_id))
         close_attr_tag = node_view_tag + self._node_close_attr_suffix
         close_button_tag = node_view_tag + self._node_close_button_suffix
         if dpg.does_item_exist(close_attr_tag):
@@ -648,15 +651,20 @@ class DpgNodeEditor(object):
                         user_data=node_view_tag,
                     )
         else:
-            with dpg.group(horizontal=True, parent=target_parent_attr):
-                dpg.add_button(
-                    tag=close_button_tag,
-                    label='x',
-                    width=20,
-                    height=20,
-                    callback=self._cntrl_delete_node_by_button,
-                    user_data=node_view_tag,
-                )
+            target_parent = (
+                toolbar_group_tag
+                if toolbar_group_tag and dpg.does_item_exist(toolbar_group_tag)
+                else target_parent_attr
+            )
+            dpg.add_button(
+                tag=close_button_tag,
+                label='x',
+                width=20,
+                height=20,
+                callback=self._cntrl_delete_node_by_button,
+                user_data=node_view_tag,
+                parent=target_parent,
+            )
 
         if target_parent_attr != close_attr_tag:
             return

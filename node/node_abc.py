@@ -118,3 +118,8 @@ class DpgNodeABC(metaclass=ABCMeta):
         """Optional node attribute tag for editor-injected toolbar controls."""
         del node_id
         return None
+
+    def get_editor_toolbar_group_tag(self, node_id):
+        """Optional group tag inside toolbar attribute for inline controls."""
+        del node_id
+        return None

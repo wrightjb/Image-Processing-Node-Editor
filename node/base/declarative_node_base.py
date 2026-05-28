@@ -80,31 +80,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             pos=pos,
         ):
             with dpg.node_attribute(
-                tag=input_image_tag,
-                attribute_type=dpg.mvNode_Attr_Input,
-            ):
-                dpg.add_text(
-                    tag=input_image_value_tag,
-                    default_value='Input BGR image',
-                )
-
-            with dpg.node_attribute(
-                tag=output_image_tag,
-                attribute_type=dpg.mvNode_Attr_Output,
-            ):
-                pass
-
-            for parameter in self.parameters:
-                self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
-
-            self.build_custom_ui(
-                tag_node_name,
-                node_id,
-                small_window_w,
-                callback,
-            )
-
-            with dpg.node_attribute(
                 tag=toolbar_attr_tag,
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
@@ -133,6 +108,28 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                         user_data=node_id,
                     )
                     self._cache_enabled_by_node[str(node_id)] = True
+
+            with dpg.node_attribute(
+                tag=input_image_tag,
+                attribute_type=dpg.mvNode_Attr_Input,
+            ):
+                pass
+
+            with dpg.node_attribute(
+                tag=output_image_tag,
+                attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                pass
+
+            for parameter in self.parameters:
+                self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
+
+            self.build_custom_ui(
+                tag_node_name,
+                node_id,
+                small_window_w,
+                callback,
+            )
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(

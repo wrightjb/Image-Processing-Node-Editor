@@ -178,3 +178,22 @@ objects responsible for their own `undo()`/`redo()` behavior. That is now the
 best next target because the highest-value node-specific UI coupling has been
 reduced, and history dispatch remains a localized structural issue with clear
 unit-test coverage.
+
+## Plan update after history dispatch simplification
+
+The **History simplification pass** has started with the most localized cleanup:
+
+- `_cntrl_undo()` and `_cntrl_redo()` now dispatch directly to command
+  `undo(editor)` / `redo(editor)` methods instead of manually branching over
+  every known command class.
+- Parameter-history suspension is centralized in one helper so future history
+  commands automatically get the same guard behavior.
+- A duck-typed test command verifies that history dispatch no longer depends on
+  membership in the editor's hard-coded command list.
+
+### Next execution step
+
+Continue the history cleanup by tightening `_history_node_id_remap` lifecycle
+rules. The next pass should document when remaps are created/cleared and add
+focused tests around undo/redo after import, graph reset, and node recreation so
+stale identity mappings cannot leak across unrelated history sessions.

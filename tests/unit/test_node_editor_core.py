@@ -479,6 +479,35 @@ def test_composite_insert_label_prefers_insert_node(editor_and_dpg):
     )
 
 
+class DuckHistoryCommand:
+    def __init__(self):
+        self.calls = []
+
+    def undo(self, editor):
+        self.calls.append(('undo', editor))
+
+    def redo(self, editor):
+        self.calls.append(('redo', editor))
+
+
+def test_undo_redo_dispatches_to_command_methods_without_type_branching(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+    command = DuckHistoryCommand()
+
+    editor._undo_stack.append(command)
+    editor._cntrl_undo(None, None)
+
+    assert command.calls == [('undo', editor)]
+    assert editor._redo_stack == [command]
+
+    editor._cntrl_redo(None, None)
+
+    assert command.calls == [('undo', editor), ('redo', editor)]
+    assert editor._undo_stack == [command]
+    assert editor._suspend_parameter_history is False
+
+
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True

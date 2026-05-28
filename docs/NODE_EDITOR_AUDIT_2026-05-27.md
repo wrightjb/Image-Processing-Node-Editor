@@ -166,9 +166,9 @@ ownership clearer:
 - Declarative image process nodes call that helper so their top row contains
   the universal delete button plus image-specific `R`, `RL`, and `Cache`
   controls on a single ASCII-safe row.
-- The editor still provides a fallback delete button for older/non-declarative
-  nodes that have not adopted the helper yet, but it no longer injects into
-  declarative toolbar placement hooks.
+- The editor no longer provides a fallback delete button. Nodes that want the
+  toolbar button should call the shared helper; non-migrated nodes can still be
+  removed with existing editor deletion commands such as the Delete key.
 
 ### Next execution step
 

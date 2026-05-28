@@ -1,12 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
-
 import dearpygui.dearpygui as dpg
-
-
-@dataclass(frozen=True)
-class NodeEditorFeatures:
-    show_delete_button: bool = True
 
 
 class DpgNodeABC(metaclass=ABCMeta):
@@ -107,15 +100,6 @@ class DpgNodeABC(metaclass=ABCMeta):
         del value_tag, value
         return False
 
-    def get_editor_features(self, node_id):
-        """Return per-node editor chrome capabilities.
-
-        Nodes can override this to opt out of default editor UI affordances
-        (for example the delete button).
-        """
-        del node_id
-        return NodeEditorFeatures()
-
     def _editor_toolbar_attr_tag(self, node_id):
         return f'{self._node_name(node_id)}:ToolbarAttr'
 
@@ -149,7 +133,7 @@ class DpgNodeABC(metaclass=ABCMeta):
             ):
                 dpg.add_button(
                     tag=self._editor_delete_button_tag(node_id),
-                    label='x',
+                    label='X',
                     width=20,
                     height=20,
                     callback=self._on_editor_delete_button,

@@ -61,8 +61,6 @@ class DpgNodeEditor(object):
     _history_window_tag = _node_editor_tag + 'HistoryWindow'
     _history_undo_text_tag = _node_editor_tag + 'HistoryUndoText'
     _history_redo_text_tag = _node_editor_tag + 'HistoryRedoText'
-    _node_close_attr_suffix = ':CloseAttr'
-    _node_close_button_suffix = ':CloseButton'
 
     _node_id = 0
     _node_instance_list = {}
@@ -602,51 +600,13 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        node_view_tag = node.add_node(
+        node.add_node(
             self._node_editor_tag,
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
-
-        if node_tag == 'ExecPythonCode':
-            return
-        editor_features = None
-        if hasattr(node, 'get_editor_features') and callable(node.get_editor_features):
-            editor_features = node.get_editor_features(str(new_id))
-        if editor_features is not None and not getattr(
-            editor_features, 'show_delete_button', True
-        ):
-            return
-
-        close_attr_tag = node_view_tag + self._node_close_attr_suffix
-        close_button_tag = node_view_tag + self._node_close_button_suffix
-        if dpg.does_item_exist(close_button_tag):
-            return
-        if dpg.does_item_exist(close_attr_tag):
-            dpg.delete_item(close_attr_tag)
-
-        with dpg.node_attribute(
-                parent=node_view_tag,
-                tag=close_attr_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-        ):
-            with dpg.group(horizontal=True):
-                dpg.add_button(
-                    tag=close_button_tag,
-                    label='x',
-                    width=20,
-                    height=20,
-                    callback=self._cntrl_delete_node_by_button,
-                    user_data=node_view_tag,
-                )
-
-        node_children = dpg.get_item_children(node_view_tag, 1)
-        if node_children:
-            first_attribute = node_children[0]
-            if first_attribute != close_attr_tag:
-                dpg.move_item(close_attr_tag, parent=node_view_tag, before=first_attribute)
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -2106,12 +2066,6 @@ class DpgNodeEditor(object):
         self._vw_delete_links_for_node(node_tag)
         if dpg.does_item_exist(node_tag):
             self._vw_delete_item(node_tag)
-
-    def _cntrl_delete_node_by_button(self, sender, data, user_data):
-        node_tag = user_data
-        if not node_tag or not dpg.does_item_exist(node_tag):
-            return
-        self._cntrl_delete_targets([node_tag], [])
 
     # Public functions
     def get_node_list(self):

@@ -23,6 +23,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
     _cache_enabled_by_node = {}
     _result_image_enabled_by_node = {}
     _result_large_image_enabled_by_node = {}
+    _toolbar_attr_suffix = ':ToolbarAttr'
     _ui_callback = None
     _suspend_parameter_event_tags = set()
     _last_parameter_values = {}
@@ -42,11 +43,16 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         output_image_value_tag = self._value_tag(output_image_tag)
         elapsed_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
         elapsed_value_tag = self._value_tag(elapsed_tag)
+        toolbar_attr_tag = f'{tag_node_name}{self._toolbar_attr_suffix}'
         cache_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
         cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
-        result_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImage')
+        result_image_toggle_tag = self._port_tag(
+            tag_node_name, self.TYPE_TEXT, 'ResultImage'
+        )
         result_image_toggle_value_tag = self._value_tag(result_image_toggle_tag)
-        result_large_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImageLarge')
+        result_large_image_toggle_tag = self._port_tag(
+            tag_node_name, self.TYPE_TEXT, 'ResultImageLarge'
+        )
         result_large_image_toggle_value_tag = self._value_tag(result_large_image_toggle_tag)
 
         self._opencv_setting_dict = opencv_setting_dict
@@ -99,43 +105,34 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             )
 
             with dpg.node_attribute(
-                tag=cache_toggle_tag,
+                tag=toolbar_attr_tag,
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
-                dpg.add_checkbox(
-                    label='Cache',
-                    tag=cache_toggle_value_tag,
-                    default_value=True,
-                    callback=self._on_cache_toggle,
-                    user_data=node_id,
-                )
-                self._cache_enabled_by_node[str(node_id)] = True
-
-            with dpg.node_attribute(
-                tag=result_image_toggle_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_checkbox(
-                    label='Result Image',
-                    tag=result_image_toggle_value_tag,
-                    default_value=False,
-                    callback=self._on_result_image_toggle,
-                    user_data=node_id,
-                )
-                self._result_image_enabled_by_node[str(node_id)] = False
-
-            with dpg.node_attribute(
-                tag=result_large_image_toggle_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_checkbox(
-                    label='Result Image(Large)',
-                    tag=result_large_image_toggle_value_tag,
-                    default_value=False,
-                    callback=self._on_result_large_image_toggle,
-                    user_data=node_id,
-                )
-                self._result_large_image_enabled_by_node[str(node_id)] = False
+                with dpg.group(horizontal=True):
+                    dpg.add_checkbox(
+                        label='◻',
+                        tag=result_image_toggle_value_tag,
+                        default_value=False,
+                        callback=self._on_result_image_toggle,
+                        user_data=node_id,
+                    )
+                    self._result_image_enabled_by_node[str(node_id)] = False
+                    dpg.add_checkbox(
+                        label='⬜',
+                        tag=result_large_image_toggle_value_tag,
+                        default_value=False,
+                        callback=self._on_result_large_image_toggle,
+                        user_data=node_id,
+                    )
+                    self._result_large_image_enabled_by_node[str(node_id)] = False
+                    dpg.add_checkbox(
+                        label='Cache',
+                        tag=cache_toggle_value_tag,
+                        default_value=True,
+                        callback=self._on_cache_toggle,
+                        user_data=node_id,
+                    )
+                    self._cache_enabled_by_node[str(node_id)] = True
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
@@ -407,6 +404,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             return True
 
         return False
+
+    def get_editor_toolbar_attr_tag(self, node_id):
+        return f'{self._node_name(node_id)}{self._toolbar_attr_suffix}'
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

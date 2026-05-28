@@ -1,4 +1,10 @@
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class NodeEditorFeatures:
+    show_delete_button: bool = True
 
 
 class DpgNodeABC(metaclass=ABCMeta):
@@ -98,3 +104,12 @@ class DpgNodeABC(metaclass=ABCMeta):
         """
         del value_tag, value
         return False
+
+    def get_editor_features(self, node_id):
+        """Return per-node editor chrome capabilities.
+
+        Nodes can override this to opt out of default UI affordances that
+        the editor injects globally (for example the delete button).
+        """
+        del node_id
+        return NodeEditorFeatures()

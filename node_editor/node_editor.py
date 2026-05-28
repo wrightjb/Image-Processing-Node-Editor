@@ -612,6 +612,13 @@ class DpgNodeEditor(object):
 
         if node_tag == 'ExecPythonCode':
             return
+        editor_features = None
+        if hasattr(node, 'get_editor_features') and callable(node.get_editor_features):
+            editor_features = node.get_editor_features(str(new_id))
+        if editor_features is not None and not getattr(
+            editor_features, 'show_delete_button', True
+        ):
+            return
 
         close_attr_tag = node_view_tag + self._node_close_attr_suffix
         close_button_tag = node_view_tag + self._node_close_button_suffix

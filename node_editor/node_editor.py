@@ -714,11 +714,11 @@ class DpgNodeEditor(object):
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Z,
-                callback=self._cntrl_undo,
+                callback=self._cntrl_keyboard_z_shortcut,
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Y,
-                callback=self._cntrl_redo,
+                callback=self._cntrl_keyboard_y_shortcut,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -1844,6 +1844,28 @@ class DpgNodeEditor(object):
             return
         self._cntrl_refresh_history_window()
         dpg.show_item(self._history_window_tag)
+
+    def _cntrl_is_key_down_any(self, key_constants):
+        return any(dpg.is_key_down(key_constant) for key_constant in key_constants)
+
+    def _cntrl_is_ctrl_down(self):
+        return self._cntrl_is_key_down_any((dpg.mvKey_LControl, dpg.mvKey_RControl))
+
+    def _cntrl_is_shift_down(self):
+        return self._cntrl_is_key_down_any((dpg.mvKey_LShift, dpg.mvKey_RShift))
+
+    def _cntrl_keyboard_z_shortcut(self, sender, data):
+        if not self._cntrl_is_ctrl_down():
+            return
+        if self._cntrl_is_shift_down():
+            self._cntrl_redo(sender, data)
+            return
+        self._cntrl_undo(sender, data)
+
+    def _cntrl_keyboard_y_shortcut(self, sender, data):
+        if not self._cntrl_is_ctrl_down():
+            return
+        self._cntrl_redo(sender, data)
 
     def _cntrl_run_history_command(self, cmd, action_name):
         action = getattr(cmd, action_name, None)

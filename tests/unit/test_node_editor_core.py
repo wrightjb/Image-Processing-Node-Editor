@@ -508,6 +508,46 @@ def test_undo_redo_dispatches_to_command_methods_without_type_branching(editor_a
     assert editor._suspend_parameter_history is False
 
 
+def _configure_shortcut_keys(dpg, pressed_keys):
+    dpg.mvKey_LControl = 'LControl'
+    dpg.mvKey_RControl = 'RControl'
+    dpg.mvKey_LShift = 'LShift'
+    dpg.mvKey_RShift = 'RShift'
+    dpg.is_key_down.side_effect = lambda key: key in pressed_keys
+
+
+def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+
+    undo_command = DuckHistoryCommand()
+    editor._undo_stack.append(undo_command)
+    _configure_shortcut_keys(dpg, {'LControl'})
+
+    editor._cntrl_keyboard_z_shortcut(None, None)
+
+    assert undo_command.calls == [('undo', editor)]
+    assert editor._redo_stack == [undo_command]
+
+    _configure_shortcut_keys(dpg, {'LControl', 'LShift'})
+    editor._cntrl_keyboard_z_shortcut(None, None)
+
+    assert undo_command.calls == [('undo', editor), ('redo', editor)]
+    assert editor._undo_stack == [undo_command]
+
+    _configure_shortcut_keys(dpg, set())
+    editor._cntrl_keyboard_z_shortcut(None, None)
+    assert undo_command.calls == [('undo', editor), ('redo', editor)]
+
+    redo_command = DuckHistoryCommand()
+    editor._redo_stack.append(redo_command)
+    _configure_shortcut_keys(dpg, {'RControl'})
+
+    editor._cntrl_keyboard_y_shortcut(None, None)
+
+    assert redo_command.calls == [('redo', editor)]
+
+
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True

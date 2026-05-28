@@ -197,3 +197,13 @@ Continue the history cleanup by tightening `_history_node_id_remap` lifecycle
 rules. The next pass should document when remaps are created/cleared and add
 focused tests around undo/redo after import, graph reset, and node recreation so
 stale identity mappings cannot leak across unrelated history sessions.
+
+## Plan update after keyboard shortcut normalization
+
+Before leaving undo/redo, the keyboard shortcuts were normalized to common
+application conventions:
+
+- `Ctrl+Z` now triggers undo.
+- `Ctrl+Shift+Z` now triggers redo.
+- `Ctrl+Y` also triggers redo.
+- Bare `Z` / `Y` key presses no longer invoke history actions.

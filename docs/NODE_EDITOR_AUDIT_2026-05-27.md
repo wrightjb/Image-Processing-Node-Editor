@@ -155,3 +155,26 @@ Phase 1 has been implemented with a minimal cross-node contract:
 - Removes controller dependence on node-private methods (`_on_*_toggle`) for editor-applied values.
 - Establishes a common extension point usable by both declarative and non-declarative nodes.
 - Keeps migration scope incremental: existing nodes can adopt hook behavior as needed without broad rewrites.
+
+## Plan update after toolbar ownership follow-up
+
+The toolbar follow-up keeps the practical compromise from Phase 1 while making
+ownership clearer:
+
+- `DpgNodeABC` now owns a small reusable toolbar helper for node-built editor
+  chrome.
+- Declarative image process nodes call that helper so their top row contains
+  the universal delete button plus image-specific `R`, `RL`, and `Cache`
+  controls on a single ASCII-safe row.
+- The editor still provides a fallback delete button for older/non-declarative
+  nodes that have not adopted the helper yet, but it no longer injects into
+  declarative toolbar placement hooks.
+
+### Next execution step
+
+The next cleanup step should be the **History simplification pass** from the
+revised plan: remove manual command-type dispatch from undo/redo and make command
+objects responsible for their own `undo()`/`redo()` behavior. That is now the
+best next target because the highest-value node-specific UI coupling has been
+reduced, and history dispatch remains a localized structural issue with clear
+unit-test coverage.

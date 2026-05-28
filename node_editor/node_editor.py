@@ -620,54 +620,27 @@ class DpgNodeEditor(object):
         ):
             return
 
-        toolbar_attr_tag = None
-        if hasattr(node, 'get_editor_toolbar_attr_tag'):
-            toolbar_attr_tag = node.get_editor_toolbar_attr_tag(str(new_id))
-        toolbar_group_tag = None
-        if hasattr(node, 'get_editor_toolbar_group_tag'):
-            toolbar_group_tag = node.get_editor_toolbar_group_tag(str(new_id))
         close_attr_tag = node_view_tag + self._node_close_attr_suffix
         close_button_tag = node_view_tag + self._node_close_button_suffix
+        if dpg.does_item_exist(close_button_tag):
+            return
         if dpg.does_item_exist(close_attr_tag):
             dpg.delete_item(close_attr_tag)
 
-        target_parent_attr = toolbar_attr_tag
-        if not target_parent_attr or not dpg.does_item_exist(target_parent_attr):
-            target_parent_attr = close_attr_tag
-
-        if target_parent_attr == close_attr_tag:
-            with dpg.node_attribute(
-                    parent=node_view_tag,
-                    tag=close_attr_tag,
-                    attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                with dpg.group(horizontal=True):
-                    dpg.add_button(
-                        tag=close_button_tag,
-                        label='x',
-                        width=20,
-                        height=20,
-                        callback=self._cntrl_delete_node_by_button,
-                        user_data=node_view_tag,
-                    )
-        else:
-            target_parent = (
-                toolbar_group_tag
-                if toolbar_group_tag and dpg.does_item_exist(toolbar_group_tag)
-                else target_parent_attr
-            )
-            dpg.add_button(
-                tag=close_button_tag,
-                label='x',
-                width=20,
-                height=20,
-                callback=self._cntrl_delete_node_by_button,
-                user_data=node_view_tag,
-                parent=target_parent,
-            )
-
-        if target_parent_attr != close_attr_tag:
-            return
+        with dpg.node_attribute(
+                parent=node_view_tag,
+                tag=close_attr_tag,
+                attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(horizontal=True):
+                dpg.add_button(
+                    tag=close_button_tag,
+                    label='x',
+                    width=20,
+                    height=20,
+                    callback=self._cntrl_delete_node_by_button,
+                    user_data=node_view_tag,
+                )
 
         node_children = dpg.get_item_children(node_view_tag, 1)
         if node_children:
@@ -913,6 +886,14 @@ class DpgNodeEditor(object):
                 str(data.get('result_node_tag', '')),
                 bool(data.get('enabled', False)),
             )
+            return
+        if event_name == 'delete_node_requested':
+            if not isinstance(data, dict):
+                return
+            node_id_name = str(data.get('node_id_name', ''))
+            if not node_id_name:
+                return
+            self._cntrl_delete_targets([node_id_name], [])
             return
         if event_name == 'parameter_changed':
             if not isinstance(data, dict):

@@ -126,6 +126,24 @@ class DpgNodeEditor(object):
         for port_ref in declared_ports:
             self._mdl_register_port_ref(port_ref)
 
+    def _mdl_iter_registered_ports(
+        self,
+        direction=None,
+        node_id_name=None,
+        data_type=None,
+    ):
+        for port_ref in list(self._port_registry.values()):
+            if direction is not None and port_ref.direction != direction:
+                continue
+            if (
+                node_id_name is not None
+                and port_ref.node_ref.node_id_name != node_id_name
+            ):
+                continue
+            if data_type is not None and port_ref.data_type != data_type:
+                continue
+            yield port_ref
+
     def _cntrl_parse_port_tag(self, port_tag):
         if not isinstance(port_tag, str):
             return None
@@ -1217,7 +1235,16 @@ class DpgNodeEditor(object):
         return None
 
 
-    def _cntrl_get_hovered_output_port_tag(self):
+    def _cntrl_get_hovered_registered_port_tag(self, direction):
+        for port_ref in self._mdl_iter_registered_ports(direction=direction):
+            if (
+                dpg.does_item_exist(port_ref.dpg_tag)
+                and dpg.is_item_hovered(port_ref.dpg_tag)
+            ):
+                return port_ref.dpg_tag
+        return None
+
+    def _cntrl_get_hovered_legacy_port_tag(self, direction):
         for node_id_name in self._node_list:
             parts = node_id_name.split(':')
             if len(parts) < 2:
@@ -1225,31 +1252,31 @@ class DpgNodeEditor(object):
             node_id = parts[0]
             node_name = parts[1]
             for index in range(100):
-                port_tag = f'{node_id}:{node_name}:Image:Output{index:02d}'
+                port_tag = f'{node_id}:{node_name}:Image:{direction}{index:02d}'
                 if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
                     return port_tag
                 for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
-                    type_port_tag = f'{node_id}:{node_name}:{port_type}:Output{index:02d}'
-                    if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
+                    type_port_tag = (
+                        f'{node_id}:{node_name}:{port_type}:{direction}{index:02d}'
+                    )
+                    if (
+                        dpg.does_item_exist(type_port_tag)
+                        and dpg.is_item_hovered(type_port_tag)
+                    ):
                         return type_port_tag
         return None
 
+    def _cntrl_get_hovered_output_port_tag(self):
+        registered_tag = self._cntrl_get_hovered_registered_port_tag('Output')
+        if registered_tag is not None:
+            return registered_tag
+        return self._cntrl_get_hovered_legacy_port_tag('Output')
+
     def _cntrl_get_hovered_input_port_tag(self):
-        for node_id_name in self._node_list:
-            parts = node_id_name.split(':')
-            if len(parts) < 2:
-                continue
-            node_id = parts[0]
-            node_name = parts[1]
-            for index in range(100):
-                port_tag = f'{node_id}:{node_name}:Image:Input{index:02d}'
-                if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
-                    return port_tag
-                for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
-                    type_port_tag = f'{node_id}:{node_name}:{port_type}:Input{index:02d}'
-                    if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
-                        return type_port_tag
-        return None
+        registered_tag = self._cntrl_get_hovered_registered_port_tag('Input')
+        if registered_tag is not None:
+            return registered_tag
+        return self._cntrl_get_hovered_legacy_port_tag('Input')
 
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
@@ -1262,12 +1289,30 @@ class DpgNodeEditor(object):
             int((source_pos[1] + dest_pos[1]) / 2),
         ]
 
+    def _cntrl_port_ref_has_dpg_attribute_type(self, port_ref, expected_attr_type):
+        if expected_attr_type is None:
+            return True
+        if not dpg.does_item_exist(port_ref.dpg_tag):
+            return False
+        config = dpg.get_item_configuration(port_ref.dpg_tag)
+        return config.get('attribute_type') == expected_attr_type
+
     def _cntrl_find_node_port(self, node_id_name, port_type, port_prefix):
         expected_attr_type = None
         if port_prefix == 'Input':
             expected_attr_type = dpg.mvNode_Attr_Input
         elif port_prefix == 'Output':
             expected_attr_type = dpg.mvNode_Attr_Output
+
+        for port_ref in self._mdl_iter_registered_ports(
+            direction=port_prefix,
+            node_id_name=node_id_name,
+            data_type=port_type,
+        ):
+            if self._cntrl_port_ref_has_dpg_attribute_type(
+                port_ref, expected_attr_type
+            ):
+                return port_ref.dpg_tag
 
         for index in range(100):
             port_tag = (
@@ -1280,6 +1325,7 @@ class DpgNodeEditor(object):
                 config = dpg.get_item_configuration(port_tag)
                 if config.get('attribute_type') != expected_attr_type:
                     continue
+            self._cntrl_parse_port_tag(port_tag)
             return port_tag
         return None
 

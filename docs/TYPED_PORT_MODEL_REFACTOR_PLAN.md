@@ -39,25 +39,26 @@ Implemented so far:
   preserving existing compact tag strings.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
-- The editor imports the shared `node.port_model` records and registers node-owned
-  declared ports during node creation. Legacy compact tag parsing remains as a
-  compatibility boundary for imported graphs, callback aliases, and undo/redo data.
+- The editor imports the shared `node.port_model` records, registers node-owned
+  declared ports during node creation, and now prefers registered `PortRef` data
+  for right-click hovered-port discovery and node-port lookup. Legacy compact tag
+  parsing remains as a compatibility boundary for imported graphs, callback
+  aliases, and undo/redo data.
 
 Important limitation of the current implementation:
 
-- The editor still falls back to legacy string parsing in many graph operations,
-  and hovered-port discovery still synthesizes possible DPG tags. The next step is
-  to prefer the creation-time port registry for editor-side lookups while keeping
-  parsing at compatibility boundaries.
+- The editor still stores links/history/import/export primarily as compact string
+  pairs. The next step is to continue moving graph internals toward typed refs
+  while keeping parsing at compatibility boundaries.
 
 ## Next work
 
-1. Update editor-side lookups to prefer the creation-time port registry, starting
-   with right-click hovered-port detection.
+1. Migrate graph internals, history, runtime, import, and export from string pairs
+   toward typed refs behind compatibility adapters.
 2. Keep legacy parsing only for imported graphs, callback aliases, undo/redo data,
    and other compatibility boundaries.
-3. Migrate graph internals, history, runtime, import, and export from string pairs
-   toward typed refs behind compatibility adapters.
+3. Add import/export round-trip coverage for both legacy compact strings and typed
+   ref-backed internal state.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -124,25 +125,27 @@ already centralize a large amount of repeated node UI and setting behavior.
 
 After `DpgNodeBase` can register typed ports and
 `DeclarativeImageProcessNodeBase` has moved onto it, fold audit item 2
-(hovered-port discovery) into this refactor. Do not do this as a standalone
-pre-refactor cleanup, because the current `_port_registry` is populated lazily
-from parsed strings rather than authoritatively during node creation.
+(hovered-port discovery) into this refactor. This should happen after
+creation-time registration is available, because pre-refactor `_port_registry`
+data was populated lazily from parsed strings rather than authoritatively during
+node creation.
 
-Replace `_cntrl_get_hovered_output_port_tag()` and
-`_cntrl_get_hovered_input_port_tag()` so they iterate registered `PortRef` data
-instead of synthesizing possible DearPyGui tags from every node, hardcoded data
-types, and fixed port-index ranges.
+Done: `_cntrl_get_hovered_output_port_tag()` and
+`_cntrl_get_hovered_input_port_tag()` now iterate registered `PortRef` data
+before falling back to synthesized DearPyGui tags for legacy/imported graphs.
+`_cntrl_find_node_port()` also prefers registered refs so newly created nodes can
+be connected through the typed registry rather than through fixed index scans.
 
-Recommended incremental shape:
+Implemented incremental shape:
 
-1. keep the public return value as the compact DPG tag at first, so surrounding
-   context-menu code does not need to change in the same patch,
-2. source the returned tag from a registered `PortRef`,
-3. keep legacy parsing only for imported/test graphs that have not gone through
-   creation-time registration,
-4. add or keep behavior tests for add-node-from-hovered-output,
-   add-node-to-hovered-input, insert-node-between-links, and occupied input
-   replacement.
+1. public helpers still return compact DPG tags, so surrounding context-menu code
+   remains compatible,
+2. returned tags are sourced from registered `PortRef` objects when available,
+3. legacy tag synthesis remains only as a fallback for imported/test graphs that
+   have not gone through creation-time registration,
+4. behavior tests cover registered high-index ports, legacy fallback registration,
+   add-node-from-hovered-output, add-node-to-hovered-input, insert-node-between-links,
+   and occupied input replacement.
 
 This makes hovered-port lookup the first editor-side proof that typed port
 registration is reliable, without forcing the entire graph model to change at
@@ -254,8 +257,9 @@ plus a readable compact boundary string.
   `PortRef` declarations while preserving existing compact DPG tags.
 - Done: wire node-owned declared ports into the editor registry during node
   creation, with callback support for dynamic ports created later.
-- Next: replace editor hovered-port lookup with registered `PortRef` iteration.
-- Replace editor link internals with typed links behind a compatibility export
+- Done: replace hovered-port discovery and node-port lookup with registered
+  `PortRef` iteration first, with legacy compact-tag scanning as fallback.
+- Next: replace editor link internals with typed links behind a compatibility export
   adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any
   future typed endpoint schema.

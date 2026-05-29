@@ -206,3 +206,21 @@ application conventions:
 - `Ctrl+Z` now triggers undo.
 - `Ctrl+Shift+Z` now triggers redo.
 - Bare `Z` key presses no longer invoke history actions.
+
+## Plan update after history remap lifecycle tightening
+
+The `_history_node_id_remap` lifecycle is now more explicit:
+
+- Successful imports clear undo history, redo history, and history node-id
+  remaps because import is not currently represented as an undoable history
+  command and can change the node id namespace.
+- Redo invalidation is centralized so a new command after a fully undone history
+  branch clears stale remaps with the discarded redo branch.
+- Focused tests cover import-time history invalidation and stale remap cleanup
+  when a new command replaces a fully undone redo branch.
+
+### Next execution step
+
+Move to the hover/port lookup pass: reduce ad-hoc port probing by relying more
+on the existing node/port registries, with tests around link insertion and
+occupied-input replacement.

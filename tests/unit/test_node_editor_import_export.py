@@ -186,6 +186,40 @@ class TestDpgNodeEditorImportExport:
             parent=node_editor._node_editor_tag
         )
 
+    def test_import_clears_undo_redo_and_history_remap(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node'],
+            'link_list': [],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {
+                    'ver': '1.0.0',
+                    'pos': [100, 200],
+                },
+            },
+        }
+        temp_path = tmp_path / "import_clears_history.json"
+        temp_path.write_text(json.dumps(test_data))
+        node_editor._undo_stack.append(object())
+        node_editor._redo_stack.append(object())
+        node_editor._history_node_id_remap['1:test_node'] = '9:test_node'
+        mock_dpg.does_item_exist.return_value = False
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._undo_stack == []
+        assert node_editor._redo_stack == []
+        assert node_editor._history_node_id_remap == {}
+
     def test_import_primes_move_cache_for_first_drag_undo(
         self,
         node_editor,

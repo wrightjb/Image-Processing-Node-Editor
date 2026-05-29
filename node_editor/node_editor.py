@@ -979,7 +979,7 @@ class DpgNodeEditor(object):
                         cmd.before_value,
                         after_value,
                     )
-                    self._redo_stack.clear()
+                    self._cntrl_clear_redo_history()
                     self._cntrl_refresh_history_menu_items()
                     return
             else:
@@ -1006,7 +1006,7 @@ class DpgNodeEditor(object):
                 )
                 del self._undo_stack[idx + 1:]
                 self._parameter_last_coalesce_hint[value_tag] = True
-                self._redo_stack.clear()
+                self._cntrl_clear_redo_history()
                 self._cntrl_refresh_history_menu_items()
                 return
 
@@ -1032,7 +1032,7 @@ class DpgNodeEditor(object):
                         after_value,
                     )
                 self._parameter_last_coalesce_hint[value_tag] = bool(coalesce_hint)
-                self._redo_stack.clear()
+                self._cntrl_clear_redo_history()
                 self._cntrl_refresh_history_menu_items()
                 return
         self._cntrl_push_undo_command(
@@ -1615,11 +1615,14 @@ class DpgNodeEditor(object):
         return setting_dict
 
     def _cntrl_import_setting_dict(self, setting_dict):
+        if setting_dict is None:
+            return
         self._suspend_parameter_history = True
         try:
             self._cntrl_import_setting_dict_body(setting_dict)
         finally:
             self._suspend_parameter_history = False
+        self._cntrl_clear_history()
 
     def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
@@ -1771,9 +1774,20 @@ class DpgNodeEditor(object):
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
 
-    def _cntrl_push_undo_command(self, command):
-        self._undo_stack.append(command)
+    def _cntrl_clear_redo_history(self):
         self._redo_stack.clear()
+        if not self._undo_stack:
+            self._history_node_id_remap.clear()
+
+    def _cntrl_clear_history(self):
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._history_node_id_remap.clear()
+        self._cntrl_refresh_history_menu_items()
+
+    def _cntrl_push_undo_command(self, command):
+        self._cntrl_clear_redo_history()
+        self._undo_stack.append(command)
         self._cntrl_refresh_history_menu_items()
 
     def _cntrl_refresh_history_menu_items(self):

@@ -508,6 +508,18 @@ def test_undo_redo_dispatches_to_command_methods_without_type_branching(editor_a
     assert editor._suspend_parameter_history is False
 
 
+def test_new_command_after_fully_undone_history_clears_stale_remap(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+    editor._redo_stack.append(DuckHistoryCommand())
+    editor._history_node_id_remap['1:TestNode'] = '9:TestNode'
+
+    editor._cntrl_push_undo_command(DuckHistoryCommand())
+
+    assert editor._redo_stack == []
+    assert editor._history_node_id_remap == {}
+
+
 def _configure_shortcut_keys(dpg, pressed_keys):
     dpg.mvKey_LControl = 'LControl'
     dpg.mvKey_RControl = 'RControl'

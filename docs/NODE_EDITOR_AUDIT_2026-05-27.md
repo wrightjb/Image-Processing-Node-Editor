@@ -4,6 +4,9 @@ This document tracks only the remaining node-editor cleanup work after the
 editor/node hook, node-owned toolbar, history dispatch, keyboard shortcut, import
 undo, and duplicate-destination import-link fixes landed.
 
+For the larger typed-port model direction, see
+`docs/TYPED_PORT_MODEL_REFACTOR_PLAN.md`.
+
 ## Scope
 
 - `node_editor/node_editor.py`

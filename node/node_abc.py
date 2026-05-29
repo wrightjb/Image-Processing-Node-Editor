@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 import dearpygui.dearpygui as dpg
 
+from node_editor.port_model import NodeRef, PortRef
+
 
 class DpgNodeABC(metaclass=ABCMeta):
     _ver = '0.0.0'
@@ -150,3 +152,97 @@ class DpgNodeABC(metaclass=ABCMeta):
         if callback is None:
             return
         callback('delete_node_requested', {'node_id_name': node_id_name})
+
+
+class DpgNodeBase(DpgNodeABC):
+    """Concrete DearPyGui node helper base.
+
+    This base is the migration target for nodes that need shared tag helpers and
+    typed port declarations. Existing nodes can continue to inherit
+    ``DpgNodeABC`` until they are mechanically migrated.
+    """
+
+    def __init__(self):
+        self._declared_port_refs = {}
+        self._port_registration_callback = None
+
+    def set_port_registration_callback(self, callback):
+        self._port_registration_callback = callback
+
+    def get_declared_port_refs(self, node_id=None):
+        if not hasattr(self, '_declared_port_refs'):
+            self._declared_port_refs = {}
+        if node_id is None:
+            return [
+                port_ref
+                for port_refs in self._declared_port_refs.values()
+                for port_ref in port_refs.values()
+            ]
+        node_ports = self._declared_port_refs.get(self._node_name(node_id), {})
+        return list(node_ports.values())
+
+    def input_port(self, node_id, data_type, port_name):
+        return self._declare_port(node_id, data_type, port_name, 'Input')
+
+    def output_port(self, node_id, data_type, port_name):
+        return self._declare_port(node_id, data_type, port_name, 'Output')
+
+    def parameter_port(self, node_id, data_type, port_name, control_tag=None):
+        dpg_tag = self._port_tag(self._node_name(node_id), data_type, port_name)
+        if control_tag is None:
+            control_tag = self._value_tag(dpg_tag)
+        return self._declare_port(
+            node_id,
+            data_type,
+            port_name,
+            'Input',
+            control_tag=control_tag,
+        )
+
+    def _declare_port(
+        self,
+        node_id,
+        data_type,
+        port_name,
+        direction,
+        control_tag=None,
+    ):
+        node_ref = NodeRef(str(node_id), self.node_tag)
+        index = self._port_index(port_name, direction)
+        dpg_tag = self._port_tag(node_ref.node_id_name, data_type, port_name)
+        port_ref = PortRef(
+            node_ref=node_ref,
+            direction=direction,
+            data_type=data_type,
+            index=index,
+            dpg_tag=dpg_tag,
+            value_tag=self._value_tag(dpg_tag),
+            control_tag=control_tag,
+        )
+        self._remember_port_ref(port_ref)
+        return port_ref
+
+    def _port_index(self, port_name, direction):
+        if not isinstance(port_name, str) or not port_name.startswith(direction):
+            raise ValueError(
+                f'{direction} port names must start with {direction}: {port_name}'
+            )
+        index_text = port_name[len(direction):]
+        try:
+            return int(index_text)
+        except ValueError as exc:
+            raise ValueError(
+                f'{direction} port names must end with a numeric index: {port_name}'
+            ) from exc
+
+    def _remember_port_ref(self, port_ref):
+        if not hasattr(self, '_declared_port_refs'):
+            self._declared_port_refs = {}
+        node_ports = self._declared_port_refs.setdefault(
+            port_ref.node_ref.node_id_name,
+            {},
+        )
+        node_ports[port_ref.dpg_tag] = port_ref
+        callback = getattr(self, '_port_registration_callback', None)
+        if callback is not None:
+            callback(port_ref)

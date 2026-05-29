@@ -10,30 +10,9 @@ from glob import glob
 from collections import OrderedDict
 from importlib import import_module
 from pathlib import Path
-from dataclasses import dataclass
-
 import dearpygui.dearpygui as dpg
 
-
-@dataclass(frozen=True)
-class NodeRef:
-    node_id: str
-    node_tag: str
-
-    @property
-    def node_id_name(self):
-        return f'{self.node_id}:{self.node_tag}'
-
-
-@dataclass(frozen=True)
-class PortRef:
-    node_ref: NodeRef
-    direction: str
-    data_type: str
-    index: int
-    dpg_tag: str
-
-
+from node_editor.port_model import NodeRef, PortRef
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,

@@ -33,6 +33,13 @@ Implemented so far:
 - Unit coverage has started for the behaviors most likely to regress during the
   port model refactor: registered high-index hovered ports, registry-backed port
   lookup, and legacy fallback registration.
+- `NodeRef` and `PortRef` now live in `node_editor.port_model`, making them
+  reusable by node base classes without importing the editor controller.
+- `DpgNodeBase` exists as the concrete migration target and can declare input,
+  output, and parameter ports while preserving the existing compact DPG tag
+  format.
+- Concrete base port declaration tests cover generated tags, `PortRef` metadata,
+  parameter value/control tags, registration callbacks, and invalid port names.
 
 Important limitation of the current implementation:
 
@@ -43,20 +50,17 @@ Important limitation of the current implementation:
 
 ## Next work
 
-1. Add tests around the future concrete base port declaration API before moving
-   node code. Cover generated DPG tags, `PortRef` fields, value/control tags for
-   parameter widgets, and registration callbacks.
-2. Split `DpgNodeABC` and introduce the concrete `DpgNodeBase` described in Step 1.
-   Keep existing tag strings stable while moving helper behavior into the concrete
-   base.
-3. Wire `DpgNodeBase` port helpers to register ports during `add_node()` so the
+1. Move concrete helper behavior out of `DpgNodeABC` once enough nodes have been
+   migrated, keeping temporary compatibility only while direct subclasses still
+   depend on the old interface.
+2. Wire `DpgNodeBase` port helpers to register ports during `add_node()` so the
    editor receives authoritative `PortRef` data as nodes are created.
-4. Migrate `DeclarativeImageProcessNodeBase` first, then verify existing process
+3. Migrate `DeclarativeImageProcessNodeBase` first, then verify existing process
    node behavior and settings/import/export compatibility.
-5. Once declarative nodes register ports at creation time, tighten hovered-port
+4. Once declarative nodes register ports at creation time, tighten hovered-port
    tests for add-from-output, add-to-input, insert-between-links, and occupied input
    replacement using registered ports rather than legacy synthetic tags.
-6. After those tests pass, continue with typed link internals and the broader
+5. After those tests pass, continue with typed link internals and the broader
    mechanical node migration.
 
 ## Step 1: Split the abstract interface from concrete node behavior
@@ -247,9 +251,10 @@ plus a readable compact boundary string.
 
 ## Suggested checkpoints
 
-- In progress: add unit tests for concrete base port declaration output and editor
-  port registration. Initial editor registry/hovered-port coverage exists; concrete
-  base declaration tests are still needed.
+- Done: add unit tests for concrete base port declaration output and editor port
+  registration.
+- Next: wire `DpgNodeBase` port declarations into editor registration during node
+  creation.
 - Migrate declarative process nodes and run process-node tests.
 - Migrate direct nodes in one wave and run the full test suite.
 - Replace editor link internals with typed links behind a compatibility export

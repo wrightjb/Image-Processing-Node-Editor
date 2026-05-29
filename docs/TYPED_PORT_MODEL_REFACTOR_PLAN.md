@@ -34,6 +34,9 @@ Implemented so far:
   standard image input/output, elapsed-time output, and declared parameter ports;
   cache/result toggles still use value tags because they are toolbar controls,
   not graph ports.
+- Direct non-declarative node `add_node()` implementations now declare their DPG
+  input/output graph attributes through `input_port()` / `output_port()` while
+  preserving existing compact tag strings.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor still owns its existing legacy `NodeRef` / `PortRef` dataclasses and
@@ -43,16 +46,16 @@ Implemented so far:
 
 Important limitation of the current implementation:
 
-- Most direct node UI code has not yet been migrated to the typed port declaration
-  APIs. The next migration should convert those nodes directly from string helpers
-  to `PortRef` declarations so each node only needs one broad mechanical pass.
+- Dynamic/runtime-created ports and editor registration are not yet authoritative.
+  The next step is to wire declared ports into the editor registry during node
+  creation, then handle remaining dynamic-port registration paths.
 
 ## Next work
 
-1. Migrate node implementations directly to the `DpgNodeBase` typed port
-   declaration APIs, preserving compact DPG tag compatibility during the pass.
-2. Wire the node-owned declared ports into the editor's port registry during
-   `add_node()` so node-side `PortRef` registration becomes authoritative.
+1. Wire the node-owned declared ports into the editor's port registry during
+   `add_node()` so node-side `PortRef` registration becomes authoritative for
+   static ports.
+2. Register dynamic ports at the same time they are added to DearPyGui.
 3. Once node-side port registration is authoritative, update the editor to use
    the typed registry broadly, including right-click hovered-port detection.
 4. Migrate graph internals, history, runtime, import, and export from string pairs
@@ -249,9 +252,10 @@ plus a readable compact boundary string.
 - Done: introduce `DpgNodeBase`, migrate direct node subclasses to inherit from
   it, and move existing concrete helper methods from `DpgNodeABC` into
   `DpgNodeBase`.
-- In progress: migrate nodes directly to typed `PortRef` declarations. The
-  declarative process-node base has started this path; direct nodes still need a
-  broad mechanical pass.
+- Done: migrate declarative and direct node static graph attributes to typed
+  `PortRef` declarations while preserving existing compact DPG tags.
+- Next: wire declared static ports into the editor registry during node creation,
+  then handle dynamic ports.
 - Replace editor link internals with typed links behind a compatibility export
   adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any

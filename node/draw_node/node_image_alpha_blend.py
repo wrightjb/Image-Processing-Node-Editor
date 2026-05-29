@@ -92,20 +92,27 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
-        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
-        tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input02')
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input02'))
-        tag_node_input03_name = self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03'))
-        tag_node_input04_name = self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input04')
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input04'))
-        tag_node_input05_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input05')
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input05'))
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
-        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
-        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
+        tag_node_input01_value_name = tag_node_input01_name_port.value_tag
+        tag_node_input02_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input02')
+        tag_node_input02_name = tag_node_input02_name_port.dpg_tag
+        tag_node_input02_value_name = tag_node_input02_name_port.value_tag
+        tag_node_input03_name_port = self.input_port(node_id, self.TYPE_FLOAT, 'Input03')
+        tag_node_input03_name = tag_node_input03_name_port.dpg_tag
+        tag_node_input03_value_name = tag_node_input03_name_port.value_tag
+        tag_node_input04_name_port = self.input_port(node_id, self.TYPE_FLOAT, 'Input04')
+        tag_node_input04_name = tag_node_input04_name_port.dpg_tag
+        tag_node_input04_value_name = tag_node_input04_name_port.value_tag
+        tag_node_input05_name_port = self.input_port(node_id, self.TYPE_INT, 'Input05')
+        tag_node_input05_name = tag_node_input05_name_port.dpg_tag
+        tag_node_input05_value_name = tag_node_input05_name_port.value_tag
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
+        tag_node_output01_value_name = tag_node_output01_name_port.value_tag
+        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name = tag_node_output02_name_port.dpg_tag
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict

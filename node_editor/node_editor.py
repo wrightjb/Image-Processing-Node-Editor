@@ -164,13 +164,7 @@ class DpgNodeEditor(object):
         source_port = self._cntrl_parse_port_tag(source_tag)
         dest_port = self._cntrl_parse_port_tag(dest_tag)
         if source_port is None or dest_port is None:
-            if not (
-                isinstance(source_tag, str)
-                and isinstance(dest_tag, str)
-                and len(source_tag.split(':')) >= 2
-                and len(dest_tag.split(':')) >= 2
-            ):
-                return False
+            return False
         if dest_tag in self._link_by_dest_port:
             return False
         self._node_link_list.append([source_tag, dest_tag])

@@ -16,28 +16,16 @@ undo, and duplicate-destination import-link fixes landed.
 
 ## Remaining cleanup plan
 
-### 1) Replace simplified test link tags with realistic port tags
+### 1) Replace simplified test link tags with realistic port tags ✅ Done 2026-05-29
 
 - Location: `tests/unit/test_node_editor_import_export.py`, plus any other tests
-  that use abbreviated link tags such as `1:test_node:out` / `2:test_node:in`.
-- Current issue:
-  - Some tests use simplified two-part-ish link suffixes that do not match the
-    real node port shape used by the editor (`node_id:node_tag:type:InputXX` /
-    `OutputXX`).
-  - `_mdl_add_link()` currently has a compatibility relaxation so these test
-    tags can still be added when port parsing fails.
-- Why this is next:
-  - The relaxation is intentionally narrow, but it is still hacky because
-    production model validation is being influenced by test fixtures.
-  - Cleaning up test data lets `_mdl_add_link()` return to strict port parsing
-    and keeps import/link behavior easier to reason about.
-- Suggested implementation:
-  1. Update import/export tests to use realistic full port tags everywhere.
-  2. Remove the fallback branch in `_mdl_add_link()` that accepts links when
-     `_cntrl_parse_port_tag()` returns `None`.
-  3. Add/adjust a focused test asserting malformed imported link tags are
-     rejected cleanly and do not mutate `_node_link_list`, `_link_registry`, or
-     `_link_by_dest_port`.
+  that used abbreviated link tags such as `1:test_node:out` / `2:test_node:in`.
+- Completed:
+  1. Import/export tests now use realistic full port tags everywhere.
+  2. `_mdl_add_link()` rejects malformed port tags strictly instead of accepting
+     abbreviated compatibility fixtures.
+  3. Malformed imported link tags are covered by a focused no-partial-link-state
+     regression test.
 
 ### 2) Refactor hovered-port discovery to use registered ports
 

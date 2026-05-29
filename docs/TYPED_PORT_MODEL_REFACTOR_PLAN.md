@@ -75,10 +75,38 @@ its typed port helpers for:
 This is the highest-leverage first migration because declarative process nodes
 already centralize a large amount of repeated node UI and setting behavior.
 
-## Step 3: Update editor graph internals to prefer typed refs
+## Step 3: Use registered ports for hovered-port discovery
 
-Once declarative nodes register typed ports, start shifting editor internals from
-string pairs toward typed objects.
+After `DpgNodeBase` can register typed ports and
+`DeclarativeImageProcessNodeBase` has moved onto it, fold audit item 2
+(hovered-port discovery) into this refactor. Do not do this as a standalone
+pre-refactor cleanup, because the current `_port_registry` is populated lazily
+from parsed strings rather than authoritatively during node creation.
+
+Replace `_cntrl_get_hovered_output_port_tag()` and
+`_cntrl_get_hovered_input_port_tag()` so they iterate registered `PortRef` data
+instead of synthesizing possible DearPyGui tags from every node, hardcoded data
+types, and fixed port-index ranges.
+
+Recommended incremental shape:
+
+1. keep the public return value as the compact DPG tag at first, so surrounding
+   context-menu code does not need to change in the same patch,
+2. source the returned tag from a registered `PortRef`,
+3. keep legacy parsing only for imported/test graphs that have not gone through
+   creation-time registration,
+4. add or keep behavior tests for add-node-from-hovered-output,
+   add-node-to-hovered-input, insert-node-between-links, and occupied input
+   replacement.
+
+This makes hovered-port lookup the first editor-side proof that typed port
+registration is reliable, without forcing the entire graph model to change at
+once.
+
+## Step 4: Update editor graph internals to prefer typed refs
+
+Once hovered-port lookup is backed by creation-time port registration, continue
+shifting editor internals from string pairs toward typed objects.
 
 Recommended intermediate model:
 
@@ -95,7 +123,7 @@ Boundary-only parsing is still acceptable for:
 - undo/redo payloads until history commands are migrated,
 - tests that intentionally exercise malformed serialized data.
 
-## Step 4: Migrate all remaining nodes to the concrete base in one mechanical wave
+## Step 5: Migrate all remaining nodes to the concrete base in one mechanical wave
 
 Do one broad, mechanical pass changing direct `DpgNodeABC` subclasses to inherit
 from `DpgNodeBase` and use the typed port helpers.
@@ -117,7 +145,7 @@ If family-specific abstractions are useful later, add them only after this
 migration exposes real duplication. They are not required to make `PortRef`
 authoritative.
 
-## Step 5: Move runtime/history/import/export to typed graph data
+## Step 6: Move runtime/history/import/export to typed graph data
 
 After nodes reliably register ports, migrate graph consumers in this order:
 

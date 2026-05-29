@@ -32,21 +32,29 @@ For the larger typed-port model direction, see
 
 ### 2) Refactor hovered-port discovery to use registered ports
 
+- Status: Fold into `docs/TYPED_PORT_MODEL_REFACTOR_PLAN.md` after
+  `DpgNodeBase` can register typed ports and after
+  `DeclarativeImageProcessNodeBase` is migrated.
 - Location: `node_editor/node_editor.py`
   (`_cntrl_get_hovered_output_port_tag`, `_cntrl_get_hovered_input_port_tag`).
 - Current issue:
   - Hover lookup synthesizes possible tags by scanning all nodes, fixed port
     indices, and hardcoded data type names.
-  - This is brittle, imposes hidden limits, and duplicates information already
-    represented by node/port registries.
+  - This is brittle, imposes hidden limits, and duplicates information that
+    should come from creation-time node/port registration.
+- Sequencing note:
+  - Do not do this as a standalone pre-refactor cleanup while `_port_registry`
+    is still populated lazily by parsing tag strings. Use it as the first
+    editor-side consumer of typed port registration instead.
 - Suggested implementation:
   1. Register actual input/output ports as nodes create them, including
      direction, type, index, node ref, and DPG tag.
   2. Replace synthetic tag probing with iteration over registered compatible
      ports or a direct lookup path if DearPyGui exposes enough context.
   3. Keep fallback behavior only where needed for imported/test graphs.
-  4. Add tests around link insertion, insert-node-between-links, and occupied
-     input replacement.
+  4. Keep characterization tests around add-node-from-hovered-output,
+     add-node-to-hovered-input, insert-node-between-links, and occupied input
+     replacement.
 
 ### 3) Continue import/link invariant hardening
 

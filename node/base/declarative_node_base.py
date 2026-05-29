@@ -36,15 +36,18 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         callback=None,
     ):
         tag_node_name = self._node_name(node_id)
-        input_image_tag = self._node_port_tag(node_id, self.TYPE_IMAGE, 'Input01')
-        output_image_tag = self._node_port_tag(node_id, self.TYPE_IMAGE, 'Output01')
-        output_image_value_tag = self._node_value_tag(
-            node_id, self.TYPE_IMAGE, 'Output01'
-        )
-        elapsed_tag = self._node_port_tag(node_id, self.TYPE_TIME_MS, 'Output02')
-        elapsed_value_tag = self._node_value_tag(
-            node_id, self.TYPE_TIME_MS, 'Output02'
-        )
+
+        self._opencv_setting_dict = opencv_setting_dict
+        self._ui_callback = callback
+        small_window_w = self._opencv_setting_dict['process_width']
+        small_window_h = self._opencv_setting_dict['process_height']
+        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
+
+        input_image_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        output_image_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        elapsed_port = None
+        if self.show_elapsed_time and use_pref_counter:
+            elapsed_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
         cache_toggle_value_tag = self._node_value_tag(
             node_id, self.TYPE_TEXT, 'Cache'
         )
@@ -55,12 +58,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             node_id, self.TYPE_TEXT, 'ResultImageLarge'
         )
 
-        self._opencv_setting_dict = opencv_setting_dict
-        self._ui_callback = callback
-        small_window_w = self._opencv_setting_dict['process_width']
-        small_window_h = self._opencv_setting_dict['process_height']
-        use_pref_counter = self._opencv_setting_dict['use_pref_counter']
-
         black_image = np.zeros((small_window_w, small_window_h, 3))
         black_texture = convert_cv_to_dpg(black_image, small_window_w, small_window_h)
 
@@ -69,7 +66,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 small_window_w,
                 small_window_h,
                 black_texture,
-                tag=output_image_value_tag,
+                tag=output_image_port.value_tag,
                 format=dpg.mvFormat_Float_rgb,
             )
 
@@ -91,19 +88,19 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             )
 
             with dpg.node_attribute(
-                tag=input_image_tag,
+                tag=input_image_port.dpg_tag,
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
                 pass
 
             with dpg.node_attribute(
-                tag=output_image_tag,
+                tag=output_image_port.dpg_tag,
                 attribute_type=dpg.mvNode_Attr_Output,
             ):
                 pass
 
             for parameter in self.parameters:
-                self._add_parameter_ui(tag_node_name, parameter, small_window_w, callback)
+                self._add_parameter_ui(node_id, parameter, small_window_w, callback)
 
             self.build_custom_ui(
                 tag_node_name,
@@ -114,11 +111,11 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
-                    tag=elapsed_tag,
+                    tag=elapsed_port.dpg_tag,
                     attribute_type=dpg.mvNode_Attr_Output,
                 ):
                     dpg.add_text(
-                        tag=elapsed_value_tag,
+                        tag=elapsed_port.value_tag,
                         default_value='elapsed time(ms)',
                     )
 
@@ -449,11 +446,23 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             values[parameter['name']] = value
         return values
 
-    def _add_parameter_ui(self, tag_node_name, parameter, width, callback):
-        port_tag = self._port_tag(tag_node_name, parameter['type'], parameter['port'])
-        value_tag = self._port_value_tag(
-            tag_node_name, parameter['type'], parameter['port']
-        )
+    def _add_parameter_ui(self, node_id, parameter, width, callback):
+        tag_node_name = self._node_name(node_id)
+        attribute_type = parameter.get('attribute_type', dpg.mvNode_Attr_Input)
+        if attribute_type == dpg.mvNode_Attr_Output:
+            port_ref = self.output_port(
+                node_id,
+                parameter['type'],
+                parameter['port'],
+            )
+        else:
+            port_ref = self.parameter_port(
+                node_id,
+                parameter['type'],
+                parameter['port'],
+            )
+        port_tag = port_ref.dpg_tag
+        value_tag = port_ref.value_tag
         callback_payload = {
             'node_id_name': tag_node_name,
             'port_tag': port_tag,
@@ -465,7 +474,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
         with dpg.node_attribute(
             tag=port_tag,
-            attribute_type=parameter.get('attribute_type', dpg.mvNode_Attr_Input),
+            attribute_type=attribute_type,
         ):
             if parameter['widget'] == 'slider_int':
                 dpg.add_slider_int(

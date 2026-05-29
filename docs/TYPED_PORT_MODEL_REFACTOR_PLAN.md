@@ -30,8 +30,10 @@ Implemented so far:
 - `DpgNodeBase` also has the first typed port declaration APIs
   (`input_port`, `output_port`, `parameter_port`) that create passive `PortRef`
   metadata while preserving the compact DPG tag format.
-- `DeclarativeImageProcessNodeBase` has started using the composed helpers for
-  its standard image, elapsed-time, cache/result-toggle, and parameter value tags.
+- `DeclarativeImageProcessNodeBase` uses typed `PortRef` declarations for its
+  standard image input/output, elapsed-time output, and declared parameter ports;
+  cache/result toggles still use value tags because they are toolbar controls,
+  not graph ports.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor still owns its existing legacy `NodeRef` / `PortRef` dataclasses and
@@ -41,9 +43,9 @@ Implemented so far:
 
 Important limitation of the current implementation:
 
-- Existing node UI code has not yet been migrated to the typed port declaration
-  APIs. The next migration should convert nodes directly from string helpers to
-  `PortRef` declarations so each node only needs one broad mechanical pass.
+- Most direct node UI code has not yet been migrated to the typed port declaration
+  APIs. The next migration should convert those nodes directly from string helpers
+  to `PortRef` declarations so each node only needs one broad mechanical pass.
 
 ## Next work
 
@@ -247,9 +249,9 @@ plus a readable compact boundary string.
 - Done: introduce `DpgNodeBase`, migrate direct node subclasses to inherit from
   it, and move existing concrete helper methods from `DpgNodeABC` into
   `DpgNodeBase`.
-- In progress: define typed `DpgNodeBase` port declaration APIs before the broad
-  mechanical node migration, so nodes can move directly to `PortRef` declarations
-  instead of first moving through another string-helper-only form.
+- In progress: migrate nodes directly to typed `PortRef` declarations. The
+  declarative process-node base has started this path; direct nodes still need a
+  broad mechanical pass.
 - Replace editor link internals with typed links behind a compatibility export
   adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any

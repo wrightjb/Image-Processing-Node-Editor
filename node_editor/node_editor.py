@@ -10,30 +10,9 @@ from glob import glob
 from collections import OrderedDict
 from importlib import import_module
 from pathlib import Path
-from dataclasses import dataclass
-
 import dearpygui.dearpygui as dpg
 
-
-@dataclass(frozen=True)
-class NodeRef:
-    node_id: str
-    node_tag: str
-
-    @property
-    def node_id_name(self):
-        return f'{self.node_id}:{self.node_tag}'
-
-
-@dataclass(frozen=True)
-class PortRef:
-    node_ref: NodeRef
-    direction: str
-    data_type: str
-    index: int
-    dpg_tag: str
-
-
+from node.port_model import NodeRef, PortRef
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,
@@ -132,6 +111,21 @@ class DpgNodeEditor(object):
     def _mdl_get_node_ref(self, node_id_name):
         return self._node_registry.get(node_id_name)
 
+    def _mdl_register_port_ref(self, port_ref):
+        self._port_registry[port_ref.dpg_tag] = port_ref
+        if port_ref.node_ref.node_id_name not in self._node_registry:
+            self._mdl_register_node_ref(port_ref.node_ref)
+
+    def _mdl_register_node_declared_ports(self, node, node_id):
+        get_declared_port_refs = getattr(node, 'get_declared_port_refs', None)
+        if not callable(get_declared_port_refs):
+            return
+        declared_ports = get_declared_port_refs(node_id)
+        if not isinstance(declared_ports, (list, tuple)):
+            return
+        for port_ref in declared_ports:
+            self._mdl_register_port_ref(port_ref)
+
     def _cntrl_parse_port_tag(self, port_tag):
         if not isinstance(port_tag, str):
             return None
@@ -154,10 +148,16 @@ class DpgNodeEditor(object):
             index = int(index_text)
         except ValueError:
             return None
-        parsed = PortRef(node_ref, direction, parts[2], index, port_tag)
-        self._port_registry[port_tag] = parsed
-        if node_ref.node_id_name not in self._node_registry:
-            self._mdl_register_node_ref(node_ref)
+        parsed = PortRef(
+            node_ref=node_ref,
+            direction=direction,
+            data_type=parts[2],
+            index=index,
+            port_name=port_name,
+            dpg_tag=port_tag,
+            value_tag=f'{port_tag}Value',
+        )
+        self._mdl_register_port_ref(parsed)
         return parsed
 
     def _mdl_validate_link(self, source_tag, dest_tag):
@@ -611,6 +611,8 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
+        if hasattr(node, 'set_port_registration_callback'):
+            node.set_port_registration_callback(self._mdl_register_port_ref)
         node.add_node(
             self._node_editor_tag,
             new_id,
@@ -618,6 +620,7 @@ class DpgNodeEditor(object):
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
+        self._mdl_register_node_declared_ports(node, new_id)
 
     def _vw_add_link(self, source, destination):
         source_id = source

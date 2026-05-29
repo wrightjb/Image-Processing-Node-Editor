@@ -39,26 +39,24 @@ Implemented so far:
   preserving existing compact tag strings.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
-- The editor still owns its existing legacy `NodeRef` / `PortRef` dataclasses and
-  parsing/hovered-port behavior for now. Wiring the editor to `node.port_model`,
-  the node-owned declarations, and a creation-time registry is intentionally
-  deferred until node-side declarations are in place.
+- The editor imports the shared `node.port_model` records and registers node-owned
+  declared ports during node creation. Legacy compact tag parsing remains as a
+  compatibility boundary for imported graphs, callback aliases, and undo/redo data.
 
 Important limitation of the current implementation:
 
-- Dynamic/runtime-created ports and editor registration are not yet authoritative.
-  The next step is to wire declared ports into the editor registry during node
-  creation, then handle remaining dynamic-port registration paths.
+- The editor still falls back to legacy string parsing in many graph operations,
+  and hovered-port discovery still synthesizes possible DPG tags. The next step is
+  to prefer the creation-time port registry for editor-side lookups while keeping
+  parsing at compatibility boundaries.
 
 ## Next work
 
-1. Wire the node-owned declared ports into the editor's port registry during
-   `add_node()` so node-side `PortRef` registration becomes authoritative for
-   static ports.
-2. Register dynamic ports at the same time they are added to DearPyGui.
-3. Once node-side port registration is authoritative, update the editor to use
-   the typed registry broadly, including right-click hovered-port detection.
-4. Migrate graph internals, history, runtime, import, and export from string pairs
+1. Update editor-side lookups to prefer the creation-time port registry, starting
+   with right-click hovered-port detection.
+2. Keep legacy parsing only for imported graphs, callback aliases, undo/redo data,
+   and other compatibility boundaries.
+3. Migrate graph internals, history, runtime, import, and export from string pairs
    toward typed refs behind compatibility adapters.
 
 ## Step 1: Split the abstract interface from concrete node behavior
@@ -254,8 +252,9 @@ plus a readable compact boundary string.
   `DpgNodeBase`.
 - Done: migrate declarative and direct node static graph attributes to typed
   `PortRef` declarations while preserving existing compact DPG tags.
-- Next: wire declared static ports into the editor registry during node creation,
-  then handle dynamic ports.
+- Done: wire node-owned declared ports into the editor registry during node
+  creation, with callback support for dynamic ports created later.
+- Next: replace editor hovered-port lookup with registered `PortRef` iteration.
 - Replace editor link internals with typed links behind a compatibility export
   adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any

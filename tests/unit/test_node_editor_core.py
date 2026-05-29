@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
+from node.node_abc import DpgNodeBase
 from node_editor.node_editor import (
     AddNodeCommand,
     CompositeCommand,
@@ -38,6 +39,37 @@ class DummyNode:
         callback=None,
     ):
         del callback
+        return f"{node_id}:{self.node_tag}"
+
+    def update(self, node_id, connection_list, img_dict, res_dict):
+        return f"img{node_id}", f"res{node_id}"
+
+    def get_setting_dict(self, node_id):
+        return {"ver": self._ver, "pos": [0, 0]}
+
+    def set_setting_dict(self, node_id, setting_dict):
+        pass
+
+    def close(self, node_id):
+        pass
+
+
+class PortDeclaringDummyNode(DpgNodeBase):
+    _ver = '1.0'
+    node_tag = 'TestNode'
+    node_label = 'Test Node'
+
+    def add_node(
+        self,
+        parent,
+        node_id,
+        pos=None,
+        opencv_setting_dict=None,
+        callback=None,
+    ):
+        del parent, pos, opencv_setting_dict, callback
+        self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
         return f"{node_id}:{self.node_tag}"
 
     def update(self, node_id, connection_list, img_dict, res_dict):
@@ -125,6 +157,33 @@ def test_link_callback_basic(editor_and_dpg):
     dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
 
 
+def test_add_node_registers_declared_port_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    input_port = editor._port_registry['1:TestNode:Image:Input01']
+    output_port = editor._port_registry['1:TestNode:Image:Output01']
+    assert input_port.node_ref.node_id_name == '1:TestNode'
+    assert input_port.direction == 'Input'
+    assert input_port.port_name == 'Input01'
+    assert output_port.direction == 'Output'
+    assert output_port.port_name == 'Output01'
+    assert editor._node_registry['1:TestNode'] == input_port.node_ref
+
+
+def test_add_node_keeps_dynamic_port_registration_callback(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    node = PortDeclaringDummyNode()
+    editor._node_instance_list['TestNode'] = node
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    node.input_port(1, node.TYPE_TEXT, 'Input02')
+
+    assert '1:TestNode:Text:Input02' in editor._port_registry
+
+
 def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
     editor, _ = editor_and_dpg
     port = editor._cntrl_parse_port_tag('7:TestNode:Float:Input03')
@@ -135,6 +194,8 @@ def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
     assert port.direction == 'Input'
     assert port.data_type == 'Float'
     assert port.index == 3
+    assert port.port_name == 'Input03'
+    assert port.value_tag == '7:TestNode:Float:Input03Value'
     assert editor._port_registry['7:TestNode:Float:Input03'] == port
 
 

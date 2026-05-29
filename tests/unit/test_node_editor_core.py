@@ -529,7 +529,7 @@ def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
     assert undo_command.calls == [('undo', editor)]
     assert editor._redo_stack == [undo_command]
 
-    _configure_shortcut_keys(dpg, {'LControl', 'LShift'})
+    _configure_shortcut_keys(dpg, {'RControl', 'RShift'})
     editor._cntrl_keyboard_z_shortcut(None, None)
 
     assert undo_command.calls == [('undo', editor), ('redo', editor)]
@@ -538,14 +538,6 @@ def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
     _configure_shortcut_keys(dpg, set())
     editor._cntrl_keyboard_z_shortcut(None, None)
     assert undo_command.calls == [('undo', editor), ('redo', editor)]
-
-    redo_command = DuckHistoryCommand()
-    editor._redo_stack.append(redo_command)
-    _configure_shortcut_keys(dpg, {'RControl'})
-
-    editor._cntrl_keyboard_y_shortcut(None, None)
-
-    assert redo_command.calls == [('redo', editor)]
 
 
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):

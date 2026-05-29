@@ -205,5 +205,4 @@ application conventions:
 
 - `Ctrl+Z` now triggers undo.
 - `Ctrl+Shift+Z` now triggers redo.
-- `Ctrl+Y` also triggers redo.
-- Bare `Z` / `Y` key presses no longer invoke history actions.
+- Bare `Z` key presses no longer invoke history actions.

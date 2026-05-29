@@ -829,6 +829,118 @@ def test_open_insert_link_popup_on_right_click_with_single_selection(editor_and_
     dpg.show_item.assert_any_call('NodeEditorInsertLinkPopup')
 
 
+def test_open_add_node_popup_from_hovered_output_port(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    output_tag = '1:TestNode:Int:Output01'
+    editor._node_list = ['1:TestNode']
+    editor._vw_populate_append_popup_menu = Mock()
+    dpg.does_item_exist.side_effect = lambda tag: tag == output_tag
+    dpg.is_item_hovered.side_effect = lambda tag: tag == output_tag
+    dpg.get_mouse_pos.return_value = [210.7, 260.2]
+    dpg.is_item_shown.side_effect = lambda tag: tag == 'NodeEditorInsertLinkPopup'
+    dpg.get_item_pos.side_effect = lambda tag: (
+        [10, 20] if tag == 'NodeEditorWindow' else [0, 0]
+    )
+
+    editor._cntrl_open_insert_link_popup(None, None)
+
+    assert editor._pending_add_from_output_tag == output_tag
+    assert editor._pending_add_to_input_tag is None
+    assert editor._pending_insert_link_dpg_id is None
+    editor._vw_populate_append_popup_menu.assert_called_once_with('Int')
+    dpg.set_item_pos.assert_any_call('NodeEditorAddNodePopup', [200, 240])
+    dpg.show_item.assert_any_call('NodeEditorAddNodePopup')
+    dpg.hide_item.assert_any_call('NodeEditorInsertLinkPopup')
+
+
+def test_open_add_node_popup_from_hovered_input_port(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    input_tag = '1:TestNode:Int:Input01'
+    editor._node_list = ['1:TestNode']
+    editor._vw_populate_prepend_popup_menu = Mock()
+    dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
+    dpg.is_item_hovered.side_effect = lambda tag: tag == input_tag
+    dpg.get_mouse_pos.return_value = [310.4, 70.9]
+    dpg.is_item_shown.side_effect = lambda tag: tag == 'NodeEditorInsertLinkPopup'
+    dpg.get_item_pos.side_effect = lambda tag: (
+        [10, 20] if tag == 'NodeEditorWindow' else [0, 0]
+    )
+
+    editor._cntrl_open_insert_link_popup(None, None)
+
+    assert editor._pending_add_from_output_tag is None
+    assert editor._pending_add_to_input_tag == input_tag
+    assert editor._pending_insert_link_dpg_id is None
+    editor._vw_populate_prepend_popup_menu.assert_called_once_with('Int')
+    dpg.set_item_pos.assert_any_call('NodeEditorAddNodePopup', [300, 50])
+    dpg.show_item.assert_any_call('NodeEditorAddNodePopup')
+    dpg.hide_item.assert_any_call('NodeEditorInsertLinkPopup')
+
+
+def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    source_tag = '1:TestNode:Int:Output01'
+    input_tag = '2:TestNode:Int:Input01'
+    editor._node_id = 1
+    editor._node_list = ['1:TestNode']
+    editor._pending_add_from_output_tag = source_tag
+    dpg.does_item_exist.side_effect = lambda tag: tag in {source_tag, input_tag}
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == input_tag
+        else {}
+    )
+    dpg.get_item_pos.side_effect = lambda tag: (
+        [100, 200] if tag == '1:TestNode' else [0, 0]
+    )
+    dpg.add_node_link.return_value = 'link-new'
+
+    editor._cntrl_add_node_from_output_port(None, None, 'TestNode')
+
+    assert editor._pending_add_from_output_tag is None
+    assert editor._node_list == ['1:TestNode', '2:TestNode']
+    assert editor._node_link_list == [[source_tag, input_tag]]
+    assert editor._link_view_id_map[(source_tag, input_tag)] == 'link-new'
+    dpg.add_node_link.assert_called_once_with(
+        source_tag,
+        input_tag,
+        parent='NodeEditor',
+    )
+    dpg.set_value.assert_any_call('NodeEditorLinkFeedback', '')
+
+
+def test_add_node_to_hovered_input_creates_connected_node(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dest_tag = '1:TestNode:Int:Input01'
+    output_tag = '2:TestNode:Int:Output01'
+    editor._node_id = 1
+    editor._node_list = ['1:TestNode']
+    editor._pending_add_to_input_tag = dest_tag
+    dpg.does_item_exist.side_effect = lambda tag: tag in {dest_tag, output_tag}
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Output}
+        if tag == output_tag
+        else {}
+    )
+    dpg.get_item_pos.side_effect = lambda tag: (
+        [300, 200] if tag == '1:TestNode' else [0, 0]
+    )
+    dpg.add_node_link.return_value = 'link-new'
+
+    editor._cntrl_add_node_to_input_port(None, None, 'TestNode')
+
+    assert editor._pending_add_to_input_tag is None
+    assert editor._node_list == ['1:TestNode', '2:TestNode']
+    assert editor._node_link_list == [[output_tag, dest_tag]]
+    assert editor._link_view_id_map[(output_tag, dest_tag)] == 'link-new'
+    dpg.add_node_link.assert_called_once_with(
+        output_tag,
+        dest_tag,
+        parent='NodeEditor',
+    )
+    dpg.set_value.assert_any_call('NodeEditorLinkFeedback', '')
+
+
 def test_open_insert_link_popup_on_hovered_link(editor_and_dpg):
     editor, dpg = editor_and_dpg
     editor._link_view_id_map = {

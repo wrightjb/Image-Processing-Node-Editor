@@ -75,6 +75,15 @@ class DpgNodeBase(DpgNodeABC):
     def _value_tag(self, port_tag):
         return f'{port_tag}Value'
 
+    def _node_port_tag(self, node_id, value_type, port_name):
+        return self._port_tag(self._node_name(node_id), value_type, port_name)
+
+    def _port_value_tag(self, node_name, value_type, port_name):
+        return self._value_tag(self._port_tag(node_name, value_type, port_name))
+
+    def _node_value_tag(self, node_id, value_type, port_name):
+        return self._value_tag(self._node_port_tag(node_id, value_type, port_name))
+
     def _extract_source_node_key(self, source_tag):
         source_tokens = source_tag.split(':')
         if len(source_tokens) < 2:

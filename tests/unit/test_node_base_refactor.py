@@ -34,6 +34,20 @@ def test_concrete_base_preserves_existing_tag_helpers():
     assert node._value_tag(port_tag) == '3:IntValue:Int:Output01Value'
 
 
+def test_concrete_base_node_tag_helpers_compose_port_and_value_tags():
+    node = IntValueNode()
+
+    assert node._node_port_tag(3, node.TYPE_INT, 'Output01') == (
+        '3:IntValue:Int:Output01'
+    )
+    assert node._port_value_tag('3:IntValue', node.TYPE_INT, 'Output01') == (
+        '3:IntValue:Int:Output01Value'
+    )
+    assert node._node_value_tag(3, node.TYPE_INT, 'Output01') == (
+        '3:IntValue:Int:Output01Value'
+    )
+
+
 def test_concrete_base_preserves_connection_iteration_guards():
     node = IntValueNode()
 

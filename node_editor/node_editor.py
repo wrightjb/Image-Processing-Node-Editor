@@ -37,6 +37,7 @@ class PortRef:
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,
+    ImportGraphCommand,
     MoveNodeCommand,
     AddLinkCommand,
     RemoveLinkCommand,
@@ -163,7 +164,13 @@ class DpgNodeEditor(object):
         source_port = self._cntrl_parse_port_tag(source_tag)
         dest_port = self._cntrl_parse_port_tag(dest_tag)
         if source_port is None or dest_port is None:
-            return False
+            if not (
+                isinstance(source_tag, str)
+                and isinstance(dest_tag, str)
+                and len(source_tag.split(':')) >= 2
+                and len(dest_tag.split(':')) >= 2
+            ):
+                return False
         if dest_tag in self._link_by_dest_port:
             return False
         self._node_link_list.append([source_tag, dest_tag])
@@ -1619,10 +1626,16 @@ class DpgNodeEditor(object):
             return
         self._suspend_parameter_history = True
         try:
-            self._cntrl_import_setting_dict_body(setting_dict)
+            import_payload = self._cntrl_import_setting_dict_body(setting_dict)
         finally:
             self._suspend_parameter_history = False
-        self._cntrl_clear_history()
+        if import_payload and import_payload['nodes']:
+            self._cntrl_push_undo_command(
+                ImportGraphCommand(
+                    import_payload['nodes'],
+                    import_payload['links'],
+                )
+            )
 
     def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
@@ -1632,8 +1645,8 @@ class DpgNodeEditor(object):
             raise KeyError('Invalid node editor setting file format.')
 
         id_map = {}
-        new_node_list = []
-        new_link_list = []
+        imported_nodes_payload = []
+        imported_links_payload = []
 
         for node_id_name in setting_dict['node_list']:
             old_id, node_name = node_id_name.split(':')
@@ -1666,7 +1679,14 @@ class DpgNodeEditor(object):
 
             node.set_setting_dict(new_id, new_setting)
             self._cntrl_prime_parameter_last_values_from_setting(new_setting)
-            new_node_list.append(f'{new_id}:{node_name}')
+            imported_nodes_payload.append(
+                {
+                    'node_id': str(new_id),
+                    'node_tag': node_name,
+                    'pos': list(pos),
+                    'setting': copy.deepcopy(new_setting),
+                }
+            )
 
         for link_info in setting_dict['link_list']:
             source_parts = link_info[0].split(':')
@@ -1677,16 +1697,20 @@ class DpgNodeEditor(object):
                 dest_parts[0] = id_map[dest_parts[0]]
                 new_source = ':'.join(source_parts)
                 new_destination = ':'.join(dest_parts)
-                link_dpg_id = self._vw_add_link(new_source, new_destination)
-                self._vw_register_link(new_source, new_destination, link_dpg_id)
-                if not self._mdl_add_link(new_source, new_destination):
-                    # Preserve serialized links for compatibility with older
-                    # graph formats (e.g., duplicate destination links).
-                    new_link_list.append([new_source, new_destination])
+                if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
+                    imported_links_payload = [
+                        link
+                        for link in imported_links_payload
+                        if link[1] != new_destination
+                    ]
+                    imported_links_payload.append((new_source, new_destination))
 
-        self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
+        return {
+            'nodes': imported_nodes_payload,
+            'links': imported_links_payload,
+        }
 
     def _cntrl_sync_position_cache(self):
         self._node_position_cache = {}
@@ -1716,6 +1740,20 @@ class DpgNodeEditor(object):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
+
+    def _cntrl_add_or_replace_link_by_tags(self, source_tag, dest_tag):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
+        existing_link = self._mdl_get_link_by_destination(dest_tag)
+        if existing_link is not None:
+            if existing_link[0] == source_tag:
+                return True
+            self._cntrl_remove_link_by_tags(
+                existing_link[0],
+                existing_link[1],
+                record_history=False,
+            )
+        return self._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def _cntrl_add_link_by_tags(self, source_tag, dest_tag):
         source_tag = self._cntrl_resolve_history_port_tag(source_tag)

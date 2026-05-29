@@ -63,16 +63,16 @@ The initial draft contained two incorrect findings that were based on a misread 
   - a registry can reduce nested work by indexing actual created ports + metadata, instead of synthesizing possible tags,
   - if DPG context/sender offers the hovered attribute directly, use that first and fall back to registry lookup.
 
-### 4) Import compatibility path needs explicit validation and clearer invariants
+### 4) Import link handling needs explicit validation and clearer invariants
 
 - Location: `node_editor/node_editor.py` (`_cntrl_import_setting_dict_body`)
-- Detail: on `_mdl_add_link()` rejection, code currently stores link info in `new_link_list` for compatibility and extends `_node_link_list`.
+- Detail: import should not partially preserve model-rejected links in `_node_link_list`.
 - Current assessment:
-  - behavior may be intentional for old graph formats,
-  - but invariants between `_node_link_list` and link registries are not documented.
+  - multiple links to the same destination/input are malformed for this editor,
+  - if an imported file contains that case, import should use the same last-link-wins replacement behavior as interactive linking.
 - Suggested next step:
-  - add a focused test matrix for import cases (normal, duplicate destination, malformed/legacy),
-  - then decide whether to keep this compatibility behavior, isolate it, or migrate it.
+  - add focused tests for normal import and duplicate-destination import,
+  - keep `_node_link_list` and link registries consistent for every imported link that is accepted.
 
 ### 5) History remap (`_history_node_id_remap`) lifecycle is under-specified
 
@@ -133,8 +133,8 @@ The initial draft contained two incorrect findings that were based on a misread 
    - Prefer direct DPG context information when available; fallback to registry.
 
 4. **Import behavior hardening pass**
-   - Add tests to validate legacy/duplicate link behavior and define canonical invariants.
-   - Keep or revise compatibility behavior based on evidence from tests.
+   - Add tests to validate duplicate-destination import behavior and define canonical invariants.
+   - Keep `_node_link_list` and link registries consistent; do not partially preserve rejected links.
 
 5. **Reliability/structure pass**
    - Add runtime exception backoff/fail-fast options.
@@ -207,17 +207,19 @@ application conventions:
 - `Ctrl+Shift+Z` now triggers redo.
 - Bare `Z` key presses no longer invoke history actions.
 
-## Plan update after history remap lifecycle tightening
+## Plan update after import undo/history hardening
 
-The `_history_node_id_remap` lifecycle is now more explicit:
+Import is now represented as an undoable history command instead of a history
+clearing boundary:
 
-- Successful imports clear undo history, redo history, and history node-id
-  remaps because import is not currently represented as an undoable history
-  command and can change the node id namespace.
-- Redo invalidation is centralized so a new command after a fully undone history
-  branch clears stale remaps with the discarded redo branch.
-- Focused tests cover import-time history invalidation and stale remap cleanup
-  when a new command replaces a fully undone redo branch.
+- Successful imports push an `ImportGraphCommand` containing the imported node
+  payloads and final accepted imported links.
+- Undo removes the imported nodes; redo recreates them through the history
+  rehydration path.
+- Duplicate-destination links in an imported file use last-link-wins replacement
+  behavior instead of partially preserving a rejected link in `_node_link_list`.
+- Focused tests cover import undo/redo, duplicate-destination import behavior,
+  stale remap cleanup when a new command replaces a fully undone redo branch.
 
 ### Next execution step
 

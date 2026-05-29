@@ -66,6 +66,30 @@ class DeleteNodesCommand:
 
 
 @dataclass(frozen=True)
+class ImportGraphCommand:
+    nodes: list
+    links: list
+
+    def undo(self, editor):
+        for node_info in reversed(self.nodes):
+            node_id_name = editor._cntrl_resolve_history_node_id_name(
+                f"{node_info['node_id']}:{node_info['node_tag']}"
+            )
+            editor._cntrl_delete_node_by_tag(node_id_name)
+
+    def redo(self, editor):
+        for node_info in self.nodes:
+            editor._cntrl_add_node_from_history(
+                node_info['node_tag'],
+                int(node_info['node_id']),
+                node_info['pos'],
+                node_info['setting'],
+            )
+        for source_tag, dest_tag in self.links:
+            editor._cntrl_add_or_replace_link_by_tags(source_tag, dest_tag)
+
+
+@dataclass(frozen=True)
 class MoveNodeCommand:
     node_id_name: str
     before_pos: list
@@ -155,6 +179,8 @@ def history_command_label(command, parameter_label_resolver=None):
         return f'Add node: {command.node_tag}'
     if isinstance(command, DeleteNodesCommand):
         return f'Delete node(s): {len(command.nodes)}'
+    if isinstance(command, ImportGraphCommand):
+        return f'Import graph: {len(command.nodes)} node(s)'
     if isinstance(command, MoveNodeCommand):
         return f'Move node: {command.node_id_name}'
     if isinstance(command, AddLinkCommand):

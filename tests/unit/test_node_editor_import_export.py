@@ -186,15 +186,18 @@ class TestDpgNodeEditorImportExport:
             parent=node_editor._node_editor_tag
         )
 
-    def test_import_clears_undo_redo_and_history_remap(
+    def test_import_is_undoable_and_redoable(
         self,
         node_editor,
         mock_dpg,
         tmp_path,
     ):
         test_data = {
-            'node_list': ['1:test_node'],
-            'link_list': [],
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': [[
+                '1:test_node:Image:Output01',
+                '2:test_node:Image:Input01',
+            ]],
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -203,22 +206,94 @@ class TestDpgNodeEditorImportExport:
                     'pos': [100, 200],
                 },
             },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {
+                    'ver': '1.0.0',
+                    'pos': [300, 200],
+                },
+            },
         }
-        temp_path = tmp_path / "import_clears_history.json"
+        temp_path = tmp_path / "undoable_import.json"
         temp_path.write_text(json.dumps(test_data))
-        node_editor._undo_stack.append(object())
-        node_editor._redo_stack.append(object())
-        node_editor._history_node_id_remap['1:test_node'] = '9:test_node'
-        mock_dpg.does_item_exist.return_value = False
+        mock_dpg.does_item_exist.return_value = True
+        mock_dpg.get_item_pos.return_value = [100, 200]
 
         node_editor._cntrl_file_import(
             'file_import',
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._undo_stack == []
+        assert node_editor._node_list == ['1:test_node', '2:test_node']
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '2:test_node:Image:Input01',
+        ]]
+        assert len(node_editor._undo_stack) == 1
         assert node_editor._redo_stack == []
-        assert node_editor._history_node_id_remap == {}
+
+        node_editor._cntrl_undo(None, None)
+
+        assert node_editor._node_list == []
+        assert node_editor._node_link_list == []
+        assert len(node_editor._redo_stack) == 1
+
+        node_editor._cntrl_redo(None, None)
+
+        assert node_editor._node_list == ['1:test_node', '2:test_node']
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '2:test_node:Image:Input01',
+        ]]
+        assert len(node_editor._undo_stack) == 1
+
+    def test_import_duplicate_destination_link_last_link_wins(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node', '3:test_node'],
+            'link_list': [
+                ['1:test_node:Image:Output01', '3:test_node:Image:Input01'],
+                ['2:test_node:Image:Output01', '3:test_node:Image:Input01'],
+            ],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 200]},
+            },
+            '3:test_node': {
+                'id': '3',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [500, 200]},
+            },
+        }
+        temp_path = tmp_path / "duplicate_destination_import.json"
+        temp_path.write_text(json.dumps(test_data))
+        mock_dpg.does_item_exist.return_value = True
+        mock_dpg.get_item_pos.return_value = [100, 200]
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == [[
+            '2:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        ]]
+        assert node_editor._undo_stack[-1].links == [(
+            '2:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        )]
 
     def test_import_primes_move_cache_for_first_drag_undo(
         self,
@@ -450,8 +525,8 @@ class TestDpgNodeEditorImportExport:
         original_links = [
             ['1:test_node:out', '2:test_node:in'],
             ['1:test_node:out', '3:test_node:in'],
-            ['2:test_node:out', '4:test_node:in'],
-            ['3:test_node:out', '4:test_node:in'],
+            ['2:test_node:out', '4:test_node:in1'],
+            ['3:test_node:out', '4:test_node:in2'],
         ]
         node_editor._node_list = original_nodes.copy()
         node_editor._node_link_list = original_links.copy()
@@ -581,7 +656,7 @@ class TestDpgNodeEditorImportExport:
                 'setting': {'ver': '1.0.0', 'pos': [30, 40]}
             }
         }
-        path = tmp_path / "legacy_links.json"
+        path = tmp_path / "imported_links.json"
         path.write_text(json.dumps(imported))
         node_editor._cntrl_file_import(
             None, {'file_name': path.name, 'file_path_name': str(path)}

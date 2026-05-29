@@ -18,36 +18,35 @@ string tags.
 
 Implemented so far:
 
-- `DpgNodeBase` has been introduced as a minimal compatibility shim that only
-  inherits from `DpgNodeABC`.
+- `DpgNodeBase` has been introduced as the concrete DearPyGui node base.
 - Direct node/base subclasses under `node/` now inherit from `DpgNodeBase`
   instead of `DpgNodeABC`, while preserving existing behavior and tag strings.
-- `DpgNodeABC` still temporarily contains the existing concrete helper methods so
-  this first migration stays mechanical and low risk.
+- Existing concrete helper methods for tag construction, legacy connection/tag
+  parsing, and the standard editor toolbar now live on `DpgNodeBase`.
+- `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
+  type constants, and the optional editor hook.
 - The editor still owns the existing `NodeRef` / `PortRef` dataclasses and legacy
   parsing/hovered-port behavior for now. Broad editor registry and hovered-port
-  changes are intentionally deferred until after node inheritance and tag-helper
-  ownership are cleaned up.
+  changes are intentionally deferred until after node tag management is routed
+  consistently through the concrete base.
 
 Important limitation of the current implementation:
 
-- The concrete base is not yet the owner of tag construction, toolbar helpers, or
-  typed port declarations. Those helpers should move from `DpgNodeABC` into
-  `DpgNodeBase` in the next step, after this inheritance-only migration is in
-  place.
+- Nodes still call low-level tag helpers directly throughout their UI code. The
+  next step should introduce clearer concrete-base APIs for node tag/port/value
+  creation and migrate node code to those APIs before typed `PortRef`
+  registration is added.
 
 ## Next work
 
-1. Move concrete helper behavior from `DpgNodeABC` into `DpgNodeBase`, keeping
-   `DpgNodeABC` focused on abstract lifecycle contracts and shared constants.
-2. Update node implementations so tag management goes through `DpgNodeBase`
+1. Update node implementations so tag management goes through `DpgNodeBase`
    helper APIs in a consistent way.
-3. Add typed `NodeRef` / `PortRef` declaration APIs to `DpgNodeBase` and migrate
+2. Add typed `NodeRef` / `PortRef` declaration APIs to `DpgNodeBase` and migrate
    nodes to register ports through those helpers while preserving compact DPG tag
    compatibility.
-4. Once node-side port registration is authoritative, update the editor to use
+3. Once node-side port registration is authoritative, update the editor to use
    the typed registry broadly, including right-click hovered-port detection.
-5. Migrate graph internals, history, runtime, import, and export from string pairs
+4. Migrate graph internals, history, runtime, import, and export from string pairs
    toward typed refs behind compatibility adapters.
 
 ## Step 1: Split the abstract interface from concrete node behavior
@@ -238,12 +237,11 @@ plus a readable compact boundary string.
 
 ## Suggested checkpoints
 
-- Done: introduce a minimal `DpgNodeBase` shim and migrate direct node subclasses
-  to inherit from it.
-- Next: move existing concrete helper methods from `DpgNodeABC` into
+- Done: introduce `DpgNodeBase`, migrate direct node subclasses to inherit from
+  it, and move existing concrete helper methods from `DpgNodeABC` into
   `DpgNodeBase`.
-- Then: update node tag management to consistently use the concrete base helper
-  APIs before adding typed port registration.
+- Next: update node tag management to consistently use clearer concrete-base
+  helper APIs before adding typed port registration.
 - Replace editor link internals with typed links behind a compatibility export
   adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any

@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+
 import dearpygui.dearpygui as dpg
 
 
@@ -13,49 +14,6 @@ class DpgNodeABC(metaclass=ABCMeta):
     TYPE_IMAGE = 'Image'
     TYPE_TIME_MS = 'TimeMS'
     TYPE_TEXT = 'Text'
-
-    def _node_name(self, node_id):
-        return f'{node_id}:{self.node_tag}'
-
-    def _port_tag(self, node_name, value_type, port_name):
-        return f'{node_name}:{value_type}:{port_name}'
-
-    def _value_tag(self, port_tag):
-        return f'{port_tag}Value'
-
-    def _extract_source_node_key(self, source_tag):
-        source_tokens = source_tag.split(':')
-        if len(source_tokens) < 2:
-            return ''
-        return ':'.join(source_tokens[:2])
-
-    def _extract_port_name(self, tag):
-        tag_tokens = tag.split(':')
-        if len(tag_tokens) < 4:
-            return ''
-        return tag_tokens[3]
-
-    def _extract_node_id(self, tag):
-        tag_tokens = tag.split(':')
-        if len(tag_tokens) < 2:
-            return ''
-        return tag_tokens[0]
-
-    def _iter_connections(self, connection_list):
-        for connection_info in connection_list:
-            if not isinstance(connection_info, (list, tuple)) or len(connection_info) < 2:
-                continue
-
-            source_tag, destination_tag = connection_info[0], connection_info[1]
-            if not isinstance(source_tag, str) or not isinstance(destination_tag, str):
-                continue
-
-            source_tokens = source_tag.split(':')
-            if len(source_tokens) < 4:
-                continue
-
-            connection_type = source_tokens[2]
-            yield source_tag, destination_tag, connection_type
 
     @abstractmethod
     def add_node(
@@ -99,6 +57,60 @@ class DpgNodeABC(metaclass=ABCMeta):
         """
         del value_tag, value
         return False
+
+
+class DpgNodeBase(DpgNodeABC):
+    """Concrete base for DearPyGui nodes.
+
+    This base owns shared DearPyGui tag, connection parsing, and editor toolbar
+    helpers. `DpgNodeABC` remains the abstract plugin contract.
+    """
+
+    def _node_name(self, node_id):
+        return f'{node_id}:{self.node_tag}'
+
+    def _port_tag(self, node_name, value_type, port_name):
+        return f'{node_name}:{value_type}:{port_name}'
+
+    def _value_tag(self, port_tag):
+        return f'{port_tag}Value'
+
+    def _extract_source_node_key(self, source_tag):
+        source_tokens = source_tag.split(':')
+        if len(source_tokens) < 2:
+            return ''
+        return ':'.join(source_tokens[:2])
+
+    def _extract_port_name(self, tag):
+        tag_tokens = tag.split(':')
+        if len(tag_tokens) < 4:
+            return ''
+        return tag_tokens[3]
+
+    def _extract_node_id(self, tag):
+        tag_tokens = tag.split(':')
+        if len(tag_tokens) < 2:
+            return ''
+        return tag_tokens[0]
+
+    def _iter_connections(self, connection_list):
+        for connection_info in connection_list:
+            if (
+                not isinstance(connection_info, (list, tuple))
+                or len(connection_info) < 2
+            ):
+                continue
+
+            source_tag, destination_tag = connection_info[0], connection_info[1]
+            if not isinstance(source_tag, str) or not isinstance(destination_tag, str):
+                continue
+
+            source_tokens = source_tag.split(':')
+            if len(source_tokens) < 4:
+                continue
+
+            connection_type = source_tokens[2]
+            yield source_tag, destination_tag, connection_type
 
     def _editor_toolbar_attr_tag(self, node_id):
         return f'{self._node_name(node_id)}:ToolbarAttr'
@@ -150,15 +162,3 @@ class DpgNodeABC(metaclass=ABCMeta):
         if callback is None:
             return
         callback('delete_node_requested', {'node_id_name': node_id_name})
-
-
-class DpgNodeBase(DpgNodeABC):
-    """Concrete base for DearPyGui nodes during the node-base refactor.
-
-    This class intentionally starts as a compatibility shim. Direct node
-    subclasses should migrate here first; concrete helper behavior can then move
-    from ``DpgNodeABC`` to this base without changing every node in the same
-    patch.
-    """
-
-    pass

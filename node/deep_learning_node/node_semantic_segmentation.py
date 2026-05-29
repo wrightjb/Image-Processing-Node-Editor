@@ -8,7 +8,7 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 from node.deep_learning_node.semantic_segmentation.deeplab_v3.deeplab_v3 import DeepLabV3
@@ -22,7 +22,7 @@ from node.deep_learning_node.semantic_segmentation.mediapipe_selfie_segmentation
 from node.draw_node.draw_util.draw_util import draw_semantic_segmentation_info
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Semantic Segmentation'

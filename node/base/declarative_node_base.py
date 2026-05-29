@@ -6,11 +6,11 @@ from abc import abstractmethod
 import dearpygui.dearpygui as dpg
 import numpy as np
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
 
 
-class DeclarativeImageProcessNodeBase(DpgNodeABC):
+class DeclarativeImageProcessNodeBase(DpgNodeBase):
     """Common implementation for simple image process nodes."""
 
     _opencv_setting_dict = None

@@ -9,14 +9,14 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 from node.deep_learning_node.monocular_depth_estimation.FSRE_Depth.fsre_depth import FSRE_Depth
 from node.deep_learning_node.monocular_depth_estimation.HR_Depth.hr_depth import HR_Depth
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Monocular Depth Estimation'

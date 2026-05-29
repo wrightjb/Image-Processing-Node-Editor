@@ -18,50 +18,37 @@ string tags.
 
 Implemented so far:
 
-- The editor already has `NodeRef` and `PortRef` dataclasses and keeps `_port_registry`
-  / `_node_registry` model dictionaries for typed graph metadata.
-- `_cntrl_parse_port_tag()` now registers parsed legacy compact port strings through
-  `_mdl_register_port_ref()`, so compatibility parsing and typed registry population
-  share one path.
-- `_mdl_register_port_ref()` and `_mdl_iter_registered_ports()` provide the first
-  explicit editor-side API for adding and querying registered `PortRef` entries.
-- Hovered-port discovery now prefers registered `PortRef` data and only falls back
-  to legacy tag synthesis for imported/test graphs that have not been migrated to
-  creation-time registration yet.
-- `_cntrl_find_node_port()` now checks registered `PortRef` entries before using
-  the legacy fixed-index scan.
-- Unit coverage has started for the behaviors most likely to regress during the
-  port model refactor: registered high-index hovered ports, registry-backed port
-  lookup, and legacy fallback registration.
-- `NodeRef` and `PortRef` now live in `node_editor.port_model`, making them
-  reusable by node base classes without importing the editor controller.
-- `DpgNodeBase` exists as the concrete migration target and can declare input,
-  output, and parameter ports while preserving the existing compact DPG tag
-  format.
-- Concrete base port declaration tests cover generated tags, `PortRef` metadata,
-  parameter value/control tags, registration callbacks, and invalid port names.
+- `DpgNodeBase` has been introduced as a minimal compatibility shim that only
+  inherits from `DpgNodeABC`.
+- Direct node/base subclasses under `node/` now inherit from `DpgNodeBase`
+  instead of `DpgNodeABC`, while preserving existing behavior and tag strings.
+- `DpgNodeABC` still temporarily contains the existing concrete helper methods so
+  this first migration stays mechanical and low risk.
+- The editor still owns the existing `NodeRef` / `PortRef` dataclasses and legacy
+  parsing/hovered-port behavior for now. Broad editor registry and hovered-port
+  changes are intentionally deferred until after node inheritance and tag-helper
+  ownership are cleaned up.
 
 Important limitation of the current implementation:
 
-- Port registration is not yet authoritative at node creation time. Most ports are
-  still discovered lazily through legacy tag parsing or lookup fallback. The next
-  refactor steps should move registration into node/base creation helpers rather
-  than expanding editor-side parsing.
+- The concrete base is not yet the owner of tag construction, toolbar helpers, or
+  typed port declarations. Those helpers should move from `DpgNodeABC` into
+  `DpgNodeBase` in the next step, after this inheritance-only migration is in
+  place.
 
 ## Next work
 
-1. Move concrete helper behavior out of `DpgNodeABC` once enough nodes have been
-   migrated, keeping temporary compatibility only while direct subclasses still
-   depend on the old interface.
-2. Wire `DpgNodeBase` port helpers to register ports during `add_node()` so the
-   editor receives authoritative `PortRef` data as nodes are created.
-3. Migrate `DeclarativeImageProcessNodeBase` first, then verify existing process
-   node behavior and settings/import/export compatibility.
-4. Once declarative nodes register ports at creation time, tighten hovered-port
-   tests for add-from-output, add-to-input, insert-between-links, and occupied input
-   replacement using registered ports rather than legacy synthetic tags.
-5. After those tests pass, continue with typed link internals and the broader
-   mechanical node migration.
+1. Move concrete helper behavior from `DpgNodeABC` into `DpgNodeBase`, keeping
+   `DpgNodeABC` focused on abstract lifecycle contracts and shared constants.
+2. Update node implementations so tag management goes through `DpgNodeBase`
+   helper APIs in a consistent way.
+3. Add typed `NodeRef` / `PortRef` declaration APIs to `DpgNodeBase` and migrate
+   nodes to register ports through those helpers while preserving compact DPG tag
+   compatibility.
+4. Once node-side port registration is authoritative, update the editor to use
+   the typed registry broadly, including right-click hovered-port detection.
+5. Migrate graph internals, history, runtime, import, and export from string pairs
+   toward typed refs behind compatibility adapters.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -251,13 +238,13 @@ plus a readable compact boundary string.
 
 ## Suggested checkpoints
 
-- Done: add unit tests for concrete base port declaration output and editor port
-  registration.
-- Next: wire `DpgNodeBase` port declarations into editor registration during node
-  creation.
-- Migrate declarative process nodes and run process-node tests.
-- Migrate direct nodes in one wave and run the full test suite.
+- Done: introduce a minimal `DpgNodeBase` shim and migrate direct node subclasses
+  to inherit from it.
+- Next: move existing concrete helper methods from `DpgNodeABC` into
+  `DpgNodeBase`.
+- Then: update node tag management to consistently use the concrete base helper
+  APIs before adding typed port registration.
 - Replace editor link internals with typed links behind a compatibility export
-  adapter.
+  adapter only after node-side `PortRef` registration is authoritative.
 - Add import/export round-trip tests covering both legacy compact strings and any
   future typed endpoint schema.

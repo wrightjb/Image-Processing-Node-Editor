@@ -56,22 +56,26 @@ For the larger typed-port model direction, see
      add-node-to-hovered-input, insert-node-between-links, and occupied input
      replacement.
 
-### 3) Continue import/link invariant hardening
+### 3) Continue import/link invariant hardening ✅ Done 2026-05-29
 
 - Location: `node_editor/node_editor.py` (`_cntrl_import_setting_dict_body`,
   `_cntrl_add_or_replace_link_by_tags`, `_mdl_add_link`).
-- Current issue:
-  - Duplicate-destination imports now use last-link-wins behavior, but malformed
-    imported files still need clear documented behavior.
-- Suggested implementation:
-  1. Define canonical import invariants:
-     - one incoming link per input/destination port,
-     - `_node_link_list`, `_link_registry`, and `_link_by_dest_port` stay in
-       sync,
-     - rejected malformed links do not create partial model/view state.
-  2. Add tests for malformed source/destination tags, unknown imported node IDs,
-     duplicate links, and duplicate destinations.
-  3. Ensure import undo/redo preserves those invariants.
+- Scope clarification:
+  - This item is not general malformed-JSON/schema validation. It is limited to
+    preserving link model/view invariants for imported link records that reach
+    link handling.
+- Completed:
+  1. Link model validation now requires parseable `Output -> Input` endpoints
+     with matching data types before mutating link state.
+  2. Link view creation failures roll back model state so `_node_link_list`,
+     `_link_registry`, `_link_by_dest_port`, and `_link_view_id_map` do not
+     diverge.
+  3. Duplicate-destination replacement is atomic: a failed replacement does not
+     remove an existing accepted link, and import undo/redo payloads preserve the
+     final accepted graph.
+  4. Tests cover malformed tags, semantically invalid links, parseable but
+     missing DPG ports, duplicate-destination replacement failure, and valid
+     last-link-wins behavior.
 
 ### 4) Tighten graph/history identity boundaries if new edge cases appear
 

@@ -160,15 +160,25 @@ class DpgNodeEditor(object):
             self._mdl_register_node_ref(node_ref)
         return parsed
 
-    def _mdl_add_link(self, source_tag, dest_tag):
+    def _mdl_validate_link(self, source_tag, dest_tag):
         source_port = self._cntrl_parse_port_tag(source_tag)
         dest_port = self._cntrl_parse_port_tag(dest_tag)
         if source_port is None or dest_port is None:
+            return None
+        if source_port.direction != 'Output' or dest_port.direction != 'Input':
+            return None
+        if source_port.data_type != dest_port.data_type:
+            return None
+        return source_port, dest_port
+
+    def _mdl_add_link(self, source_tag, dest_tag):
+        validated_ports = self._mdl_validate_link(source_tag, dest_tag)
+        if validated_ports is None:
             return False
         if dest_tag in self._link_by_dest_port:
             return False
         self._node_link_list.append([source_tag, dest_tag])
-        self._link_registry[(source_tag, dest_tag)] = (source_port, dest_port)
+        self._link_registry[(source_tag, dest_tag)] = validated_ports
         self._link_by_dest_port[dest_tag] = source_tag
         return True
 
@@ -1735,6 +1745,13 @@ class DpgNodeEditor(object):
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
 
+    def _cntrl_link_endpoints_exist(self, source_tag, dest_tag):
+        if isinstance(source_tag, str) and not dpg.does_item_exist(source_tag):
+            return False
+        if isinstance(dest_tag, str) and not dpg.does_item_exist(dest_tag):
+            return False
+        return True
+
     def _cntrl_add_or_replace_link_by_tags(self, source_tag, dest_tag):
         source_tag = self._cntrl_resolve_history_port_tag(source_tag)
         dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
@@ -1742,11 +1759,19 @@ class DpgNodeEditor(object):
         if existing_link is not None:
             if existing_link[0] == source_tag:
                 return True
+            if self._mdl_validate_link(source_tag, dest_tag) is None:
+                return False
+            if not self._cntrl_link_endpoints_exist(source_tag, dest_tag):
+                return False
             self._cntrl_remove_link_by_tags(
                 existing_link[0],
                 existing_link[1],
                 record_history=False,
             )
+            if self._cntrl_add_link_by_tags(source_tag, dest_tag):
+                return True
+            self._cntrl_add_link_by_tags(existing_link[0], existing_link[1])
+            return False
         return self._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def _cntrl_add_link_by_tags(self, source_tag, dest_tag):
@@ -1754,7 +1779,11 @@ class DpgNodeEditor(object):
         dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
         if not self._mdl_add_link(source_tag, dest_tag):
             return False
-        link_dpg_id = self._vw_add_link(source_tag, dest_tag)
+        try:
+            link_dpg_id = self._vw_add_link(source_tag, dest_tag)
+        except ValueError:
+            self._mdl_delete_link([source_tag, dest_tag])
+            return False
         self._vw_register_link(source_tag, dest_tag, link_dpg_id)
         return True
 

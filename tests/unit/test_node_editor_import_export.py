@@ -293,6 +293,174 @@ class TestDpgNodeEditorImportExport:
         assert node_editor._undo_stack[-1].links == []
         mock_dpg.add_node_link.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "replacement_link",
+        [
+            ["1:test_node:output", "3:test_node:Image:Input01"],
+            ["2:test_node:Image:Output99", "3:test_node:Image:Input01"],
+        ],
+    )
+    def test_import_failed_duplicate_destination_replacement_keeps_existing_link(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+        replacement_link,
+    ):
+        valid_link = [
+            '1:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        ]
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node', '3:test_node'],
+            'link_list': [valid_link, replacement_link],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 200]},
+            },
+            '3:test_node': {
+                'id': '3',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [500, 200]},
+            },
+        }
+        temp_path = tmp_path / "failed_duplicate_destination_import.json"
+        temp_path.write_text(json.dumps(test_data))
+
+        existing_items = {
+            '1:test_node',
+            '2:test_node',
+            '3:test_node',
+            '1:test_node:Image:Output01',
+            '2:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        }
+        mock_dpg.does_item_exist.side_effect = lambda tag: tag in existing_items
+        mock_dpg.get_item_pos.return_value = [100, 200]
+        mock_dpg.add_node_link.side_effect = [
+            'valid-link',
+            'redo-valid-link',
+        ]
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        ]]
+        assert node_editor._undo_stack[-1].links == [(
+            '1:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        )]
+
+        node_editor._cntrl_undo(None, None)
+        assert node_editor._node_link_list == []
+
+        node_editor._cntrl_redo(None, None)
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '3:test_node:Image:Input01',
+        ]]
+
+    def test_import_rolls_back_model_when_parseable_port_is_missing_in_view(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': [[
+                '1:test_node:Image:Output99',
+                '2:test_node:Image:Input01',
+            ]],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 200]},
+            },
+        }
+        temp_path = tmp_path / "missing_view_port_import.json"
+        temp_path.write_text(json.dumps(test_data))
+
+        existing_items = {
+            '1:test_node',
+            '2:test_node',
+            '2:test_node:Image:Input01',
+        }
+        mock_dpg.does_item_exist.side_effect = lambda tag: tag in existing_items
+        mock_dpg.get_item_pos.return_value = [100, 200]
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == []
+        assert node_editor._link_registry == {}
+        assert node_editor._link_by_dest_port == {}
+        assert node_editor._link_view_id_map == {}
+        assert node_editor._undo_stack[-1].links == []
+        mock_dpg.add_node_link.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "link_list",
+        [
+            [["1:test_node:Image:Input01", "2:test_node:Image:Input01"]],
+            [["1:test_node:Int:Output01", "2:test_node:Float:Input01"]],
+        ],
+    )
+    def test_import_rejects_semantically_invalid_links_without_link_state(
+        self,
+        node_editor,
+        mock_dpg,
+        tmp_path,
+        link_list,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': link_list,
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 200]},
+            },
+        }
+        temp_path = tmp_path / "semantic_invalid_link_import.json"
+        temp_path.write_text(json.dumps(test_data))
+        mock_dpg.does_item_exist.return_value = True
+        mock_dpg.get_item_pos.return_value = [100, 200]
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == []
+        assert node_editor._link_registry == {}
+        assert node_editor._link_by_dest_port == {}
+        assert node_editor._undo_stack[-1].links == []
+        mock_dpg.add_node_link.assert_not_called()
+
     def test_import_duplicate_destination_link_last_link_wins(
         self,
         node_editor,

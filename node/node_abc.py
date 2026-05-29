@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import dearpygui.dearpygui as dpg
 
 
 class DpgNodeABC(metaclass=ABCMeta):
@@ -33,6 +34,12 @@ class DpgNodeABC(metaclass=ABCMeta):
         if len(tag_tokens) < 4:
             return ''
         return tag_tokens[3]
+
+    def _extract_node_id(self, tag):
+        tag_tokens = tag.split(':')
+        if len(tag_tokens) < 2:
+            return ''
+        return tag_tokens[0]
 
     def _iter_connections(self, connection_list):
         for connection_info in connection_list:
@@ -83,3 +90,63 @@ class DpgNodeABC(metaclass=ABCMeta):
     @abstractmethod
     def close(self, node_id):
         pass
+
+    def on_editor_parameter_value_applied(self, value_tag, value):
+        """Hook called when editor applies a parameter value (e.g. undo/redo).
+
+        Returns:
+            bool: True if the node handled additional side effects, else False.
+        """
+        del value_tag, value
+        return False
+
+    def _editor_toolbar_attr_tag(self, node_id):
+        return f'{self._node_name(node_id)}:ToolbarAttr'
+
+    def _editor_toolbar_group_tag(self, node_id):
+        return f'{self._node_name(node_id)}:ToolbarGroup'
+
+    def _editor_delete_button_tag(self, node_id):
+        return f'{self._node_name(node_id)}:CloseButton'
+
+    def add_editor_toolbar(
+        self,
+        node_id,
+        callback=None,
+        build_extra_controls=None,
+    ):
+        """Add the standard node toolbar row.
+
+        The toolbar always starts with the universal delete button. Nodes that
+        need node-owned controls can append them by passing
+        ``build_extra_controls``; the callable runs inside the horizontal
+        toolbar group.
+        """
+        node_id_name = self._node_name(node_id)
+        with dpg.node_attribute(
+            tag=self._editor_toolbar_attr_tag(node_id),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(
+                horizontal=True,
+                tag=self._editor_toolbar_group_tag(node_id),
+            ):
+                dpg.add_button(
+                    tag=self._editor_delete_button_tag(node_id),
+                    label='X',
+                    width=20,
+                    height=20,
+                    callback=self._on_editor_delete_button,
+                    user_data=(callback, node_id_name),
+                )
+                if build_extra_controls is not None:
+                    build_extra_controls()
+
+    def _on_editor_delete_button(self, sender, app_data, user_data):
+        del sender, app_data
+        if not isinstance(user_data, tuple) or len(user_data) != 2:
+            return
+        callback, node_id_name = user_data
+        if callback is None:
+            return
+        callback('delete_node_requested', {'node_id_name': node_id_name})

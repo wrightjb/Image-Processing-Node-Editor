@@ -479,6 +479,79 @@ def test_composite_insert_label_prefers_insert_node(editor_and_dpg):
     )
 
 
+class DuckHistoryCommand:
+    def __init__(self):
+        self.calls = []
+
+    def undo(self, editor):
+        self.calls.append(('undo', editor))
+
+    def redo(self, editor):
+        self.calls.append(('redo', editor))
+
+
+def test_undo_redo_dispatches_to_command_methods_without_type_branching(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+    command = DuckHistoryCommand()
+
+    editor._undo_stack.append(command)
+    editor._cntrl_undo(None, None)
+
+    assert command.calls == [('undo', editor)]
+    assert editor._redo_stack == [command]
+
+    editor._cntrl_redo(None, None)
+
+    assert command.calls == [('undo', editor), ('redo', editor)]
+    assert editor._undo_stack == [command]
+    assert editor._suspend_parameter_history is False
+
+
+def test_new_command_after_fully_undone_history_clears_stale_remap(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+    editor._redo_stack.append(DuckHistoryCommand())
+    editor._history_node_id_remap['1:TestNode'] = '9:TestNode'
+
+    editor._cntrl_push_undo_command(DuckHistoryCommand())
+
+    assert editor._redo_stack == []
+    assert editor._history_node_id_remap == {}
+
+
+def _configure_shortcut_keys(dpg, pressed_keys):
+    dpg.mvKey_LControl = 'LControl'
+    dpg.mvKey_RControl = 'RControl'
+    dpg.mvKey_LShift = 'LShift'
+    dpg.mvKey_RShift = 'RShift'
+    dpg.is_key_down.side_effect = lambda key: key in pressed_keys
+
+
+def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = False
+
+    undo_command = DuckHistoryCommand()
+    editor._undo_stack.append(undo_command)
+    _configure_shortcut_keys(dpg, {'LControl'})
+
+    editor._cntrl_keyboard_z_shortcut(None, None)
+
+    assert undo_command.calls == [('undo', editor)]
+    assert editor._redo_stack == [undo_command]
+
+    _configure_shortcut_keys(dpg, {'RControl', 'RShift'})
+    editor._cntrl_keyboard_z_shortcut(None, None)
+
+    assert undo_command.calls == [('undo', editor), ('redo', editor)]
+    assert editor._undo_stack == [undo_command]
+
+    _configure_shortcut_keys(dpg, set())
+    editor._cntrl_keyboard_z_shortcut(None, None)
+    assert undo_command.calls == [('undo', editor), ('redo', editor)]
+
+
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True
@@ -556,7 +629,7 @@ def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
     dpg.get_value.side_effect = lambda tag: value_state.get(tag)
 
     node = editor._node_instance_list['TestNode']
-    node._on_result_image_toggle = Mock()
+    node.on_editor_parameter_value_applied = Mock(return_value=True)
 
     editor._cntrl_node_callback(
         'parameter_changed',
@@ -569,9 +642,9 @@ def test_toggle_parameter_undo_redo_applies_toggle_side_effects(editor_and_dpg):
     )
 
     editor._cntrl_undo(None, None)
-    node._on_result_image_toggle.assert_called_with(toggle_tag, False, '1')
+    node.on_editor_parameter_value_applied.assert_called_with(toggle_tag, False)
     editor._cntrl_redo(None, None)
-    node._on_result_image_toggle.assert_called_with(toggle_tag, True, '1')
+    node.on_editor_parameter_value_applied.assert_called_with(toggle_tag, True)
 
 
 def test_parameter_history_label_is_human_readable(editor_and_dpg):

@@ -37,6 +37,7 @@ class PortRef:
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,
+    ImportGraphCommand,
     MoveNodeCommand,
     AddLinkCommand,
     RemoveLinkCommand,
@@ -61,8 +62,6 @@ class DpgNodeEditor(object):
     _history_window_tag = _node_editor_tag + 'HistoryWindow'
     _history_undo_text_tag = _node_editor_tag + 'HistoryUndoText'
     _history_redo_text_tag = _node_editor_tag + 'HistoryRedoText'
-    _node_close_attr_suffix = ':CloseAttr'
-    _node_close_button_suffix = ':CloseButton'
 
     _node_id = 0
     _node_instance_list = {}
@@ -165,7 +164,13 @@ class DpgNodeEditor(object):
         source_port = self._cntrl_parse_port_tag(source_tag)
         dest_port = self._cntrl_parse_port_tag(dest_tag)
         if source_port is None or dest_port is None:
-            return False
+            if not (
+                isinstance(source_tag, str)
+                and isinstance(dest_tag, str)
+                and len(source_tag.split(':')) >= 2
+                and len(dest_tag.split(':')) >= 2
+            ):
+                return False
         if dest_tag in self._link_by_dest_port:
             return False
         self._node_link_list.append([source_tag, dest_tag])
@@ -602,43 +607,13 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
-        node_view_tag = node.add_node(
+        node.add_node(
             self._node_editor_tag,
             new_id,
             pos=pos,
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
-
-        if node_tag == 'ExecPythonCode':
-            return
-
-        close_attr_tag = node_view_tag + self._node_close_attr_suffix
-        close_button_tag = node_view_tag + self._node_close_button_suffix
-        if dpg.does_item_exist(close_attr_tag):
-            dpg.delete_item(close_attr_tag)
-
-        with dpg.node_attribute(
-                parent=node_view_tag,
-                tag=close_attr_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-        ):
-            with dpg.group(horizontal=True):
-                dpg.add_text(' ')
-                dpg.add_spacer(width=180)
-                dpg.add_button(
-                    tag=close_button_tag,
-                    label='x',
-                    width=20,
-                    height=20,
-                    callback=self._cntrl_delete_node_by_button,
-                    user_data=node_view_tag,
-                )
-        node_children = dpg.get_item_children(node_view_tag, 1)
-        if node_children:
-            first_attribute = node_children[0]
-            if first_attribute != close_attr_tag:
-                dpg.move_item(close_attr_tag, parent=node_view_tag, before=first_attribute)
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -746,11 +721,7 @@ class DpgNodeEditor(object):
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Z,
-                callback=self._cntrl_undo,
-            )
-            dpg.add_key_press_handler(
-                dpg.mvKey_Y,
-                callback=self._cntrl_redo,
+                callback=self._cntrl_keyboard_z_shortcut,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -879,6 +850,14 @@ class DpgNodeEditor(object):
                 bool(data.get('enabled', False)),
             )
             return
+        if event_name == 'delete_node_requested':
+            if not isinstance(data, dict):
+                return
+            node_id_name = str(data.get('node_id_name', ''))
+            if not node_id_name:
+                return
+            self._cntrl_delete_targets([node_id_name], [])
+            return
         if event_name == 'parameter_changed':
             if not isinstance(data, dict):
                 return
@@ -961,19 +940,12 @@ class DpgNodeEditor(object):
         parts = value_tag[:-5].split(':')
         if len(parts) < 4:
             return
-        node_id, node_tag, _, port_name = parts[0], parts[1], parts[2], parts[3]
+        node_tag = parts[1]
         node = self._node_instance_list.get(node_tag)
         if node is None:
             return
-        if port_name == 'Cache' and hasattr(node, '_on_cache_toggle'):
-            node._on_cache_toggle(value_tag, bool(value), node_id)
-        elif port_name == 'ResultImage' and hasattr(node, '_on_result_image_toggle'):
-            node._on_result_image_toggle(value_tag, bool(value), node_id)
-        elif (
-            port_name == 'ResultImageLarge'
-            and hasattr(node, '_on_result_large_image_toggle')
-        ):
-            node._on_result_large_image_toggle(value_tag, bool(value), node_id)
+        if hasattr(node, 'on_editor_parameter_value_applied'):
+            node.on_editor_parameter_value_applied(value_tag, value)
 
     def _cntrl_record_parameter_change(
         self,
@@ -1014,7 +986,7 @@ class DpgNodeEditor(object):
                         cmd.before_value,
                         after_value,
                     )
-                    self._redo_stack.clear()
+                    self._cntrl_clear_redo_history()
                     self._cntrl_refresh_history_menu_items()
                     return
             else:
@@ -1041,7 +1013,7 @@ class DpgNodeEditor(object):
                 )
                 del self._undo_stack[idx + 1:]
                 self._parameter_last_coalesce_hint[value_tag] = True
-                self._redo_stack.clear()
+                self._cntrl_clear_redo_history()
                 self._cntrl_refresh_history_menu_items()
                 return
 
@@ -1067,7 +1039,7 @@ class DpgNodeEditor(object):
                         after_value,
                     )
                 self._parameter_last_coalesce_hint[value_tag] = bool(coalesce_hint)
-                self._redo_stack.clear()
+                self._cntrl_clear_redo_history()
                 self._cntrl_refresh_history_menu_items()
                 return
         self._cntrl_push_undo_command(
@@ -1650,11 +1622,20 @@ class DpgNodeEditor(object):
         return setting_dict
 
     def _cntrl_import_setting_dict(self, setting_dict):
+        if setting_dict is None:
+            return
         self._suspend_parameter_history = True
         try:
-            self._cntrl_import_setting_dict_body(setting_dict)
+            import_payload = self._cntrl_import_setting_dict_body(setting_dict)
         finally:
             self._suspend_parameter_history = False
+        if import_payload and import_payload['nodes']:
+            self._cntrl_push_undo_command(
+                ImportGraphCommand(
+                    import_payload['nodes'],
+                    import_payload['links'],
+                )
+            )
 
     def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
@@ -1664,8 +1645,8 @@ class DpgNodeEditor(object):
             raise KeyError('Invalid node editor setting file format.')
 
         id_map = {}
-        new_node_list = []
-        new_link_list = []
+        imported_nodes_payload = []
+        imported_links_payload = []
 
         for node_id_name in setting_dict['node_list']:
             old_id, node_name = node_id_name.split(':')
@@ -1698,7 +1679,14 @@ class DpgNodeEditor(object):
 
             node.set_setting_dict(new_id, new_setting)
             self._cntrl_prime_parameter_last_values_from_setting(new_setting)
-            new_node_list.append(f'{new_id}:{node_name}')
+            imported_nodes_payload.append(
+                {
+                    'node_id': str(new_id),
+                    'node_tag': node_name,
+                    'pos': list(pos),
+                    'setting': copy.deepcopy(new_setting),
+                }
+            )
 
         for link_info in setting_dict['link_list']:
             source_parts = link_info[0].split(':')
@@ -1709,16 +1697,20 @@ class DpgNodeEditor(object):
                 dest_parts[0] = id_map[dest_parts[0]]
                 new_source = ':'.join(source_parts)
                 new_destination = ':'.join(dest_parts)
-                link_dpg_id = self._vw_add_link(new_source, new_destination)
-                self._vw_register_link(new_source, new_destination, link_dpg_id)
-                if not self._mdl_add_link(new_source, new_destination):
-                    # Preserve serialized links for compatibility with older
-                    # graph formats (e.g., duplicate destination links).
-                    new_link_list.append([new_source, new_destination])
+                if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
+                    imported_links_payload = [
+                        link
+                        for link in imported_links_payload
+                        if link[1] != new_destination
+                    ]
+                    imported_links_payload.append((new_source, new_destination))
 
-        self._node_link_list.extend(new_link_list)
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
+        return {
+            'nodes': imported_nodes_payload,
+            'links': imported_links_payload,
+        }
 
     def _cntrl_sync_position_cache(self):
         self._node_position_cache = {}
@@ -1748,6 +1740,20 @@ class DpgNodeEditor(object):
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
+
+    def _cntrl_add_or_replace_link_by_tags(self, source_tag, dest_tag):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
+        existing_link = self._mdl_get_link_by_destination(dest_tag)
+        if existing_link is not None:
+            if existing_link[0] == source_tag:
+                return True
+            self._cntrl_remove_link_by_tags(
+                existing_link[0],
+                existing_link[1],
+                record_history=False,
+            )
+        return self._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def _cntrl_add_link_by_tags(self, source_tag, dest_tag):
         source_tag = self._cntrl_resolve_history_port_tag(source_tag)
@@ -1806,9 +1812,20 @@ class DpgNodeEditor(object):
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
 
-    def _cntrl_push_undo_command(self, command):
-        self._undo_stack.append(command)
+    def _cntrl_clear_redo_history(self):
         self._redo_stack.clear()
+        if not self._undo_stack:
+            self._history_node_id_remap.clear()
+
+    def _cntrl_clear_history(self):
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._history_node_id_remap.clear()
+        self._cntrl_refresh_history_menu_items()
+
+    def _cntrl_push_undo_command(self, command):
+        self._cntrl_clear_redo_history()
+        self._undo_stack.append(command)
         self._cntrl_refresh_history_menu_items()
 
     def _cntrl_refresh_history_menu_items(self):
@@ -1876,31 +1893,45 @@ class DpgNodeEditor(object):
         self._cntrl_refresh_history_window()
         dpg.show_item(self._history_window_tag)
 
+    def _cntrl_is_ctrl_down(self):
+        return (
+            dpg.is_key_down(dpg.mvKey_LControl)
+            or dpg.is_key_down(dpg.mvKey_RControl)
+        )
+
+    def _cntrl_is_shift_down(self):
+        return (
+            dpg.is_key_down(dpg.mvKey_LShift)
+            or dpg.is_key_down(dpg.mvKey_RShift)
+        )
+
+    def _cntrl_keyboard_z_shortcut(self, sender, data):
+        if not self._cntrl_is_ctrl_down():
+            return
+        if self._cntrl_is_shift_down():
+            self._cntrl_redo(sender, data)
+            return
+        self._cntrl_undo(sender, data)
+
+    def _cntrl_run_history_command(self, cmd, action_name):
+        action = getattr(cmd, action_name, None)
+        if not callable(action):
+            raise TypeError(
+                f'History command {cmd!r} does not implement {action_name}()'
+            )
+
+        self._suspend_parameter_history = True
+        try:
+            action(self)
+        finally:
+            self._suspend_parameter_history = False
+
     def _cntrl_undo(self, sender, data):
         del sender, data
         if not self._undo_stack:
             return
         cmd = self._undo_stack.pop()
-        self._suspend_parameter_history = True
-        try:
-            if isinstance(cmd, AddNodeCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, DeleteNodesCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, MoveNodeCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, AddLinkCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, RemoveLinkCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, ReplaceLinkCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, CompositeCommand):
-                cmd.undo(self)
-            elif isinstance(cmd, SetParameterCommand):
-                cmd.undo(self)
-        finally:
-            self._suspend_parameter_history = False
+        self._cntrl_run_history_command(cmd, 'undo')
         self._redo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()
 
@@ -1909,26 +1940,7 @@ class DpgNodeEditor(object):
         if not self._redo_stack:
             return
         cmd = self._redo_stack.pop()
-        self._suspend_parameter_history = True
-        try:
-            if isinstance(cmd, AddNodeCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, DeleteNodesCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, MoveNodeCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, AddLinkCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, RemoveLinkCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, ReplaceLinkCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, CompositeCommand):
-                cmd.redo(self)
-            elif isinstance(cmd, SetParameterCommand):
-                cmd.redo(self)
-        finally:
-            self._suspend_parameter_history = False
+        self._cntrl_run_history_command(cmd, 'redo')
         self._undo_stack.append(cmd)
         self._cntrl_refresh_history_menu_items()
 
@@ -2097,12 +2109,6 @@ class DpgNodeEditor(object):
         self._vw_delete_links_for_node(node_tag)
         if dpg.does_item_exist(node_tag):
             self._vw_delete_item(node_tag)
-
-    def _cntrl_delete_node_by_button(self, sender, data, user_data):
-        node_tag = user_data
-        if not node_tag or not dpg.does_item_exist(node_tag):
-            return
-        self._cntrl_delete_targets([node_tag], [])
 
     # Public functions
     def get_node_list(self):

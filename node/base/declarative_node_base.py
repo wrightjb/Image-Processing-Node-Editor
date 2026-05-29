@@ -44,9 +44,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
         elapsed_value_tag = self._value_tag(elapsed_tag)
         cache_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Cache')
         cache_toggle_value_tag = self._value_tag(cache_toggle_tag)
-        result_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImage')
+        result_image_toggle_tag = self._port_tag(
+            tag_node_name, self.TYPE_TEXT, 'ResultImage'
+        )
         result_image_toggle_value_tag = self._value_tag(result_image_toggle_tag)
-        result_large_image_toggle_tag = self._port_tag(tag_node_name, self.TYPE_TEXT, 'ResultImageLarge')
+        result_large_image_toggle_tag = self._port_tag(
+            tag_node_name, self.TYPE_TEXT, 'ResultImageLarge'
+        )
         result_large_image_toggle_value_tag = self._value_tag(result_large_image_toggle_tag)
 
         self._opencv_setting_dict = opencv_setting_dict
@@ -73,14 +77,22 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
             label=self.node_label,
             pos=pos,
         ):
+            self.add_editor_toolbar(
+                node_id,
+                callback=callback,
+                build_extra_controls=lambda: self._add_image_toolbar_controls(
+                    node_id,
+                    result_image_toggle_value_tag,
+                    result_large_image_toggle_value_tag,
+                    cache_toggle_value_tag,
+                ),
+            )
+
             with dpg.node_attribute(
                 tag=input_image_tag,
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
-                dpg.add_text(
-                    tag=input_image_value_tag,
-                    default_value='Input BGR image',
-                )
+                pass
 
             with dpg.node_attribute(
                 tag=output_image_tag,
@@ -98,45 +110,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 callback,
             )
 
-            with dpg.node_attribute(
-                tag=cache_toggle_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_checkbox(
-                    label='Cache',
-                    tag=cache_toggle_value_tag,
-                    default_value=True,
-                    callback=self._on_cache_toggle,
-                    user_data=node_id,
-                )
-                self._cache_enabled_by_node[str(node_id)] = True
-
-            with dpg.node_attribute(
-                tag=result_image_toggle_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_checkbox(
-                    label='Result Image',
-                    tag=result_image_toggle_value_tag,
-                    default_value=False,
-                    callback=self._on_result_image_toggle,
-                    user_data=node_id,
-                )
-                self._result_image_enabled_by_node[str(node_id)] = False
-
-            with dpg.node_attribute(
-                tag=result_large_image_toggle_tag,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_checkbox(
-                    label='Result Image(Large)',
-                    tag=result_large_image_toggle_value_tag,
-                    default_value=False,
-                    callback=self._on_result_large_image_toggle,
-                    user_data=node_id,
-                )
-                self._result_large_image_enabled_by_node[str(node_id)] = False
-
             if self.show_elapsed_time and use_pref_counter:
                 with dpg.node_attribute(
                     tag=elapsed_tag,
@@ -149,6 +122,38 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
 
         self.on_node_added(tag_node_name)
         return tag_node_name
+
+    def _add_image_toolbar_controls(
+        self,
+        node_id,
+        result_image_toggle_value_tag,
+        result_large_image_toggle_value_tag,
+        cache_toggle_value_tag,
+    ):
+        dpg.add_checkbox(
+            label='R',
+            tag=result_image_toggle_value_tag,
+            default_value=False,
+            callback=self._on_result_image_toggle,
+            user_data=node_id,
+        )
+        self._result_image_enabled_by_node[str(node_id)] = False
+        dpg.add_checkbox(
+            label='RL',
+            tag=result_large_image_toggle_value_tag,
+            default_value=False,
+            callback=self._on_result_large_image_toggle,
+            user_data=node_id,
+        )
+        self._result_large_image_enabled_by_node[str(node_id)] = False
+        dpg.add_checkbox(
+            label='Cache',
+            tag=cache_toggle_value_tag,
+            default_value=True,
+            callback=self._on_cache_toggle,
+            user_data=node_id,
+        )
+        self._cache_enabled_by_node[str(node_id)] = True
 
     def update(
         self,
@@ -381,6 +386,32 @@ class DeclarativeImageProcessNodeBase(DpgNodeABC):
                 'enabled': bool(enabled),
             },
         )
+
+    def on_editor_parameter_value_applied(self, value_tag, value):
+        if not isinstance(value_tag, str) or not value_tag.endswith('Value'):
+            return False
+        port_name = self._extract_port_name(value_tag[:-5])
+        node_id = self._extract_node_id(value_tag)
+        if not node_id:
+            return False
+
+        if port_name == 'Cache':
+            self._cache_enabled_by_node[str(node_id)] = bool(value)
+            return True
+
+        if port_name == 'ResultImage':
+            enabled = bool(value)
+            self._result_image_enabled_by_node[str(node_id)] = enabled
+            self._emit_result_node_toggle(node_id, 'ResultImage', enabled)
+            return True
+
+        if port_name == 'ResultImageLarge':
+            enabled = bool(value)
+            self._result_large_image_enabled_by_node[str(node_id)] = enabled
+            self._emit_result_node_toggle(node_id, 'ResultImageLarge', enabled)
+            return True
+
+        return False
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

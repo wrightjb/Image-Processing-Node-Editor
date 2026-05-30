@@ -1,7 +1,6 @@
 import pytest
 import json
 import os
-import copy
 from unittest.mock import Mock, patch
 from collections import OrderedDict
 
@@ -35,23 +34,14 @@ def _typed_port_payload(port_tag):
     }
 
 
-def _typed_link_refs(link_list):
+def _typed_link_refs(link_pairs):
     return [
         {
             'source': _typed_port_payload(source_tag),
             'destination': _typed_port_payload(dest_tag),
         }
-        for source_tag, dest_tag in link_list
+        for source_tag, dest_tag in link_pairs
     ]
-
-
-def _with_link_refs(setting_dict):
-    setting_dict = copy.deepcopy(setting_dict)
-    if 'link_refs' not in setting_dict:
-        setting_dict['link_refs'] = _typed_link_refs(setting_dict.pop('link_list', []))
-    else:
-        setting_dict.pop('link_list', None)
-    return setting_dict
 
 
 def _link_ref_pairs(link_refs):
@@ -222,10 +212,10 @@ class TestDpgNodeEditorImportExport:
         """Test successful file import"""
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -249,7 +239,7 @@ class TestDpgNodeEditorImportExport:
         }
         temp_path = tmp_path / "import.json"
         with open(temp_path, 'w') as f:
-            json.dump(_with_link_refs(test_data), f)
+            json.dump(test_data, f)
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
@@ -280,7 +270,6 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [],
             'link_refs': [
                 {
                     'source': {
@@ -313,7 +302,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / 'typed_import.json'
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
 
         node_editor._cntrl_file_import(
             'file_import',
@@ -339,10 +328,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -361,7 +350,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "undoable_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
         mock_dpg.does_item_exist.return_value = True
         mock_dpg.get_item_pos.return_value = [100, 200]
 
@@ -401,7 +390,7 @@ class TestDpgNodeEditorImportExport:
         assert len(node_editor._undo_stack) == 1
 
     @pytest.mark.parametrize(
-        "link_list",
+        "link_pairs",
         [
             [["1:test_node:output", "2:test_node:Image:Input01"]],
             [["1:test_node:Image:Output01", "2:test_node:input"]],
@@ -412,11 +401,11 @@ class TestDpgNodeEditorImportExport:
         node_editor,
         mock_dpg,
         tmp_path,
-        link_list,
+        link_pairs,
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': link_list,
+            'link_refs': _typed_link_refs(link_pairs),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -429,7 +418,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "malformed_link_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
 
         node_editor._cntrl_file_import(
             'file_import',
@@ -462,7 +451,7 @@ class TestDpgNodeEditorImportExport:
         ]
         test_data = {
             'node_list': ['1:test_node', '2:test_node', '3:test_node'],
-            'link_list': [valid_link, replacement_link],
+            'link_refs': _typed_link_refs([valid_link, replacement_link]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -480,7 +469,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "failed_duplicate_destination_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
 
         existing_items = {
             '1:test_node',
@@ -528,10 +517,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output99',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -544,7 +533,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "missing_view_port_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
 
         existing_items = {
             '1:test_node',
@@ -567,7 +556,7 @@ class TestDpgNodeEditorImportExport:
         mock_dpg.add_node_link.assert_not_called()
 
     @pytest.mark.parametrize(
-        "link_list",
+        "link_pairs",
         [
             [["1:test_node:Image:Input01", "2:test_node:Image:Input01"]],
             [["1:test_node:Int:Output01", "2:test_node:Float:Input01"]],
@@ -578,11 +567,11 @@ class TestDpgNodeEditorImportExport:
         node_editor,
         mock_dpg,
         tmp_path,
-        link_list,
+        link_pairs,
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': link_list,
+            'link_refs': _typed_link_refs(link_pairs),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -595,7 +584,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "semantic_invalid_link_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
         mock_dpg.does_item_exist.return_value = True
         mock_dpg.get_item_pos.return_value = [100, 200]
 
@@ -618,10 +607,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node', '3:test_node'],
-            'link_list': [
+            'link_refs': _typed_link_refs([
                 ['1:test_node:Image:Output01', '3:test_node:Image:Input01'],
                 ['2:test_node:Image:Output01', '3:test_node:Image:Input01'],
-            ],
+            ]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -639,7 +628,7 @@ class TestDpgNodeEditorImportExport:
             },
         }
         temp_path = tmp_path / "duplicate_destination_import.json"
-        temp_path.write_text(json.dumps(_with_link_refs(test_data)))
+        temp_path.write_text(json.dumps(test_data))
         mock_dpg.does_item_exist.return_value = True
         mock_dpg.get_item_pos.return_value = [100, 200]
 
@@ -665,7 +654,7 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -677,7 +666,7 @@ class TestDpgNodeEditorImportExport:
         }
         temp_path = tmp_path / "import_move_cache.json"
         with open(temp_path, 'w') as f:
-            json.dump(_with_link_refs(test_data), f)
+            json.dump(test_data, f)
 
         pos_map = {'1:test_node': [10, 20]}
         mock_dpg.get_item_alias.side_effect = lambda tag: tag
@@ -710,7 +699,7 @@ class TestDpgNodeEditorImportExport:
         mock_node_instance._ver = '2.0.0'
         test_data = {
             'node_list': ['1:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -722,7 +711,7 @@ class TestDpgNodeEditorImportExport:
         }
         temp_path = tmp_path / "version.json"
         with open(temp_path, 'w') as f:
-            json.dump(_with_link_refs(test_data), f)
+            json.dump(test_data, f)
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
@@ -744,7 +733,7 @@ class TestDpgNodeEditorImportExport:
         node_editor._node_id = 1
         test_data = {
             'node_list': ['5:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '5:test_node': {
                 'id': '5',
                 'name': 'test_node',
@@ -753,7 +742,7 @@ class TestDpgNodeEditorImportExport:
         }
         temp_path = tmp_path / "update_id.json"
         with open(temp_path, 'w') as f:
-            json.dump(_with_link_refs(test_data), f)
+            json.dump(test_data, f)
 
         sender = 'file_import'
         data = {'file_name': temp_path.name, 'file_path_name': str(temp_path)}
@@ -771,7 +760,7 @@ class TestDpgNodeEditorImportExport:
         """Test that importing JSON missing mandatory keys raises
            KeyError"""
         # Create JSON missing 'node_list'
-        bad = {'link_list': []}
+        bad = {'link_refs': []}
         path = tmp_path / 'bad.json'
         path.write_text(json.dumps(bad))
         with pytest.raises(KeyError):
@@ -954,10 +943,10 @@ class TestDpgNodeEditorImportExport:
         # import JSON with the same IDs (1 & 2), so they must be remapped
         imported = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1', 'name': 'test_node',
                 'setting': {'ver': '1.0.0', 'pos': [10, 20]}
@@ -968,7 +957,7 @@ class TestDpgNodeEditorImportExport:
             }
         }
         path = tmp_path / "after.json"
-        path.write_text(json.dumps(_with_link_refs(imported)))
+        path.write_text(json.dumps(imported))
         data = {'file_name': path.name, 'file_path_name': str(path)}
 
         # Act
@@ -1018,10 +1007,10 @@ class TestDpgNodeEditorImportExport:
     ):
         imported = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1', 'name': 'test_node',
                 'setting': {'ver': '1.0.0', 'pos': [10, 20]}
@@ -1032,7 +1021,7 @@ class TestDpgNodeEditorImportExport:
             }
         }
         path = tmp_path / "imported_links.json"
-        path.write_text(json.dumps(_with_link_refs(imported)))
+        path.write_text(json.dumps(imported))
         node_editor._cntrl_file_import(
             None, {'file_name': path.name, 'file_path_name': str(path)}
         )

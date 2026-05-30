@@ -61,7 +61,6 @@ Important limitation of the current implementation:
 1. Continue migrating individual non-declarative node `update()` implementations
    to use `_iter_connection_infos()` and typed connection adapter fields directly
    instead of relying on tag-compatible metadata wrappers.
-2. Drop any remaining compact-link compatibility tests that are no longer needed.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -241,8 +240,10 @@ Current typed import/export checkpoint:
   metadata and no longer write legacy `link_list`.
 - Imports require `link_refs` and remap endpoint node IDs through the same import
   ID map as nodes.
-- The checked-in exported graph fixtures have been converted externally, so normal
-  import no longer falls back to legacy compact-link payloads.
+- The checked-in exported graph fixtures have been converted externally, normal
+  import no longer falls back to legacy compact-link payloads, and import/export
+  tests now construct typed `link_refs` payloads directly instead of building
+  compact `link_list` inputs and converting them inside the test.
 
 ## Serialization and DearPyGui tag format notes
 

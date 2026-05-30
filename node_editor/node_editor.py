@@ -79,6 +79,7 @@ class DpgNodeEditor(object):
         self._node_link_list = []
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
+        self._node_connection_ref_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
         self._pending_add_from_output_tag = None
         self._pending_add_to_input_tag = None
@@ -315,6 +316,7 @@ class DpgNodeEditor(object):
 
         node_id_dict = OrderedDict({})
         node_connection_dict = OrderedDict({})
+        node_connection_ref_dict = OrderedDict({})
 
         # Organize node IDs and node links as dictionaries
         for link_ref in self._mdl_iter_link_refs():
@@ -329,11 +331,14 @@ class DpgNodeEditor(object):
             node_name = link_ref.destination.node_ref.node_id_name
             if node_name not in node_connection_dict:
                 node_connection_dict[node_name] = [link_ref.legacy_pair]
+                node_connection_ref_dict[node_name] = [link_ref]
             else:
                 node_connection_dict[node_name].append(link_ref.legacy_pair)
+                node_connection_ref_dict[node_name].append(link_ref)
 
         node_id_list = list(node_id_dict.items())
         node_connection_list = list(node_connection_dict.items())
+        node_connection_ref_list = list(node_connection_ref_dict.items())
 
         # Reorder processing from input to output
         index = 0
@@ -356,6 +361,10 @@ class DpgNodeEditor(object):
                             check_index], node_connection_list[
                                 index] = node_connection_list[
                                     index], node_connection_list[check_index]
+                        node_connection_ref_list[
+                            check_index], node_connection_ref_list[
+                                index] = node_connection_ref_list[
+                                    index], node_connection_ref_list[check_index]
 
                         swap_flag = True
                         break
@@ -384,8 +393,10 @@ class DpgNodeEditor(object):
 
         for unfinded_value in unfinded_id_dict.values():
             node_connection_list.insert(0, (unfinded_value, []))
+            node_connection_ref_list.insert(0, (unfinded_value, []))
 
         self._node_connection_dict = OrderedDict(node_connection_list)
+        self._node_connection_ref_dict = OrderedDict(node_connection_ref_list)
 
     # -------------------------------------------------------------------------
     # View functions
@@ -2265,6 +2276,9 @@ class DpgNodeEditor(object):
 
     def get_sorted_node_connection(self):
         return self._node_connection_dict
+
+    def get_sorted_node_connection_refs(self):
+        return self._node_connection_ref_dict
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

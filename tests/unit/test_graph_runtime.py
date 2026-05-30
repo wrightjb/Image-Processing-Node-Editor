@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from unittest.mock import Mock
 
+from node.port_model import LinkRef, NodeRef, PortRef
 from node_editor.graph_runtime import GraphRuntime
 
 
@@ -19,6 +20,54 @@ class FakeEditor:
     def get_node_instance(self, name):
         return self.inst_map[name]
 
+
+class TypedFakeEditor(FakeEditor):
+    def __init__(self, nodes, conn_dict, typed_conn_dict, inst_map):
+        super().__init__(nodes, conn_dict, inst_map)
+        self.typed_conn_dict = typed_conn_dict
+
+    def get_sorted_node_connection_refs(self):
+        return self.typed_conn_dict
+
+
+def _port_ref(node_id, node_tag, direction, data_type, port_name):
+    prefix = 'Input' if direction == 'Input' else 'Output'
+    return PortRef(
+        node_ref=NodeRef(str(node_id), node_tag),
+        direction=direction,
+        data_type=data_type,
+        index=int(port_name[len(prefix):]),
+        port_name=port_name,
+        dpg_tag=f'{node_id}:{node_tag}:{data_type}:{port_name}',
+    )
+
+
+def test_graph_runtime_prefers_typed_connection_refs_and_passes_legacy_adapter():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:ProcessNode']
+    link_ref = LinkRef(
+        _port_ref(1, 'SourceNode', 'Output', 'Image', 'Output01'),
+        _port_ref(2, 'ProcessNode', 'Input', 'Image', 'Input01'),
+    )
+    editor = TypedFakeEditor(
+        nodes,
+        OrderedDict(),
+        OrderedDict([('1:SourceNode', []), ('2:ProcessNode', [link_ref])]),
+        {'SourceNode': source_node, 'ProcessNode': process_node},
+    )
+
+    runtime = GraphRuntime()
+    runtime.step(editor, mode_async=False)
+
+    process_node.update.assert_called_once()
+    assert process_node.update.call_args.args[1] == [link_ref.legacy_pair]
+    assert runtime.node_image_dict['2:ProcessNode'] == 'img1'
 
 def test_graph_runtime_persists_state_between_steps():
     source_node = Mock()

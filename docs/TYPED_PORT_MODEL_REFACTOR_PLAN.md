@@ -47,15 +47,15 @@ Implemented so far:
 
 Important limitation of the current implementation:
 
-- The editor now exports and imports typed `link_refs` directly, and graph
-  sorting, cycle detection, and delete-through-node reconnection consume typed
-  `LinkRef` data. Runtime and history still expose compact string pairs internally,
-  so those boundaries are the next migration target.
+- The editor now exports and imports typed `link_refs` directly; graph sorting,
+  cycle detection, delete-through-node reconnection, and the runtime scheduler
+  consume typed `LinkRef` data. Node `update()` calls and history still receive
+  compact string-pair adapters, so those boundaries are the next migration target.
 
 ## Next work
 
-1. Migrate history command payloads and runtime connection consumers from string
-   pairs toward typed refs behind compatibility adapters.
+1. Migrate history command payloads and node `update()` connection consumers from
+   string pairs toward typed refs behind compatibility adapters.
 2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
    paths are confirmed to register `PortRef` data.
 3. Drop any remaining compact-link compatibility tests that are no longer needed.
@@ -214,11 +214,14 @@ not part of normal graph mutation.
 Current typed graph-consumer checkpoint:
 
 - Graph sorting iterates typed `LinkRef` records and uses `NodeRef` metadata for
-  dependency ordering while preserving legacy connection-list values for runtime.
+  dependency ordering while preserving legacy connection-list values for node
+  `update()` calls.
 - Cycle detection validates the candidate link once into a `LinkRef` and builds
   adjacency from typed registered links.
 - Delete-through-node reconnection reads source/destination node IDs and link data
   types from `LinkRef` endpoints.
+- Runtime scheduling prefers typed sorted connection refs and converts them to the
+  existing compact pair adapter only at the node `update()` call boundary.
 
 Current typed import/export checkpoint:
 
@@ -284,6 +287,7 @@ plus a readable compact boundary string.
   pairs for existing history/runtime code.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
-- Done: move graph sorting, cycle detection, and delete-through-node reconnection
-  onto typed `LinkRef` iteration.
-- Next: migrate history/runtime connection consumers from string pairs to typed refs.
+- Done: move graph sorting, cycle detection, delete-through-node reconnection, and
+  runtime scheduling onto typed `LinkRef` iteration.
+- Next: migrate history payloads and node `update()` connection consumers from
+  string pairs to typed refs.

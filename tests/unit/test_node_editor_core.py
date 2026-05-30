@@ -7,6 +7,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
+from node.node_abc import DpgNodeBase
+from node.port_model import LinkRef, NodeRef, PortRef
 from node_editor.node_editor import (
     AddNodeCommand,
     CompositeCommand,
@@ -38,6 +40,37 @@ class DummyNode:
         callback=None,
     ):
         del callback
+        return f"{node_id}:{self.node_tag}"
+
+    def update(self, node_id, connection_list, img_dict, res_dict):
+        return f"img{node_id}", f"res{node_id}"
+
+    def get_setting_dict(self, node_id):
+        return {"ver": self._ver, "pos": [0, 0]}
+
+    def set_setting_dict(self, node_id, setting_dict):
+        pass
+
+    def close(self, node_id):
+        pass
+
+
+class PortDeclaringDummyNode(DpgNodeBase):
+    _ver = '1.0'
+    node_tag = 'TestNode'
+    node_label = 'Test Node'
+
+    def add_node(
+        self,
+        parent,
+        node_id,
+        pos=None,
+        opencv_setting_dict=None,
+        callback=None,
+    ):
+        del parent, pos, opencv_setting_dict, callback
+        self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
         return f"{node_id}:{self.node_tag}"
 
     def update(self, node_id, connection_list, img_dict, res_dict):
@@ -120,9 +153,135 @@ def test_link_callback_basic(editor_and_dpg):
     link_ids = [101, 102]
     editor._cntrl_link('NodeEditor', link_ids)
     assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
-    assert ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01') in editor._link_registry
+    link_ref = editor._link_registry[(
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    )]
+    assert isinstance(link_ref, LinkRef)
+    assert link_ref.source.dpg_tag == '1:TestNode:Int:Output01'
+    assert link_ref.destination.dpg_tag == '2:TestNode:Int:Input01'
+    assert link_ref.legacy_pair == [
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
     assert editor._link_by_dest_port['2:TestNode:Int:Input01'] == '1:TestNode:Int:Output01'
+    assert editor._mdl_get_link_ref_by_destination(
+        '2:TestNode:Int:Input01'
+    ) == link_ref
     dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
+
+
+def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    source_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+    )
+    dest_port = PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+    )
+
+    assert editor._mdl_add_link(source_port, dest_port) is True
+
+    link_ref = editor._mdl_get_link_ref_by_destination(dest_port)
+    assert link_ref == LinkRef(source_port, dest_port)
+    assert editor._node_link_list == [[
+        '1:TestNode:Image:Output01',
+        '2:TestNode:Image:Input01',
+    ]]
+
+
+def test_add_node_registers_declared_port_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    input_port = editor._port_registry['1:TestNode:Image:Input01']
+    output_port = editor._port_registry['1:TestNode:Image:Output01']
+    assert input_port.node_ref.node_id_name == '1:TestNode'
+    assert input_port.direction == 'Input'
+    assert input_port.port_name == 'Input01'
+    assert output_port.direction == 'Output'
+    assert output_port.port_name == 'Output01'
+    assert editor._node_registry['1:TestNode'] == input_port.node_ref
+
+
+def test_add_node_keeps_dynamic_port_registration_callback(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    node = PortDeclaringDummyNode()
+    editor._node_instance_list['TestNode'] = node
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    node.input_port(1, node.TYPE_TEXT, 'Input02')
+
+    assert '1:TestNode:Text:Input02' in editor._port_registry
+
+
+def test_registered_hovered_output_port_beyond_legacy_scan_range(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    output_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Int',
+        index=125,
+        port_name='Output125',
+        dpg_tag='1:TestNode:Int:Output125',
+        value_tag='1:TestNode:Int:Output125Value',
+    )
+    editor._mdl_register_port_ref(output_port)
+    dpg.does_item_exist.side_effect = lambda tag: tag == output_port.dpg_tag
+    dpg.is_item_hovered.side_effect = lambda tag: tag == output_port.dpg_tag
+
+    assert editor._cntrl_get_hovered_output_port_tag() == output_port.dpg_tag
+
+
+def test_find_node_port_uses_registered_port_beyond_legacy_scan_range(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    input_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=125,
+        port_name='Input125',
+        dpg_tag='1:TestNode:Image:Input125',
+        value_tag='1:TestNode:Image:Input125Value',
+    )
+    editor._mdl_register_port_ref(input_port)
+    dpg.does_item_exist.side_effect = lambda tag: tag == input_port.dpg_tag
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == input_port.dpg_tag
+        else {}
+    )
+
+    assert (
+        editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input')
+        == input_port.dpg_tag
+    )
+
+
+def test_find_node_port_falls_back_to_legacy_scan_and_registers(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    input_tag = '1:TestNode:Image:Input01'
+    dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == input_tag
+        else {}
+    )
+
+    assert editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input') == input_tag
+    assert editor._port_registry[input_tag].port_name == 'Input01'
 
 
 def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
@@ -135,6 +294,8 @@ def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
     assert port.direction == 'Input'
     assert port.data_type == 'Float'
     assert port.index == 3
+    assert port.port_name == 'Input03'
+    assert port.value_tag == '7:TestNode:Float:Input03Value'
     assert editor._port_registry['7:TestNode:Float:Input03'] == port
 
 

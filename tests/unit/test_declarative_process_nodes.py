@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 from node.base import declarative_node_base as base_module
+from node import node_abc as node_abc_module
 import node.process_node.node_blur as blur_module
 import node.process_node.node_brightness as brightness_module
 import node.process_node.node_contrast as contrast_module
@@ -972,3 +973,98 @@ def test_warmth_tint_node_update_clamps_linked_values(monkeypatch):
     assert out_frame.shape == frame.shape
     assert writes['301:WarmthTint:Int:Input02Value'] == 100
     assert writes['301:WarmthTint:Int:Input03Value'] == -100
+
+
+class DpgContextRecorder:
+    mvNode_Attr_Input = 'input'
+    mvNode_Attr_Output = 'output'
+    mvNode_Attr_Static = 'static'
+    mvFormat_Float_rgb = 'float-rgb'
+
+    def __init__(self):
+        self.node_attributes = []
+        self.raw_textures = []
+        self.widgets = []
+
+    class _Context:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def texture_registry(self, **kwargs):
+        return self._Context()
+
+    def node(self, **kwargs):
+        return self._Context()
+
+    def node_attribute(self, **kwargs):
+        self.node_attributes.append(kwargs)
+        return self._Context()
+
+    def group(self, **kwargs):
+        return self._Context()
+
+    def add_raw_texture(self, *args, **kwargs):
+        self.raw_textures.append((args, kwargs))
+
+    def add_button(self, **kwargs):
+        self.widgets.append(('button', kwargs))
+
+    def add_checkbox(self, **kwargs):
+        self.widgets.append(('checkbox', kwargs))
+
+    def add_slider_int(self, **kwargs):
+        self.widgets.append(('slider_int', kwargs))
+
+    def add_slider_float(self, **kwargs):
+        self.widgets.append(('slider_float', kwargs))
+
+    def add_input_int(self, **kwargs):
+        self.widgets.append(('input_int', kwargs))
+
+    def add_combo(self, *args, **kwargs):
+        self.widgets.append(('combo', args, kwargs))
+
+    def add_text(self, **kwargs):
+        self.widgets.append(('text', kwargs))
+
+
+def test_declarative_add_node_declares_typed_ports(monkeypatch):
+    node = BlurNode()
+    dpg_recorder = DpgContextRecorder()
+    registered_ports = []
+    node.set_port_registration_callback(registered_ports.append)
+
+    monkeypatch.setattr(base_module, 'dpg', dpg_recorder)
+    monkeypatch.setattr(node_abc_module, 'dpg', dpg_recorder)
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda image, w, h: image)
+
+    tag_node_name = node.add_node(
+        'NodeEditor',
+        6,
+        pos=[10, 20],
+        opencv_setting_dict={
+            'process_width': 8,
+            'process_height': 8,
+            'use_pref_counter': True,
+        },
+    )
+
+    declared_tags = [port.dpg_tag for port in node.get_declared_port_refs(6)]
+    assert tag_node_name == '6:Blur'
+    assert declared_tags == [
+        '6:Blur:Image:Input01',
+        '6:Blur:Image:Output01',
+        '6:Blur:TimeMS:Output02',
+        '6:Blur:Int:Input02',
+    ]
+    assert registered_ports == node.get_declared_port_refs(6)
+    assert [attr['tag'] for attr in dpg_recorder.node_attributes] == [
+        '6:Blur:ToolbarAttr',
+        '6:Blur:Image:Input01',
+        '6:Blur:Image:Output01',
+        '6:Blur:Int:Input02',
+        '6:Blur:TimeMS:Output02',
+    ]

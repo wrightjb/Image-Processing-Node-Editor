@@ -14,6 +14,54 @@ string tags.
   classes unless a later refactor finds real duplicated behavior.
 - Preserve import/export compatibility while allowing a future typed schema.
 
+## Current status
+
+Implemented so far:
+
+- `DpgNodeBase` has been introduced as the concrete DearPyGui node base.
+- Direct node/base subclasses under `node/` now inherit from `DpgNodeBase`
+  instead of `DpgNodeABC`, while preserving existing behavior and tag strings.
+- Existing concrete helper methods for tag construction, legacy connection/tag
+  parsing, and the standard editor toolbar now live on `DpgNodeBase`.
+- `DpgNodeBase` now has composed node/port/value tag helpers that accept a
+  `node_id` directly, reducing repeated nested tag construction in node code.
+- `node.port_model` defines the first reusable passive `NodeRef` / `PortRef`
+  records for node-side declarations.
+- `DpgNodeBase` also has the first typed port declaration APIs
+  (`input_port`, `output_port`, `parameter_port`) that create passive `PortRef`
+  metadata while preserving the compact DPG tag format.
+- `DeclarativeImageProcessNodeBase` uses typed `PortRef` declarations for its
+  standard image input/output, elapsed-time output, and declared parameter ports;
+  cache/result toggles still use value tags because they are toolbar controls,
+  not graph ports.
+- Direct non-declarative node `add_node()` implementations now declare their DPG
+  input/output graph attributes through `input_port()` / `output_port()` while
+  preserving existing compact tag strings.
+- `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
+  type constants, and the optional editor hook.
+- The editor imports the shared `node.port_model` records, registers node-owned
+  declared ports during node creation, and now prefers registered `PortRef` data
+  for right-click hovered-port discovery and node-port lookup. Legacy compact tag
+  parsing remains as a compatibility boundary for imported graphs, callback
+  aliases, and undo/redo data.
+
+Important limitation of the current implementation:
+
+- The editor now has typed `LinkRef` records for canonical link registry entries,
+  but history/import/export still expose compact string pairs. The next step is
+  to migrate those boundaries toward a typed serialized schema so old compact
+  strings remain only a compatibility adapter.
+
+## Next work
+
+1. Migrate history, runtime, import, and export from string pairs toward typed
+   refs behind compatibility adapters.
+2. Add a typed serialized link schema and import/export round-trip coverage for
+   both legacy compact strings and typed ref-backed internal state.
+3. Keep legacy parsing only for imported graphs, callback aliases, undo/redo data,
+   and other compatibility boundaries until the checked-in graph fixtures have
+   been converted.
+
 ## Step 1: Split the abstract interface from concrete node behavior
 
 Create a concrete base node, for example `DpgNodeBase`, and move implementation
@@ -79,25 +127,27 @@ already centralize a large amount of repeated node UI and setting behavior.
 
 After `DpgNodeBase` can register typed ports and
 `DeclarativeImageProcessNodeBase` has moved onto it, fold audit item 2
-(hovered-port discovery) into this refactor. Do not do this as a standalone
-pre-refactor cleanup, because the current `_port_registry` is populated lazily
-from parsed strings rather than authoritatively during node creation.
+(hovered-port discovery) into this refactor. This should happen after
+creation-time registration is available, because pre-refactor `_port_registry`
+data was populated lazily from parsed strings rather than authoritatively during
+node creation.
 
-Replace `_cntrl_get_hovered_output_port_tag()` and
-`_cntrl_get_hovered_input_port_tag()` so they iterate registered `PortRef` data
-instead of synthesizing possible DearPyGui tags from every node, hardcoded data
-types, and fixed port-index ranges.
+Done: `_cntrl_get_hovered_output_port_tag()` and
+`_cntrl_get_hovered_input_port_tag()` now iterate registered `PortRef` data
+before falling back to synthesized DearPyGui tags for legacy/imported graphs.
+`_cntrl_find_node_port()` also prefers registered refs so newly created nodes can
+be connected through the typed registry rather than through fixed index scans.
 
-Recommended incremental shape:
+Implemented incremental shape:
 
-1. keep the public return value as the compact DPG tag at first, so surrounding
-   context-menu code does not need to change in the same patch,
-2. source the returned tag from a registered `PortRef`,
-3. keep legacy parsing only for imported/test graphs that have not gone through
-   creation-time registration,
-4. add or keep behavior tests for add-node-from-hovered-output,
-   add-node-to-hovered-input, insert-node-between-links, and occupied input
-   replacement.
+1. public helpers still return compact DPG tags, so surrounding context-menu code
+   remains compatible,
+2. returned tags are sourced from registered `PortRef` objects when available,
+3. legacy tag synthesis remains only as a fallback for imported/test graphs that
+   have not gone through creation-time registration,
+4. behavior tests cover registered high-index ports, legacy fallback registration,
+   add-node-from-hovered-output, add-node-to-hovered-input, insert-node-between-links,
+   and occupied input replacement.
 
 This makes hovered-port lookup the first editor-side proof that typed port
 registration is reliable, without forcing the entire graph model to change at
@@ -108,13 +158,15 @@ once.
 Once hovered-port lookup is backed by creation-time port registration, continue
 shifting editor internals from string pairs toward typed objects.
 
-Recommended intermediate model:
+Implemented intermediate model:
 
 - keep `_node_link_list` as exported legacy string pairs until import/export and
   runtime are migrated,
-- add a canonical typed link collection keyed by destination `PortRef`,
-- make `_mdl_add_link()` accept `PortRef` / `LinkRef` on the normal path,
-- keep string-to-`PortRef` resolution only at boundaries.
+- add `LinkRef` as the canonical typed link record stored in `_link_registry` and
+  `_link_by_dest_port_ref`,
+- make `_mdl_add_link()` accept string aliases or `PortRef` endpoints on the normal
+  path and normalize successful links to `LinkRef`,
+- keep string-to-`PortRef` resolution available at boundaries.
 
 Boundary-only parsing is still acceptable for:
 
@@ -175,7 +227,7 @@ Recommendation:
   longer, harder to read in debugging output, and not necessary once the live
   graph model is typed.
 - Treat compact strings as a boundary encoding only. Internally, use typed
-  `NodeRef`, `PortRef`, and eventually `LinkRef` objects.
+  `NodeRef`, `PortRef`, and `LinkRef` objects.
 
 If a versioned compact format is needed later, prefer a small URI/URN-like or
 version-prefixed delimiter format over JSON-in-a-string, for example:
@@ -202,11 +254,18 @@ plus a readable compact boundary string.
 
 ## Suggested checkpoints
 
-- Add unit tests for concrete base port declaration output and editor port
-  registration.
-- Migrate declarative process nodes and run process-node tests.
-- Migrate direct nodes in one wave and run the full test suite.
-- Replace editor link internals with typed links behind a compatibility export
-  adapter.
+- Done: introduce `DpgNodeBase`, migrate direct node subclasses to inherit from
+  it, and move existing concrete helper methods from `DpgNodeABC` into
+  `DpgNodeBase`.
+- Done: migrate declarative and direct node static graph attributes to typed
+  `PortRef` declarations while preserving existing compact DPG tags.
+- Done: wire node-owned declared ports into the editor registry during node
+  creation, with callback support for dynamic ports created later.
+- Done: replace hovered-port discovery and node-port lookup with registered
+  `PortRef` iteration first, with legacy compact-tag scanning as fallback.
+- Done: add typed `LinkRef` registry entries while preserving legacy `_node_link_list`
+  pairs for existing export/history/runtime code.
+- Next: add a typed import/export schema and conversion path for checked-in graph
+  fixtures.
 - Add import/export round-trip tests covering both legacy compact strings and any
   future typed endpoint schema.

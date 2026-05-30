@@ -47,20 +47,18 @@ Implemented so far:
 
 Important limitation of the current implementation:
 
-- The editor now has typed `LinkRef` records for canonical link registry entries,
-  but history/import/export still expose compact string pairs. The next step is
-  to migrate those boundaries toward a typed serialized schema so old compact
-  strings remain only a compatibility adapter.
+- The editor now exports typed `link_refs` alongside legacy `link_list` pairs and
+  imports `link_refs` when present. History/runtime still expose compact string
+  pairs, so those boundaries are the next migration target.
 
 ## Next work
 
-1. Migrate history, runtime, import, and export from string pairs toward typed
+1. Convert the checked-in graph fixtures by importing and exporting them so they
+   gain `link_refs`.
+2. After those fixtures are converted, remove legacy compact-link fallback from
+   normal import paths and keep it only in targeted compatibility tests if needed.
+3. Migrate history and runtime connection consumers from string pairs toward typed
    refs behind compatibility adapters.
-2. Add a typed serialized link schema and import/export round-trip coverage for
-   both legacy compact strings and typed ref-backed internal state.
-3. Keep legacy parsing only for imported graphs, callback aliases, undo/redo data,
-   and other compatibility boundaries until the checked-in graph fixtures have
-   been converted.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -160,13 +158,14 @@ shifting editor internals from string pairs toward typed objects.
 
 Implemented intermediate model:
 
-- keep `_node_link_list` as exported legacy string pairs until import/export and
-  runtime are migrated,
+- keep `_node_link_list` as exported legacy string pairs until history/runtime
+  are migrated,
 - add `LinkRef` as the canonical typed link record stored in `_link_registry` and
   `_link_by_dest_port_ref`,
 - make `_mdl_add_link()` accept string aliases or `PortRef` endpoints on the normal
   path and normalize successful links to `LinkRef`,
-- keep string-to-`PortRef` resolution available at boundaries.
+- export typed `link_refs` from `LinkRef` data and import `link_refs` before
+  falling back to legacy `link_list`.
 
 Boundary-only parsing is still acceptable for:
 
@@ -211,6 +210,16 @@ After nodes reliably register ports, migrate graph consumers in this order:
 
 At the end of this step, parsing a port tag should be a compatibility adapter,
 not part of normal graph mutation.
+
+Current typed import/export checkpoint:
+
+- New exports include `link_refs` records with typed source/destination endpoint
+  metadata plus the existing `link_list` compatibility field.
+- Imports prefer `link_refs` when present and remap endpoint node IDs through the
+  same import ID map as nodes.
+- The checked-in exported graph fixtures can now be opened and re-exported to gain
+  `link_refs`; after that conversion lands, legacy import fallback can be removed
+  from normal import paths.
 
 ## Serialization and DearPyGui tag format notes
 
@@ -264,8 +273,8 @@ plus a readable compact boundary string.
 - Done: replace hovered-port discovery and node-port lookup with registered
   `PortRef` iteration first, with legacy compact-tag scanning as fallback.
 - Done: add typed `LinkRef` registry entries while preserving legacy `_node_link_list`
-  pairs for existing export/history/runtime code.
-- Next: add a typed import/export schema and conversion path for checked-in graph
-  fixtures.
-- Add import/export round-trip tests covering both legacy compact strings and any
-  future typed endpoint schema.
+  pairs for existing history/runtime code.
+- Done: add typed `link_refs` import/export schema while keeping legacy `link_list`
+  for compatibility.
+- Next: convert checked-in graph fixtures by importing/exporting them, then remove
+  normal-path legacy link fallback.

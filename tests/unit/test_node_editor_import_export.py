@@ -72,8 +72,10 @@ class TestDpgNodeEditorImportExport:
 
         assert 'node_list' in exported_data
         assert 'link_list' in exported_data
+        assert 'link_refs' in exported_data
         assert exported_data['node_list'] == []
         assert exported_data['link_list'] == []
+        assert exported_data['link_refs'] == []
 
     def test_export_with_nodes(
         self,
@@ -103,6 +105,26 @@ class TestDpgNodeEditorImportExport:
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01'
         ]]
+        assert exported_data['link_refs'] == [
+            {
+                'source': {
+                    'node': {'id': '1', 'tag': 'test_node'},
+                    'direction': 'Output',
+                    'data_type': 'Image',
+                    'index': 1,
+                    'port_name': 'Output01',
+                    'dpg_tag': '1:test_node:Image:Output01',
+                },
+                'destination': {
+                    'node': {'id': '2', 'tag': 'test_node'},
+                    'direction': 'Input',
+                    'data_type': 'Image',
+                    'index': 1,
+                    'port_name': 'Input01',
+                    'dpg_tag': '2:test_node:Image:Input01',
+                },
+            }
+        ]
 
         assert '1:test_node' in exported_data
         assert '2:test_node' in exported_data
@@ -188,6 +210,66 @@ class TestDpgNodeEditorImportExport:
             '2:test_node:Image:Input01',
             parent=node_editor._node_editor_tag
         )
+
+    def test_import_prefers_typed_link_refs(
+        self,
+        node_editor,
+        mock_dpg,
+        mock_node_instance,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_list': [],
+            'link_refs': [
+                {
+                    'source': {
+                        'node': {'id': '1', 'tag': 'test_node'},
+                        'direction': 'Output',
+                        'data_type': 'Image',
+                        'index': 1,
+                        'port_name': 'Output01',
+                        'dpg_tag': '1:test_node:Image:Output01',
+                    },
+                    'destination': {
+                        'node': {'id': '2', 'tag': 'test_node'},
+                        'direction': 'Input',
+                        'data_type': 'Image',
+                        'index': 1,
+                        'port_name': 'Input01',
+                        'dpg_tag': '2:test_node:Image:Input01',
+                    },
+                }
+            ],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 400]},
+            },
+        }
+        temp_path = tmp_path / 'typed_import.json'
+        temp_path.write_text(json.dumps(test_data))
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '2:test_node:Image:Input01',
+        ]]
+        link_ref = node_editor._mdl_get_link_ref_by_destination(
+            '2:test_node:Image:Input01'
+        )
+        assert link_ref is not None
+        assert link_ref.source.dpg_tag == '1:test_node:Image:Output01'
+        assert link_ref.destination.dpg_tag == '2:test_node:Image:Input01'
 
     def test_import_is_undoable_and_redoable(
         self,

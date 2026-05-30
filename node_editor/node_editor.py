@@ -224,10 +224,43 @@ class DpgNodeEditor(object):
             return [source_tag, dest_tag]
         return None
 
+    def _mdl_serialize_port_ref(self, port_ref):
+        return {
+            'node': {
+                'id': port_ref.node_ref.node_id,
+                'tag': port_ref.node_ref.node_tag,
+            },
+            'direction': port_ref.direction,
+            'data_type': port_ref.data_type,
+            'index': port_ref.index,
+            'port_name': port_ref.port_name,
+            'dpg_tag': port_ref.dpg_tag,
+        }
+
+    def _mdl_serialize_link_ref(self, link_ref):
+        return {
+            'source': self._mdl_serialize_port_ref(link_ref.source),
+            'destination': self._mdl_serialize_port_ref(link_ref.destination),
+        }
+
+    def _mdl_get_link_refs_for_export(self):
+        link_refs = []
+        for source_tag, dest_tag in self._node_link_list:
+            link_ref = self._link_registry.get((source_tag, dest_tag))
+            if link_ref is None:
+                link_ref = self._mdl_validate_link(source_tag, dest_tag)
+            if link_ref is not None:
+                link_refs.append(link_ref)
+        return link_refs
+
     def _mdl_get_export_settings(self):
         setting_dict = {}
         setting_dict['node_list'] = self._node_list
         setting_dict['link_list'] = self._node_link_list
+        setting_dict['link_refs'] = [
+            self._mdl_serialize_link_ref(link_ref)
+            for link_ref in self._mdl_get_link_refs_for_export()
+        ]
         for node_id_name in self._node_list:
             node_id, node_name = node_id_name.split(':')
             node = self._node_instance_list[node_name]
@@ -1761,22 +1794,16 @@ class DpgNodeEditor(object):
                 }
             )
 
-        for link_info in setting_dict['link_list']:
-            source_parts = link_info[0].split(':')
-            dest_parts = link_info[1].split(':')
-
-            if source_parts[0] in id_map and dest_parts[0] in id_map:
-                source_parts[0] = id_map[source_parts[0]]
-                dest_parts[0] = id_map[dest_parts[0]]
-                new_source = ':'.join(source_parts)
-                new_destination = ':'.join(dest_parts)
-                if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
-                    imported_links_payload = [
-                        link
-                        for link in imported_links_payload
-                        if link[1] != new_destination
-                    ]
-                    imported_links_payload.append((new_source, new_destination))
+        for new_source, new_destination in self._cntrl_iter_import_link_tags(
+            setting_dict, id_map
+        ):
+            if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
+                imported_links_payload = [
+                    link
+                    for link in imported_links_payload
+                    if link[1] != new_destination
+                ]
+                imported_links_payload.append((new_source, new_destination))
 
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
@@ -1784,6 +1811,56 @@ class DpgNodeEditor(object):
             'nodes': imported_nodes_payload,
             'links': imported_links_payload,
         }
+
+    def _cntrl_iter_import_link_tags(self, setting_dict, id_map):
+        link_refs = setting_dict.get('link_refs')
+        if isinstance(link_refs, list):
+            for link_ref_payload in link_refs:
+                link_tags = self._cntrl_import_link_ref_payload_to_tags(
+                    link_ref_payload, id_map
+                )
+                if link_tags is not None:
+                    yield link_tags
+            return
+
+        for link_info in setting_dict['link_list']:
+            if not isinstance(link_info, (list, tuple)) or len(link_info) != 2:
+                continue
+            source_parts = link_info[0].split(':')
+            dest_parts = link_info[1].split(':')
+
+            if source_parts[0] in id_map and dest_parts[0] in id_map:
+                source_parts[0] = id_map[source_parts[0]]
+                dest_parts[0] = id_map[dest_parts[0]]
+                yield ':'.join(source_parts), ':'.join(dest_parts)
+
+    def _cntrl_import_link_ref_payload_to_tags(self, link_ref_payload, id_map):
+        if not isinstance(link_ref_payload, dict):
+            return None
+        source_tag = self._cntrl_import_port_ref_payload_to_tag(
+            link_ref_payload.get('source'), id_map
+        )
+        destination_tag = self._cntrl_import_port_ref_payload_to_tag(
+            link_ref_payload.get('destination'), id_map
+        )
+        if source_tag is None or destination_tag is None:
+            return None
+        return source_tag, destination_tag
+
+    def _cntrl_import_port_ref_payload_to_tag(self, port_ref_payload, id_map):
+        if not isinstance(port_ref_payload, dict):
+            return None
+        node_payload = port_ref_payload.get('node')
+        if not isinstance(node_payload, dict):
+            return None
+        old_node_id = str(node_payload.get('id'))
+        new_node_id = id_map.get(old_node_id)
+        node_tag = node_payload.get('tag')
+        data_type = port_ref_payload.get('data_type')
+        port_name = port_ref_payload.get('port_name')
+        if not all([new_node_id, node_tag, data_type, port_name]):
+            return None
+        return f'{new_node_id}:{node_tag}:{data_type}:{port_name}'
 
     def _cntrl_sync_position_cache(self):
         self._node_position_cache = {}

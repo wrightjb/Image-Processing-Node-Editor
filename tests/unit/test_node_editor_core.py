@@ -86,6 +86,8 @@ class PortDeclaringDummyNode(DpgNodeBase):
         del parent, pos, opencv_setting_dict, callback
         self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
         self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        self.input_port(node_id, self.TYPE_INT, 'Input01')
+        self.output_port(node_id, self.TYPE_INT, 'Output01')
         return f"{node_id}:{self.node_tag}"
 
     def update(self, node_id, connection_list, img_dict, res_dict):
@@ -321,7 +323,7 @@ def test_find_node_port_uses_registered_port_beyond_legacy_scan_range(editor_and
     )
 
 
-def test_find_node_port_falls_back_to_legacy_scan_and_registers(editor_and_dpg):
+def test_find_node_port_requires_registered_port(editor_and_dpg):
     editor, dpg = editor_and_dpg
     input_tag = '1:TestNode:Image:Input01'
     dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
@@ -331,8 +333,8 @@ def test_find_node_port_falls_back_to_legacy_scan_and_registers(editor_and_dpg):
         else {}
     )
 
-    assert editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input') == input_tag
-    assert editor._port_registry[input_tag].port_name == 'Input01'
+    assert editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input') is None
+    assert input_tag not in editor._port_registry
 
 
 def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
@@ -504,6 +506,7 @@ def test_link_cycle_is_rejected(editor_and_dpg):
 
 def test_insert_node_into_selected_link(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dpg.get_item_alias.side_effect = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
@@ -567,6 +570,7 @@ def test_insert_node_into_selected_link(editor_and_dpg):
 
 def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dpg.does_item_exist.side_effect = lambda _tag: True
     dpg.get_item_pos.side_effect = lambda tag: [300, 200] if tag == '2:TestNode' else [0, 0]
     dpg.get_item_configuration.side_effect = lambda tag: (
@@ -597,6 +601,7 @@ def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
 
 def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     alias_map = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
@@ -1096,6 +1101,14 @@ def test_open_add_node_popup_from_hovered_output_port(editor_and_dpg):
     editor, dpg = editor_and_dpg
     output_tag = '1:TestNode:Int:Output01'
     editor._node_list = ['1:TestNode']
+    editor._mdl_register_port_ref(PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Int',
+        index=1,
+        port_name='Output01',
+        dpg_tag=output_tag,
+    ))
     editor._vw_populate_append_popup_menu = Mock()
     dpg.does_item_exist.side_effect = lambda tag: tag == output_tag
     dpg.is_item_hovered.side_effect = lambda tag: tag == output_tag
@@ -1120,6 +1133,14 @@ def test_open_add_node_popup_from_hovered_input_port(editor_and_dpg):
     editor, dpg = editor_and_dpg
     input_tag = '1:TestNode:Int:Input01'
     editor._node_list = ['1:TestNode']
+    editor._mdl_register_port_ref(PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Input',
+        data_type='Int',
+        index=1,
+        port_name='Input01',
+        dpg_tag=input_tag,
+    ))
     editor._vw_populate_prepend_popup_menu = Mock()
     dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
     dpg.is_item_hovered.side_effect = lambda tag: tag == input_tag
@@ -1142,6 +1163,7 @@ def test_open_add_node_popup_from_hovered_input_port(editor_and_dpg):
 
 def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     source_tag = '1:TestNode:Int:Output01'
     input_tag = '2:TestNode:Int:Input01'
     editor._node_id = 1
@@ -1174,6 +1196,7 @@ def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
 
 def test_add_node_to_hovered_input_creates_connected_node(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dest_tag = '1:TestNode:Int:Input01'
     output_tag = '2:TestNode:Int:Output01'
     editor._node_id = 1

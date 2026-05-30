@@ -1355,39 +1355,11 @@ class DpgNodeEditor(object):
                 return port_ref.dpg_tag
         return None
 
-    def _cntrl_get_hovered_legacy_port_tag(self, direction):
-        for node_id_name in self._node_list:
-            parts = node_id_name.split(':')
-            if len(parts) < 2:
-                continue
-            node_id = parts[0]
-            node_name = parts[1]
-            for index in range(100):
-                port_tag = f'{node_id}:{node_name}:Image:{direction}{index:02d}'
-                if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
-                    return port_tag
-                for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
-                    type_port_tag = (
-                        f'{node_id}:{node_name}:{port_type}:{direction}{index:02d}'
-                    )
-                    if (
-                        dpg.does_item_exist(type_port_tag)
-                        and dpg.is_item_hovered(type_port_tag)
-                    ):
-                        return type_port_tag
-        return None
-
     def _cntrl_get_hovered_output_port_tag(self):
-        registered_tag = self._cntrl_get_hovered_registered_port_tag('Output')
-        if registered_tag is not None:
-            return registered_tag
-        return self._cntrl_get_hovered_legacy_port_tag('Output')
+        return self._cntrl_get_hovered_registered_port_tag('Output')
 
     def _cntrl_get_hovered_input_port_tag(self):
-        registered_tag = self._cntrl_get_hovered_registered_port_tag('Input')
-        if registered_tag is not None:
-            return registered_tag
-        return self._cntrl_get_hovered_legacy_port_tag('Input')
+        return self._cntrl_get_hovered_registered_port_tag('Input')
 
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
@@ -1425,19 +1397,6 @@ class DpgNodeEditor(object):
             ):
                 return port_ref.dpg_tag
 
-        for index in range(100):
-            port_tag = (
-                f'{node_id_name}:{port_type}:{port_prefix}{index:02d}'
-            )
-            if not dpg.does_item_exist(port_tag):
-                continue
-
-            if expected_attr_type is not None:
-                config = dpg.get_item_configuration(port_tag)
-                if config.get('attribute_type') != expected_attr_type:
-                    continue
-            self._cntrl_parse_port_tag(port_tag)
-            return port_tag
         return None
 
 

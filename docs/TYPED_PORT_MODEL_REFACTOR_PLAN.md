@@ -61,9 +61,7 @@ Important limitation of the current implementation:
 1. Continue migrating individual non-declarative node `update()` implementations
    to use `_iter_connection_infos()` and typed connection adapter fields directly
    instead of relying on tag-compatible metadata wrappers.
-2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
-   paths are confirmed to register `PortRef` data.
-3. Drop any remaining compact-link compatibility tests that are no longer needed.
+2. Drop any remaining compact-link compatibility tests that are no longer needed.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -136,19 +134,17 @@ data was populated lazily from parsed strings rather than authoritatively during
 node creation.
 
 Done: `_cntrl_get_hovered_output_port_tag()` and
-`_cntrl_get_hovered_input_port_tag()` now iterate registered `PortRef` data
-before falling back to synthesized DearPyGui tags for legacy/imported graphs.
-`_cntrl_find_node_port()` also prefers registered refs so newly created nodes can
-be connected through the typed registry rather than through fixed index scans.
+`_cntrl_get_hovered_input_port_tag()` now iterate registered `PortRef` data only;
+legacy DearPyGui tag synthesis is no longer used for hovered-port discovery.
+`_cntrl_find_node_port()` also requires registered refs, so newly created nodes are
+connected through the typed registry rather than through fixed index scans.
 
 Implemented incremental shape:
 
 1. public helpers still return compact DPG tags, so surrounding context-menu code
    remains compatible,
-2. returned tags are sourced from registered `PortRef` objects when available,
-3. legacy tag synthesis remains only as a fallback for imported/test graphs that
-   have not gone through creation-time registration,
-4. behavior tests cover registered high-index ports, legacy fallback registration,
+2. returned tags are sourced from registered `PortRef` objects,
+3. behavior tests cover registered high-index ports, missing-registration behavior,
    add-node-from-hovered-output, add-node-to-hovered-input, insert-node-between-links,
    and occupied input replacement.
 
@@ -298,7 +294,8 @@ plus a readable compact boundary string.
 - Done: wire node-owned declared ports into the editor registry during node
   creation, with callback support for dynamic ports created later.
 - Done: replace hovered-port discovery and node-port lookup with registered
-  `PortRef` iteration first, with legacy compact-tag scanning as fallback.
+  `PortRef` iteration; legacy compact-tag scanning has been removed from these
+  normal paths.
 - Done: add typed `LinkRef` registry entries while preserving legacy `_node_link_list`
   pairs for existing history/runtime code.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy

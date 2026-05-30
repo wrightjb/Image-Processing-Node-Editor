@@ -55,6 +55,18 @@ class DummyNode:
         pass
 
 
+class ParameterDefaultDummyNode(DummyNode):
+    def get_setting_dict(self, node_id):
+        return {
+            "ver": self._ver,
+            "pos": [0, 0],
+            f"{node_id}:TestNode:Text:Input04Value": False,
+        }
+
+    def set_setting_dict(self, node_id, setting_dict):
+        self.last_setting = setting_dict
+
+
 class PortDeclaringDummyNode(DpgNodeBase):
     _ver = '1.0'
     node_tag = 'TestNode'
@@ -759,6 +771,46 @@ def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     assert value_state[param_tag] == 5
     editor._cntrl_redo(None, None)
     assert value_state[param_tag] == 7
+
+
+def test_raw_widget_callback_uses_primed_add_node_defaults(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    node = ParameterDefaultDummyNode()
+    editor._node_instance_list['TestNode'] = node
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    param_tag = '1:TestNode:Text:Input04Value'
+    value_state = {param_tag: True}
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._undo_stack.clear()
+    editor._redo_stack.clear()
+
+    editor._cntrl_node_callback(param_tag, True)
+
+    assert len(editor._undo_stack) == 1
+    assert editor._undo_stack[-1].before_value is False
+    assert editor._undo_stack[-1].after_value is True
+    editor._cntrl_undo(None, None)
+    assert value_state[param_tag] is False
+
+
+def test_add_node_from_history_remaps_parameter_setting_keys(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    node = ParameterDefaultDummyNode()
+    editor._node_instance_list['TestNode'] = node
+    dpg.does_item_exist.return_value = True
+    setting = {
+        'ver': '1.0',
+        'pos': [0, 0],
+        '1:TestNode:Text:Input04Value': False,
+    }
+
+    editor._cntrl_add_node_with_id('TestNode', 7, [0, 0], setting)
+
+    assert node.last_setting['7:TestNode:Text:Input04Value'] is False
+    assert editor._parameter_last_values['7:TestNode:Text:Input04Value'] is False
 
 
 def test_raw_widget_callback_records_parameter_history(editor_and_dpg):

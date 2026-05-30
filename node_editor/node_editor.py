@@ -857,6 +857,7 @@ class DpgNodeEditor(object):
         self._node_list.append(new_node_id_name)
         self._cntrl_update_node_position_cache(new_node_id_name)
         node_setting = self.get_node_instance(user_data).get_setting_dict(str(new_id))
+        self._cntrl_prime_parameter_last_values_from_setting(node_setting)
         self._cntrl_push_undo_command(
             AddNodeCommand(
                 new_id,
@@ -877,6 +878,19 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
 
+    def _cntrl_remap_node_setting_for_id(self, node_tag, node_id, setting):
+        if not isinstance(setting, dict):
+            return setting
+        remapped_setting = {}
+        for key, value in setting.items():
+            if isinstance(key, str):
+                key_parts = key.split(':')
+                if len(key_parts) >= 2 and key_parts[1] == node_tag:
+                    key_parts[0] = str(node_id)
+                    key = ':'.join(key_parts)
+            remapped_setting[key] = value
+        return remapped_setting
+
     def _cntrl_add_node_with_id(self, node_tag, node_id, pos, setting):
         self._node_id = max(self._node_id, int(node_id))
         node_id_name = f'{node_id}:{node_tag}'
@@ -887,10 +901,14 @@ class DpgNodeEditor(object):
         self._node_list.append(node_id_name)
         self._cntrl_update_node_position_cache(node_id_name)
         node = self.get_node_instance(node_tag)
+        remapped_setting = self._cntrl_remap_node_setting_for_id(
+            node_tag, node_id, copy.deepcopy(setting)
+        )
         try:
-            node.set_setting_dict(str(node_id), copy.deepcopy(setting))
+            node.set_setting_dict(str(node_id), remapped_setting)
         except Exception:
             pass
+        self._cntrl_prime_parameter_last_values_from_setting(remapped_setting)
         return node_id_name
 
     def _cntrl_add_node_from_history(self, node_tag, requested_node_id, pos, setting):

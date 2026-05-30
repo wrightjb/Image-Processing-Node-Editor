@@ -5,6 +5,13 @@ import dearpygui.dearpygui as dpg
 from node.port_model import NodeRef, PortRef
 
 
+class _PortTagString(str):
+    def __new__(cls, value, port_ref=None):
+        tag = str.__new__(cls, value)
+        tag.port_ref = port_ref
+        return tag
+
+
 class DpgNodeABC(metaclass=ABCMeta):
     _ver = '0.0.0'
 
@@ -75,6 +82,9 @@ class DpgNodeBase(DpgNodeABC):
         return f'{node_name}:{value_type}:{port_name}'
 
     def _value_tag(self, port_tag):
+        port_ref = getattr(port_tag, 'port_ref', None)
+        if port_ref is not None and port_ref.value_tag:
+            return port_ref.value_tag
         return f'{port_tag}Value'
 
     def _node_port_tag(self, node_id, value_type, port_name):
@@ -194,18 +204,27 @@ class DpgNodeBase(DpgNodeABC):
             self._port_registration_callback = None
 
     def _extract_source_node_key(self, source_tag):
+        port_ref = getattr(source_tag, 'port_ref', None)
+        if port_ref is not None:
+            return port_ref.node_ref.node_id_name
         source_tokens = source_tag.split(':')
         if len(source_tokens) < 2:
             return ''
         return ':'.join(source_tokens[:2])
 
     def _extract_port_name(self, tag):
+        port_ref = getattr(tag, 'port_ref', None)
+        if port_ref is not None:
+            return port_ref.port_name
         tag_tokens = tag.split(':')
         if len(tag_tokens) < 4:
             return ''
         return tag_tokens[3]
 
     def _extract_node_id(self, tag):
+        port_ref = getattr(tag, 'port_ref', None)
+        if port_ref is not None:
+            return port_ref.node_ref.node_id
         tag_tokens = tag.split(':')
         if len(tag_tokens) < 2:
             return ''
@@ -244,12 +263,19 @@ class DpgNodeBase(DpgNodeABC):
 
     def _iter_connections(self, connection_list):
         for (
-            _connection_info,
+            connection_info,
             source_tag,
             destination_tag,
             connection_type,
         ) in self._iter_connection_infos(connection_list):
-            yield source_tag, destination_tag, connection_type
+            yield (
+                _PortTagString(source_tag, getattr(connection_info, 'source', None)),
+                _PortTagString(
+                    destination_tag,
+                    getattr(connection_info, 'destination', None),
+                ),
+                connection_type,
+            )
 
     def _editor_toolbar_attr_tag(self, node_id):
         return f'{self._node_name(node_id)}:ToolbarAttr'

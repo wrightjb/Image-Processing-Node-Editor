@@ -115,6 +115,38 @@ def test_concrete_base_iter_connection_infos_exposes_typed_adapter():
     ]
 
 
+def test_concrete_base_iter_connections_tags_preserve_typed_metadata():
+    node = IntValueNode()
+    source = PortRef(
+        node_ref=NodeRef('1', 'Src'),
+        direction='Output',
+        data_type='Int',
+        index=1,
+        port_name='Output01',
+        dpg_tag='legacy:source:Int:Output99',
+        value_tag='1:Src:Int:Output01Value',
+    )
+    destination = PortRef(
+        node_ref=NodeRef('2', 'IntValue'),
+        direction='Input',
+        data_type='Int',
+        index=1,
+        port_name='Input01',
+        dpg_tag='legacy:dest:Int:Input99',
+        value_tag='2:IntValue:Int:Input01Value',
+    )
+    source_tag, destination_tag, connection_type = next(
+        node._iter_connections([LinkConnectionAdapter(LinkRef(source, destination))])
+    )
+
+    assert connection_type == 'Int'
+    assert str(source_tag) == 'legacy:source:Int:Output99'
+    assert node._extract_source_node_key(source_tag) == '1:Src'
+    assert node._extract_node_id(source_tag) == '1'
+    assert node._extract_port_name(destination_tag) == 'Input01'
+    assert node._value_tag(source_tag) == '1:Src:Int:Output01Value'
+
+
 def test_direct_node_add_node_graph_attributes_use_port_declarations():
     import re
     from pathlib import Path

@@ -52,14 +52,15 @@ Important limitation of the current implementation:
   undo/redo link history, and the node `update()` connection boundary all consume
   or preserve typed `LinkRef` data when it is available. The declarative image
   process base now reads typed adapter fields for image inputs and linked
-  parameters; most remaining individual node implementations still read update
-  connections through legacy string-unpacking helpers.
+  parameters, and the shared legacy connection helper now passes tag-compatible
+  strings that preserve typed endpoint metadata for non-declarative nodes still
+  using `_iter_connections()`.
 
 ## Next work
 
 1. Continue migrating individual non-declarative node `update()` implementations
-   to use typed connection adapter fields (`source`, `destination`, `link_ref`)
-   instead of string parsing.
+   to use `_iter_connection_infos()` and typed connection adapter fields directly
+   instead of relying on tag-compatible metadata wrappers.
 2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
    paths are confirmed to register `PortRef` data.
 3. Drop any remaining compact-link compatibility tests that are no longer needed.
@@ -229,7 +230,9 @@ Current typed graph-consumer checkpoint:
   endpoints while still iterating like the legacy source/destination tag pair.
 - `DeclarativeImageProcessNodeBase` consumes typed adapter fields for its image
   source lookup and linked-parameter synchronization while keeping legacy pair
-  fallback behavior.
+  fallback behavior. `_iter_connections()` now yields tag-compatible strings that
+  retain `PortRef` metadata, so existing non-declarative nodes using shared source,
+  port-name, node-id, and value-tag helpers also avoid reparsing typed endpoints.
 - History replay normalizes stored link entries through a link-pair adapter, so
   commands can carry `LinkRef` payloads while older string-pair commands continue
   to replay through the same ID-remapping path. New link-add, link-replace,

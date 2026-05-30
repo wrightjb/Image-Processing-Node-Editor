@@ -381,6 +381,13 @@ class TestDpgNodeEditorImportExport:
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
         ]]
+        assert node_editor.get_sorted_node_connection() == OrderedDict([
+            ('1:test_node', []),
+            ('2:test_node', [[
+                '1:test_node:Image:Output01',
+                '2:test_node:Image:Input01',
+            ]]),
+        ])
         assert len(node_editor._undo_stack) == 1
 
     @pytest.mark.parametrize(

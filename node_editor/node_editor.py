@@ -2087,6 +2087,8 @@ class DpgNodeEditor(object):
         self._suspend_parameter_history = True
         try:
             action(self)
+            self._mdl_sort_node_graph()
+            self._cntrl_sync_position_cache()
         finally:
             self._suspend_parameter_history = False
 

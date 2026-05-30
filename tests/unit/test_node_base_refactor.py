@@ -1,4 +1,5 @@
 from node.node_abc import DpgNodeABC, DpgNodeBase
+from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
 from node.input_node.node_int_value import Node as IntValueNode
 from node.process_node.node_blur import Node as BlurNode
 
@@ -57,6 +58,32 @@ def test_concrete_base_preserves_connection_iteration_guards():
         ['1:Src:Int:Output02'],
         [None, '2:IntValue:Int:Input02'],
     ])) == [
+        ('1:Src:Int:Output01', '2:IntValue:Int:Input01', 'Int'),
+    ]
+
+
+def test_concrete_base_iter_connections_accepts_typed_link_adapter():
+    node = IntValueNode()
+    link_ref = LinkRef(
+        PortRef(
+            node_ref=NodeRef('1', 'Src'),
+            direction='Output',
+            data_type='Int',
+            index=1,
+            port_name='Output01',
+            dpg_tag='1:Src:Int:Output01',
+        ),
+        PortRef(
+            node_ref=NodeRef('2', 'IntValue'),
+            direction='Input',
+            data_type='Int',
+            index=1,
+            port_name='Input01',
+            dpg_tag='2:IntValue:Int:Input01',
+        ),
+    )
+
+    assert list(node._iter_connections([LinkConnectionAdapter(link_ref)])) == [
         ('1:Src:Int:Output01', '2:IntValue:Int:Input01', 'Int'),
     ]
 

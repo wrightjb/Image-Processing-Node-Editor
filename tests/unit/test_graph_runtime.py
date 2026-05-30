@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from unittest.mock import Mock
 
-from node.port_model import LinkRef, NodeRef, PortRef
+from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
 from node_editor.graph_runtime import GraphRuntime
 
 
@@ -42,7 +42,7 @@ def _port_ref(node_id, node_tag, direction, data_type, port_name):
     )
 
 
-def test_graph_runtime_prefers_typed_connection_refs_and_passes_legacy_adapter():
+def test_graph_runtime_prefers_typed_connection_refs_and_passes_typed_adapter():
     source_node = Mock()
     source_node.update.return_value = ('src-img', {'source': 1})
 
@@ -66,8 +66,15 @@ def test_graph_runtime_prefers_typed_connection_refs_and_passes_legacy_adapter()
     runtime.step(editor, mode_async=False)
 
     process_node.update.assert_called_once()
-    assert process_node.update.call_args.args[1] == [link_ref.legacy_pair]
+    connection_list = process_node.update.call_args.args[1]
+    assert len(connection_list) == 1
+    assert isinstance(connection_list[0], LinkConnectionAdapter)
+    assert connection_list[0].link_ref == link_ref
+    assert list(connection_list[0]) == link_ref.legacy_pair
+    assert connection_list[0].source == link_ref.source
+    assert connection_list[0].destination == link_ref.destination
     assert runtime.node_image_dict['2:ProcessNode'] == 'img1'
+
 
 def test_graph_runtime_persists_state_between_steps():
     source_node = Mock()

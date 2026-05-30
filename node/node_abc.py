@@ -213,13 +213,16 @@ class DpgNodeBase(DpgNodeABC):
 
     def _iter_connections(self, connection_list):
         for connection_info in connection_list:
-            if (
-                not isinstance(connection_info, (list, tuple))
-                or len(connection_info) < 2
+            if hasattr(connection_info, 'legacy_pair'):
+                source_tag, destination_tag = connection_info.legacy_pair
+            elif (
+                isinstance(connection_info, (list, tuple))
+                and len(connection_info) >= 2
             ):
+                source_tag, destination_tag = connection_info[0], connection_info[1]
+            else:
                 continue
 
-            source_tag, destination_tag = connection_info[0], connection_info[1]
             if not isinstance(source_tag, str) or not isinstance(destination_tag, str):
                 continue
 

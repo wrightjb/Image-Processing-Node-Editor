@@ -4,6 +4,8 @@ import copy
 import hashlib
 import pickle
 
+from node.port_model import LinkConnectionAdapter
+
 
 class GraphRuntime:
     """Owns graph update state (images/results/cache) and executes update ticks."""
@@ -158,9 +160,15 @@ def _strip_cache_meta(result):
     }
 
 
-def _connection_info_to_legacy_pair(connection_info):
-    if hasattr(connection_info, 'legacy_pair'):
-        return connection_info.legacy_pair
+def _connection_info_to_update_connection(connection_info):
+    if isinstance(connection_info, LinkConnectionAdapter):
+        return connection_info
+    if (
+        hasattr(connection_info, 'source')
+        and hasattr(connection_info, 'destination')
+        and hasattr(connection_info, 'legacy_pair')
+    ):
+        return LinkConnectionAdapter(connection_info)
     return connection_info
 
 
@@ -257,7 +265,7 @@ def update_node_info(
             if _is_valid_connection(connection_info, active_node_set)
         ]
         connection_list = [
-            _connection_info_to_legacy_pair(connection_info)
+            _connection_info_to_update_connection(connection_info)
             for connection_info in connection_refs
         ]
 

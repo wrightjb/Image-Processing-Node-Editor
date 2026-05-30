@@ -48,15 +48,17 @@ Implemented so far:
 Important limitation of the current implementation:
 
 - The editor now exports and imports typed `link_refs` directly; graph sorting,
-  cycle detection, delete-through-node reconnection, the runtime scheduler, and
-  undo/redo link history all consume or preserve typed `LinkRef` data when it is
-  available. Node `update()` calls still receive compact string-pair adapters, so
-  that boundary remains the next migration target.
+  cycle detection, delete-through-node reconnection, the runtime scheduler,
+  undo/redo link history, and the node `update()` connection boundary all consume
+  or preserve typed `LinkRef` data when it is available. Most node implementations
+  still read those update connections through legacy string-unpacking helpers, but
+  the runtime now passes a typed compatibility adapter instead of flattening typed
+  links to raw string pairs.
 
 ## Next work
 
-1. Migrate node `update()` connection consumers from string pairs toward typed refs
-   behind compatibility adapters.
+1. Migrate individual node `update()` implementations to use typed connection
+   adapter fields (`source`, `destination`, `link_ref`) instead of string parsing.
 2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
    paths are confirmed to register `PortRef` data.
 3. Drop any remaining compact-link compatibility tests that are no longer needed.
@@ -221,8 +223,9 @@ Current typed graph-consumer checkpoint:
   adjacency from typed registered links.
 - Delete-through-node reconnection reads source/destination node IDs and link data
   types from `LinkRef` endpoints.
-- Runtime scheduling prefers typed sorted connection refs and converts them to the
-  existing compact pair adapter only at the node `update()` call boundary.
+- Runtime scheduling prefers typed sorted connection refs and wraps typed links in
+  a compatibility adapter for node `update()` calls; the adapter exposes typed
+  endpoints while still iterating like the legacy source/destination tag pair.
 - History replay normalizes stored link entries through a link-pair adapter, so
   commands can carry `LinkRef` payloads while older string-pair commands continue
   to replay through the same ID-remapping path. New link-add, link-replace,

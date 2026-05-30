@@ -256,7 +256,6 @@ class DpgNodeEditor(object):
     def _mdl_get_export_settings(self):
         setting_dict = {}
         setting_dict['node_list'] = self._node_list
-        setting_dict['link_list'] = self._node_link_list
         setting_dict['link_refs'] = [
             self._mdl_serialize_link_ref(link_ref)
             for link_ref in self._mdl_get_link_refs_for_export()
@@ -1747,7 +1746,7 @@ class DpgNodeEditor(object):
         if setting_dict is None:
             return
 
-        if 'node_list' not in setting_dict or 'link_list' not in setting_dict:
+        if 'node_list' not in setting_dict or 'link_refs' not in setting_dict:
             raise KeyError('Invalid node editor setting file format.')
 
         id_map = {}
@@ -1813,26 +1812,12 @@ class DpgNodeEditor(object):
         }
 
     def _cntrl_iter_import_link_tags(self, setting_dict, id_map):
-        link_refs = setting_dict.get('link_refs')
-        if isinstance(link_refs, list):
-            for link_ref_payload in link_refs:
-                link_tags = self._cntrl_import_link_ref_payload_to_tags(
-                    link_ref_payload, id_map
-                )
-                if link_tags is not None:
-                    yield link_tags
-            return
-
-        for link_info in setting_dict['link_list']:
-            if not isinstance(link_info, (list, tuple)) or len(link_info) != 2:
-                continue
-            source_parts = link_info[0].split(':')
-            dest_parts = link_info[1].split(':')
-
-            if source_parts[0] in id_map and dest_parts[0] in id_map:
-                source_parts[0] = id_map[source_parts[0]]
-                dest_parts[0] = id_map[dest_parts[0]]
-                yield ':'.join(source_parts), ':'.join(dest_parts)
+        for link_ref_payload in setting_dict['link_refs']:
+            link_tags = self._cntrl_import_link_ref_payload_to_tags(
+                link_ref_payload, id_map
+            )
+            if link_tags is not None:
+                yield link_tags
 
     def _cntrl_import_link_ref_payload_to_tags(self, link_ref_payload, id_map):
         if not isinstance(link_ref_payload, dict):

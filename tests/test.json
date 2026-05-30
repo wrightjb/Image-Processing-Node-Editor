@@ -5,20 +5,6 @@
         "3:Curves",
         "4:ResultImageLarge"
     ],
-    "link_list": [
-        [
-            "1:Image:Image:Output01",
-            "2:Blur:Image:Input01"
-        ],
-        [
-            "2:Blur:Image:Output01",
-            "3:Curves:Image:Input01"
-        ],
-        [
-            "3:Curves:Image:Output01",
-            "4:ResultImageLarge:Image:Input01"
-        ]
-    ],
     "1:Image": {
         "id": "1",
         "name": "Image",
@@ -97,5 +83,79 @@
                 2
             ]
         }
-    }
+    },
+    "link_refs": [
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "Blur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "2:Blur:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "Blur"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "2:Blur:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "3:Curves:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "3:Curves:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "4",
+                    "tag": "ResultImageLarge"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "4:ResultImageLarge:Image:Input01"
+            }
+        }
+    ]
 }

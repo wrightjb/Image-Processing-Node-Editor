@@ -243,15 +243,16 @@ class DpgNodeEditor(object):
             'destination': self._mdl_serialize_port_ref(link_ref.destination),
         }
 
-    def _mdl_get_link_refs_for_export(self):
-        link_refs = []
-        for source_tag, dest_tag in self._node_link_list:
+    def _mdl_iter_link_refs(self):
+        for source_tag, dest_tag in list(self._node_link_list):
             link_ref = self._link_registry.get((source_tag, dest_tag))
             if link_ref is None:
                 link_ref = self._mdl_validate_link(source_tag, dest_tag)
             if link_ref is not None:
-                link_refs.append(link_ref)
-        return link_refs
+                yield link_ref
+
+    def _mdl_get_link_refs_for_export(self):
+        return list(self._mdl_iter_link_refs())
 
     def _mdl_get_export_settings(self):
         setting_dict = {}
@@ -311,27 +312,25 @@ class DpgNodeEditor(object):
 
     def _mdl_sort_node_graph(self):
         node_list = self._node_list
-        node_link_list = self._node_link_list
 
         node_id_dict = OrderedDict({})
         node_connection_dict = OrderedDict({})
 
         # Organize node IDs and node links as dictionaries
-        for source, destination in node_link_list:
-            source_id = int(source.split(':')[0])
-            destination_id = int(destination.split(':')[0])
+        for link_ref in self._mdl_iter_link_refs():
+            source_id = int(link_ref.source.node_ref.node_id)
+            destination_id = int(link_ref.destination.node_ref.node_id)
 
             if destination_id not in node_id_dict:
                 node_id_dict[destination_id] = [source_id]
             else:
                 node_id_dict[destination_id].append(source_id)
 
-            split_destination = destination.split(':')
-            node_name = split_destination[0] + ':' + split_destination[1]
+            node_name = link_ref.destination.node_ref.node_id_name
             if node_name not in node_connection_dict:
-                node_connection_dict[node_name] = [[source, destination]]
+                node_connection_dict[node_name] = [link_ref.legacy_pair]
             else:
-                node_connection_dict[node_name].append([source, destination])
+                node_connection_dict[node_name].append(link_ref.legacy_pair)
 
         node_id_list = list(node_id_dict.items())
         node_connection_list = list(node_connection_dict.items())
@@ -2105,14 +2104,12 @@ class DpgNodeEditor(object):
 
         links_by_dest_node = {}
         outgoing_edges = []
-        for source_tag, dest_tag in self._node_link_list:
-            source_port = self._port_registry.get(source_tag)
-            dest_port = self._port_registry.get(dest_tag)
-            if source_port is None or dest_port is None:
-                continue
-            source_node = source_port.node_ref.node_id_name
-            dest_node = dest_port.node_ref.node_id_name
-            link_type = source_port.data_type
+        for link_ref in self._mdl_iter_link_refs():
+            source_tag = link_ref.source_tag
+            dest_tag = link_ref.destination_tag
+            source_node = link_ref.source.node_ref.node_id_name
+            dest_node = link_ref.destination.node_ref.node_id_name
+            link_type = link_ref.source.data_type
             links_by_dest_node.setdefault(dest_node, []).append(
                 (source_tag, dest_tag, source_node, dest_node, link_type)
             )
@@ -2221,25 +2218,20 @@ class DpgNodeEditor(object):
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
 
     def _cntrl_would_create_cycle(self, source_tag, dest_tag):
-        source_port = self._cntrl_parse_port_tag(source_tag)
-        dest_port = self._cntrl_parse_port_tag(dest_tag)
-        if source_port is None or dest_port is None:
+        link_ref = self._mdl_validate_link(source_tag, dest_tag)
+        if link_ref is None:
             return False
 
-        source_node = source_port.node_ref.node_id_name
-        dest_node = dest_port.node_ref.node_id_name
+        source_node = link_ref.source.node_ref.node_id_name
+        dest_node = link_ref.destination.node_ref.node_id_name
         if source_node == dest_node:
             return True
 
         adjacency = {}
-        for existing_source_tag, existing_dest_tag in self._node_link_list:
-            existing_source = self._cntrl_parse_port_tag(existing_source_tag)
-            existing_dest = self._cntrl_parse_port_tag(existing_dest_tag)
-            if existing_source is None or existing_dest is None:
-                continue
-            adjacency.setdefault(existing_source.node_ref.node_id_name, set()).add(
-                existing_dest.node_ref.node_id_name
-            )
+        for existing_link_ref in self._mdl_iter_link_refs():
+            adjacency.setdefault(
+                existing_link_ref.source.node_ref.node_id_name, set()
+            ).add(existing_link_ref.destination.node_ref.node_id_name)
         adjacency.setdefault(source_node, set()).add(dest_node)
 
         stack = [dest_node]

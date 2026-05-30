@@ -1207,10 +1207,10 @@ def test_sort_node_graph(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_list = ['1:TestNode', '2:TestNode', '3:TestNode', '4:TestNode']
     editor._node_link_list = [
-        ['1:TestNode:Output01', '2:TestNode:Input01'],
-        ['1:TestNode:Output01', '3:TestNode:Input01'],
-        ['2:TestNode:Output01', '4:TestNode:Input01'],
-        ['3:TestNode:Output01', '4:TestNode:Input01'],
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
+        ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
+        ['2:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
+        ['3:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
     ]
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()

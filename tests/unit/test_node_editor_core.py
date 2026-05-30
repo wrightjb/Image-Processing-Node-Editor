@@ -10,11 +10,13 @@ import pytest
 from node.node_abc import DpgNodeBase
 from node.port_model import LinkRef, NodeRef, PortRef
 from node_editor.node_editor import (
+    AddLinkCommand,
     AddNodeCommand,
     CompositeCommand,
     DpgNodeEditor,
     ImportGraphCommand,
     RemoveLinkCommand,
+    ReplaceLinkCommand,
     SetParameterCommand,
 )
 
@@ -181,6 +183,10 @@ def test_link_callback_basic(editor_and_dpg):
     assert editor._mdl_get_link_ref_by_destination(
         '2:TestNode:Int:Input01'
     ) == link_ref
+    undo_command = editor._undo_stack[-1]
+    assert isinstance(undo_command, AddLinkCommand)
+    assert undo_command.source_tag == link_ref
+    assert undo_command.dest_tag is None
     dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
 
 
@@ -397,6 +403,17 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     assert dpg.configure_item.call_args_list[-1].kwargs == {
         'label': 'Node editor'
     }
+    undo_command = editor._undo_stack[-1]
+    assert isinstance(undo_command, ReplaceLinkCommand)
+    assert undo_command.dest_tag is None
+    assert undo_command.old_source_tag.legacy_pair == [
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
+    assert undo_command.new_source_tag.legacy_pair == [
+        '3:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
 
 
 def test_link_mismatched_type_ignored(editor_and_dpg):

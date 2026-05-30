@@ -48,21 +48,18 @@ Implemented so far:
 Important limitation of the current implementation:
 
 - The editor now exports and imports typed `link_refs` directly; graph sorting,
-  cycle detection, delete-through-node reconnection, and the runtime scheduler
-  consume typed `LinkRef` data. History commands can replay typed link payloads
-  through a small adapter, but most history creation sites and all node
-  `update()` calls still receive compact string-pair adapters, so those
-  boundaries remain the next migration target.
+  cycle detection, delete-through-node reconnection, the runtime scheduler, and
+  undo/redo link history all consume or preserve typed `LinkRef` data when it is
+  available. Node `update()` calls still receive compact string-pair adapters, so
+  that boundary remains the next migration target.
 
 ## Next work
 
-1. Store typed link payloads at the remaining history command creation sites
-   instead of raw string pairs.
-2. Migrate node `update()` connection consumers from string pairs toward typed refs
+1. Migrate node `update()` connection consumers from string pairs toward typed refs
    behind compatibility adapters.
-3. Remove remaining registered-port lookup fallbacks once all dynamic port creation
+2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
    paths are confirmed to register `PortRef` data.
-4. Drop any remaining compact-link compatibility tests that are no longer needed.
+3. Drop any remaining compact-link compatibility tests that are no longer needed.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -227,8 +224,10 @@ Current typed graph-consumer checkpoint:
 - Runtime scheduling prefers typed sorted connection refs and converts them to the
   existing compact pair adapter only at the node `update()` call boundary.
 - History replay normalizes stored link entries through a link-pair adapter, so
-  commands can now carry `LinkRef` payloads while older string-pair commands
-  continue to replay through the same ID-remapping path.
+  commands can carry `LinkRef` payloads while older string-pair commands continue
+  to replay through the same ID-remapping path. New link-add, link-replace,
+  delete/reconnect, import, and add-node history payloads now preserve `LinkRef`
+  values when the editor has a registered link.
 
 Current typed import/export checkpoint:
 

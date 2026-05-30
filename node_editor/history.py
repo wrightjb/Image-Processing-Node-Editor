@@ -6,7 +6,9 @@ def _iter_history_link_pairs(editor, links):
         yield editor._cntrl_history_link_pair(link)
 
 
-def _history_link_pair(editor, source_tag, dest_tag):
+def _history_link_pair(editor, source_tag, dest_tag=None):
+    if dest_tag is None:
+        return editor._cntrl_history_link_pair(source_tag)
     return editor._cntrl_history_link_pair((source_tag, dest_tag))
 
 
@@ -136,8 +138,8 @@ class MoveNodeCommand:
 
 @dataclass(frozen=True)
 class AddLinkCommand:
-    source_tag: str
-    dest_tag: str
+    source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
         source_tag, dest_tag = _history_link_pair(
@@ -154,8 +156,8 @@ class AddLinkCommand:
 
 @dataclass(frozen=True)
 class RemoveLinkCommand:
-    source_tag: str
-    dest_tag: str
+    source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
         source_tag, dest_tag = _history_link_pair(
@@ -172,9 +174,9 @@ class RemoveLinkCommand:
 
 @dataclass(frozen=True)
 class ReplaceLinkCommand:
-    old_source_tag: str
-    new_source_tag: str
-    dest_tag: str
+    old_source_tag: object
+    new_source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
         new_source_tag, dest_tag = _history_link_pair(

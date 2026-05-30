@@ -968,6 +968,14 @@ class DpgNodeEditor(object):
             self._cntrl_resolve_history_port_tag(dest_tag),
         ]
 
+    def _cntrl_history_link_payload(self, source_tag, dest_tag):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
+        link_ref = self._link_registry.get((source_tag, dest_tag))
+        if link_ref is not None:
+            return link_ref
+        return (source_tag, dest_tag)
+
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
             if not isinstance(data, dict):
@@ -1480,8 +1488,7 @@ class DpgNodeEditor(object):
                     list(new_pos),
                     copy.deepcopy(node_setting),
                     [
-                        self._mdl_get_link_ref_by_destination(input_tag)
-                        or (source_tag, input_tag)
+                        self._cntrl_history_link_payload(source_tag, input_tag)
                     ],
                     [],
                 )
@@ -1524,7 +1531,11 @@ class DpgNodeEditor(object):
 
         replaced_links = []
         existing_link = self._mdl_get_link_by_destination(dest_tag)
+        existing_link_payload = None
         if existing_link is not None:
+            existing_link_payload = self._cntrl_history_link_payload(
+                existing_link[0], existing_link[1]
+            )
             self._cntrl_remove_link_by_tags(
                 existing_link[0], existing_link[1], record_history=False
             )
@@ -1540,15 +1551,14 @@ class DpgNodeEditor(object):
                 self._cntrl_push_undo_command(
                     CompositeCommand(
                         [
-                            RemoveLinkCommand(replaced_links[0][0], replaced_links[0][1]),
+                            RemoveLinkCommand(existing_link_payload),
                             AddNodeCommand(
                                 new_id,
                                 user_data,
                                 list(new_pos),
                                 copy.deepcopy(node_setting),
                                 [
-                                    self._mdl_get_link_ref_by_destination(dest_tag)
-                                    or (output_tag, dest_tag)
+                                    self._cntrl_history_link_payload(output_tag, dest_tag)
                                 ],
                                 [],
                             ),
@@ -1563,8 +1573,7 @@ class DpgNodeEditor(object):
                         list(new_pos),
                         copy.deepcopy(node_setting),
                         [
-                            self._mdl_get_link_ref_by_destination(dest_tag)
-                            or (output_tag, dest_tag)
+                            self._cntrl_history_link_payload(output_tag, dest_tag)
                         ],
                         [],
                     )
@@ -1635,6 +1644,7 @@ class DpgNodeEditor(object):
             return
 
         original_link = [source_tag, dest_tag]
+        original_link_payload = self._cntrl_history_link_payload(source_tag, dest_tag)
         self._mdl_delete_link(original_link)
         self._link_view_id_map.pop(tuple(original_link), None)
         self._vw_delete_item(selected_link_dpg_id)
@@ -1653,15 +1663,15 @@ class DpgNodeEditor(object):
         self._cntrl_push_undo_command(
             CompositeCommand(
                 [
-                    RemoveLinkCommand(source_tag, dest_tag),
+                    RemoveLinkCommand(original_link_payload),
                     AddNodeCommand(
                         new_id,
                         user_data,
                         list(insert_pos),
                         copy.deepcopy(node_setting),
                         [
-                            (source_tag, input_tag),
-                            (output_tag, dest_tag),
+                            self._cntrl_history_link_payload(source_tag, input_tag),
+                            self._cntrl_history_link_payload(output_tag, dest_tag),
                         ],
                         [],
                     ),
@@ -1719,7 +1729,11 @@ class DpgNodeEditor(object):
             return
 
         existing_link = self._mdl_get_link_by_destination(dest_tag)
+        existing_link_payload = None
         if existing_link is not None:
+            existing_link_payload = self._cntrl_history_link_payload(
+                existing_link[0], existing_link[1]
+            )
             if existing_link[0] == source_tag:
                 self._vw_set_link_feedback(
                     'Link rejected: input is already connected to that source.'
@@ -1736,13 +1750,16 @@ class DpgNodeEditor(object):
             if existing_link is not None:
                 self._cntrl_push_undo_command(
                     ReplaceLinkCommand(
-                        existing_link[0],
-                        source_tag,
-                        dest_tag,
+                        existing_link_payload,
+                        self._cntrl_history_link_payload(source_tag, dest_tag),
                     )
                 )
             else:
-                self._cntrl_push_undo_command(AddLinkCommand(source_tag, dest_tag))
+                self._cntrl_push_undo_command(
+                    AddLinkCommand(
+                        self._cntrl_history_link_payload(source_tag, dest_tag)
+                    )
+                )
             self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
 
@@ -1863,8 +1880,7 @@ class DpgNodeEditor(object):
                     if self._cntrl_history_link_pair(link)[1] != new_destination
                 ]
                 imported_links_payload.append(
-                    self._mdl_get_link_ref_by_destination(new_destination)
-                    or (new_source, new_destination)
+                    self._cntrl_history_link_payload(new_source, new_destination)
                 )
 
         self._mdl_sort_node_graph()
@@ -1987,10 +2003,11 @@ class DpgNodeEditor(object):
         link = [source_tag, dest_tag]
         if link not in self._node_link_list:
             return False
+        history_link = self._cntrl_history_link_payload(source_tag, dest_tag)
         self._mdl_delete_link(link)
         self._vw_delete_link(source_tag, dest_tag)
         if record_history:
-            self._cntrl_push_undo_command(RemoveLinkCommand(source_tag, dest_tag))
+            self._cntrl_push_undo_command(RemoveLinkCommand(history_link))
         return True
 
     def _cntrl_capture_move_start_positions(self, sender, data):
@@ -2248,14 +2265,20 @@ class DpgNodeEditor(object):
             )
             for source_tag, dest_tag in list(self._node_link_list):
                 if source_tag.startswith(f'{node_id}:{node_name}:') or dest_tag.startswith(f'{node_id}:{node_name}:'):
-                    removed_links.append((source_tag, dest_tag))
+                    removed_links.append(
+                        self._cntrl_history_link_payload(source_tag, dest_tag)
+                    )
         for node_tag in selected_node_tags:
             self._cntrl_delete_node_by_tag(node_tag)
 
+        reconnect_link_payloads = []
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
                 link_dpg_id = self._vw_add_link(source_tag, dest_tag)
                 self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+                reconnect_link_payloads.append(
+                    self._cntrl_history_link_payload(source_tag, dest_tag)
+                )
 
         for link_dpg_id in selected_link_ids:
             if not dpg.does_item_exist(link_dpg_id):
@@ -2264,15 +2287,16 @@ class DpgNodeEditor(object):
                 link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
             except Exception:
                 continue
+            history_link = self._cntrl_history_link_payload(link[0], link[1])
             if self._cntrl_remove_link_by_tags(link[0], link[1], record_history=False):
-                removed_selected_links.append((link[0], link[1]))
+                removed_selected_links.append(history_link)
 
         if deleted_nodes_payload:
             self._cntrl_push_undo_command(
                 DeleteNodesCommand(
                     deleted_nodes_payload,
                     removed_links,
-                    reconnect_pairs,
+                    reconnect_link_payloads,
                     removed_selected_links,
                 )
             )

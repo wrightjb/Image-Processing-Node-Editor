@@ -1,0 +1,140 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:Blur",
+        "3:Curves",
+        "4:ResultImageLarge",
+        "5:Video",
+        "6:GaussianBlur"
+    ],
+    "link_list": [
+        [
+            "3:Curves:Image:Output01",
+            "4:ResultImageLarge:Image:Input01"
+        ],
+        [
+            "5:Video:Image:Output01",
+            "2:Blur:Image:Input01"
+        ],
+        [
+            "5:Video:Image:Output01",
+            "6:GaussianBlur:Image:Input01"
+        ],
+        [
+            "6:GaussianBlur:Image:Output01",
+            "3:Curves:Image:Input01"
+        ]
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                0,
+                0
+            ],
+            "image_path": null
+        }
+    },
+    "2:Blur": {
+        "id": "2",
+        "name": "Blur",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                304,
+                0
+            ],
+            "2:Blur:Int:Input02Value": 92,
+            "__cache_enabled__": true
+        }
+    },
+    "3:Curves": {
+        "id": "3",
+        "name": "Curves",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                595,
+                -7
+            ],
+            "points": [
+                [
+                    0.0,
+                    0.0
+                ],
+                [
+                    33.0,
+                    238.0
+                ],
+                [
+                    81.0,
+                    38.0
+                ],
+                [
+                    119.0,
+                    212.0
+                ],
+                [
+                    162.0,
+                    33.0
+                ],
+                [
+                    187.0,
+                    243.0
+                ],
+                [
+                    220.0,
+                    38.0
+                ],
+                [
+                    255.0,
+                    255.0
+                ]
+            ],
+            "__cache_enabled__": true
+        }
+    },
+    "4:ResultImageLarge": {
+        "id": "4",
+        "name": "ResultImageLarge",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                908,
+                2
+            ]
+        }
+    },
+    "5:Video": {
+        "id": "5",
+        "name": "Video",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                11,
+                248
+            ],
+            "movie_path": "D:\\Documents\\Python projects\\Image-Processing-Node-Editor\\tests\\PXL_20260512_201653650.TS.mp4",
+            "5:Video:Text:Input02Value": true,
+            "5:Video:Int:Input03Value": 1,
+            "5:Video:Text:Input04Value": false
+        }
+    },
+    "6:GaussianBlur": {
+        "id": "6",
+        "name": "GaussianBlur",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                297,
+                289
+            ],
+            "6:GaussianBlur:Int:Input02Value": 123,
+            "6:GaussianBlur:Int:Input04Value": true,
+            "6:GaussianBlur:Float:Input03Value": 0.10000000149011612,
+            "__cache_enabled__": true
+        }
+    }
+}

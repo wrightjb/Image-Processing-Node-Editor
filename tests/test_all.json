@@ -1,0 +1,525 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:Blur",
+        "3:ResultImageLarge",
+        "4:ApplyColorMap",
+        "5:Brightness",
+        "6:Contrast",
+        "7:EqualizeHist",
+        "8:Flip",
+        "9:GammaCorrection",
+        "10:Grayscale",
+        "11:Canny",
+        "12:Threshold",
+        "13:Resize",
+        "14:GaussianBlur",
+        "15:Crop",
+        "16:SimpleFilter",
+        "17:OmnidirectionalViewer",
+        "18:Curves",
+        "19:IntValue",
+        "20:FloatValue",
+        "21:ImageConcat",
+        "22:BRISQUE",
+        "23:OnOffSwitch",
+        "24:HueRotation",
+        "25:GaussianBlur",
+        "26:HueSaturationAdjustment"
+    ],
+    "link_list": [
+        [
+            "1:Image:Image:Output01",
+            "4:ApplyColorMap:Image:Input01"
+        ],
+        [
+            "4:ApplyColorMap:Image:Output01",
+            "2:Blur:Image:Input01"
+        ],
+        [
+            "2:Blur:Image:Output01",
+            "5:Brightness:Image:Input01"
+        ],
+        [
+            "6:Contrast:Image:Output01",
+            "7:EqualizeHist:Image:Input01"
+        ],
+        [
+            "7:EqualizeHist:Image:Output01",
+            "8:Flip:Image:Input01"
+        ],
+        [
+            "8:Flip:Image:Output01",
+            "9:GammaCorrection:Image:Input01"
+        ],
+        [
+            "9:GammaCorrection:Image:Output01",
+            "10:Grayscale:Image:Input01"
+        ],
+        [
+            "5:Brightness:Image:Output01",
+            "6:Contrast:Image:Input01"
+        ],
+        [
+            "1:Image:Image:Output01",
+            "11:Canny:Image:Input01"
+        ],
+        [
+            "13:Resize:Image:Output01",
+            "12:Threshold:Image:Input01"
+        ],
+        [
+            "10:Grayscale:Image:Output01",
+            "14:GaussianBlur:Image:Input01"
+        ],
+        [
+            "14:GaussianBlur:Image:Output01",
+            "13:Resize:Image:Input01"
+        ],
+        [
+            "1:Image:Image:Output01",
+            "15:Crop:Image:Input01"
+        ],
+        [
+            "7:EqualizeHist:Image:Output01",
+            "16:SimpleFilter:Image:Input01"
+        ],
+        [
+            "18:Curves:Image:Output01",
+            "17:OmnidirectionalViewer:Image:Input01"
+        ],
+        [
+            "19:IntValue:Int:Output01",
+            "2:Blur:Int:Input02"
+        ],
+        [
+            "20:FloatValue:Float:Output01",
+            "6:Contrast:Float:Input02"
+        ],
+        [
+            "12:Threshold:Image:Output01",
+            "21:ImageConcat:Image:Input01"
+        ],
+        [
+            "1:Image:Image:Output01",
+            "22:BRISQUE:Image:Input01"
+        ],
+        [
+            "18:Curves:Image:Output01",
+            "23:OnOffSwitch:Image:Input01"
+        ],
+        [
+            "23:OnOffSwitch:Image:Output01",
+            "21:ImageConcat:Image:Input02"
+        ],
+        [
+            "1:Image:Image:Output01",
+            "24:HueRotation:Image:Input01"
+        ],
+        [
+            "1:Image:Image:Output01",
+            "25:GaussianBlur:Image:Input01"
+        ],
+        [
+            "25:GaussianBlur:Image:Output01",
+            "18:Curves:Image:Input01"
+        ],
+        [
+            "18:Curves:Image:Output01",
+            "26:HueSaturationAdjustment:Image:Input01"
+        ],
+        [
+            "26:HueSaturationAdjustment:Image:Output01",
+            "3:ResultImageLarge:Image:Input01"
+        ]
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -3,
+                7
+            ],
+            "image_path": "D:\\Documents\\Python projects\\Image-Processing-Node-Editor\\tests\\DSC02334.jpg"
+        }
+    },
+    "2:Blur": {
+        "id": "2",
+        "name": "Blur",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                622,
+                19
+            ],
+            "2:Blur:Int:Input02Value": 92
+        }
+    },
+    "3:ResultImageLarge": {
+        "id": "3",
+        "name": "ResultImageLarge",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                904,
+                -945
+            ]
+        }
+    },
+    "4:ApplyColorMap": {
+        "id": "4",
+        "name": "ApplyColorMap",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                296,
+                5
+            ],
+            "4:ApplyColorMap:Text:Input02Value": "COLORMAP_RAINBOW"
+        }
+    },
+    "5:Brightness": {
+        "id": "5",
+        "name": "Brightness",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                988,
+                33
+            ],
+            "5:Brightness:Int:Input02Value": 23
+        }
+    },
+    "6:Contrast": {
+        "id": "6",
+        "name": "Contrast",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                704,
+                311
+            ],
+            "6:Contrast:Float:Input02Value": 1.2719999551773071
+        }
+    },
+    "7:EqualizeHist": {
+        "id": "7",
+        "name": "EqualizeHist",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                995,
+                321
+            ]
+        }
+    },
+    "8:Flip": {
+        "id": "8",
+        "name": "Flip",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                24,
+                548
+            ],
+            "8:Flip:Text:Input02Value": true,
+            "8:Flip:Text:Input03Value": true
+        }
+    },
+    "9:GammaCorrection": {
+        "id": "9",
+        "name": "GammaCorrection",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                320,
+                587
+            ],
+            "9:GammaCorrection:Float:Input02Value": 1.0
+        }
+    },
+    "10:Grayscale": {
+        "id": "10",
+        "name": "Grayscale",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                617,
+                607
+            ]
+        }
+    },
+    "11:Canny": {
+        "id": "11",
+        "name": "Canny",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                290,
+                274
+            ],
+            "11:Canny:Int:Input02Value": 26,
+            "11:Canny:Int:Input03Value": 194
+        }
+    },
+    "12:Threshold": {
+        "id": "12",
+        "name": "Threshold",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                628,
+                870
+            ],
+            "12:Threshold:Text:Input02Value": "THRESH_BINARY",
+            "12:Threshold:Int:Input03Value": 163
+        }
+    },
+    "13:Resize": {
+        "id": "13",
+        "name": "Resize",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                321,
+                857
+            ],
+            "13:Resize:Text:Input04Value": "INTER_LINEAR",
+            "13:Resize:Int:Input02Value": 1920,
+            "13:Resize:Int:Input03Value": 1080
+        }
+    },
+    "14:GaussianBlur": {
+        "id": "14",
+        "name": "GaussianBlur",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                20,
+                852
+            ],
+            "14:GaussianBlur:Int:Input02Value": 147,
+            "14:GaussianBlur:Int:Input04Value": true,
+            "14:GaussianBlur:Float:Input03Value": 0.10000000149011612
+        }
+    },
+    "15:Crop": {
+        "id": "15",
+        "name": "Crop",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                7,
+                231
+            ],
+            "15:Crop:Float:Input02Value": 0.3709999918937683,
+            "15:Crop:Float:Input03Value": 0.5260000228881836,
+            "15:Crop:Float:Input04Value": 0.17900000512599945,
+            "15:Crop:Float:Input05Value": 0.31200000643730164
+        }
+    },
+    "16:SimpleFilter": {
+        "id": "16",
+        "name": "SimpleFilter",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                1297,
+                97
+            ],
+            "16:SimpleFilter:Float:Input02Value": -0.22200000286102295,
+            "16:SimpleFilter:Float:Input03Value": -0.22200000286102295,
+            "16:SimpleFilter:Float:Input04Value": -0.22200000286102295,
+            "16:SimpleFilter:Float:Input05Value": -0.22200000286102295,
+            "16:SimpleFilter:Float:Input06Value": 1.0,
+            "16:SimpleFilter:Float:Input07Value": 0.0,
+            "16:SimpleFilter:Float:Input08Value": 0.0,
+            "16:SimpleFilter:Float:Input09Value": 0.0,
+            "16:SimpleFilter:Float:Input10Value": 0.0,
+            "16:SimpleFilter:Float:Input11Value": 1.0
+        }
+    },
+    "17:OmnidirectionalViewer": {
+        "id": "17",
+        "name": "OmnidirectionalViewer",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                1922,
+                64
+            ],
+            "17:OmnidirectionalViewer:Int:Input02Value": 0,
+            "17:OmnidirectionalViewer:Int:Input03Value": 0,
+            "17:OmnidirectionalViewer:Int:Input04Value": 57,
+            "17:OmnidirectionalViewer:Float:Input05Value": -0.9350000023841858
+        }
+    },
+    "18:Curves": {
+        "id": "18",
+        "name": "Curves",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                314,
+                -720
+            ],
+            "points": [
+                [
+                    0.0,
+                    0.0
+                ],
+                [
+                    4.0,
+                    247.0
+                ],
+                [
+                    19.0,
+                    36.0
+                ],
+                [
+                    42.0,
+                    229.0
+                ],
+                [
+                    60.0,
+                    0.0
+                ],
+                [
+                    86.0,
+                    242.0
+                ],
+                [
+                    132.0,
+                    0.0
+                ],
+                [
+                    173.0,
+                    221.0
+                ],
+                [
+                    205.0,
+                    0.0
+                ],
+                [
+                    255.0,
+                    255.0
+                ],
+                [
+                    315.0,
+                    86.0
+                ]
+            ]
+        }
+    },
+    "19:IntValue": {
+        "id": "19",
+        "name": "IntValue",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                480,
+                166
+            ],
+            "19:IntValue:Int:Output01Value": 92
+        }
+    },
+    "20:FloatValue": {
+        "id": "20",
+        "name": "FloatValue",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                402,
+                401
+            ],
+            "20:FloatValue:Float:Output01Value": 1.272
+        }
+    },
+    "21:ImageConcat": {
+        "id": "21",
+        "name": "ImageConcat",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                2223,
+                444
+            ],
+            "slot_id": 2
+        }
+    },
+    "22:BRISQUE": {
+        "id": "22",
+        "name": "BRISQUE",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                286,
+                -278
+            ]
+        }
+    },
+    "23:OnOffSwitch": {
+        "id": "23",
+        "name": "OnOffSwitch",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                1973,
+                450
+            ]
+        }
+    },
+    "24:HueRotation": {
+        "id": "24",
+        "name": "HueRotation",
+        "setting": {
+            "ver": "0.0.3",
+            "pos": [
+                615,
+                -306
+            ],
+            "24:HueRotation:Int:Input02Value": 88,
+            "24:HueRotation:Text:Input03Value": "LUV"
+        }
+    },
+    "25:GaussianBlur": {
+        "id": "25",
+        "name": "GaussianBlur",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                -22,
+                -448
+            ],
+            "25:GaussianBlur:Int:Input02Value": 314,
+            "25:GaussianBlur:Int:Input04Value": true,
+            "25:GaussianBlur:Float:Input03Value": 0.10000000149011612
+        }
+    },
+    "26:HueSaturationAdjustment": {
+        "id": "26",
+        "name": "HueSaturationAdjustment",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                614,
+                -814
+            ],
+            "26:HueSaturationAdjustment:Float:Input02Value": 0.8999999761581421,
+            "26:HueSaturationAdjustment:Int:Input03Value": 63,
+            "26:HueSaturationAdjustment:Int:Input04Value": 0,
+            "26:HueSaturationAdjustment:Int:Input05Value": -60,
+            "26:HueSaturationAdjustment:Int:Input06Value": 0,
+            "26:HueSaturationAdjustment:Int:Input07Value": 63,
+            "26:HueSaturationAdjustment:Int:Input08Value": 0,
+            "26:HueSaturationAdjustment:Int:Input09Value": -60,
+            "26:HueSaturationAdjustment:Int:Input10Value": 0,
+            "26:HueSaturationAdjustment:Int:Input11Value": 63,
+            "26:HueSaturationAdjustment:Int:Input12Value": 0,
+            "26:HueSaturationAdjustment:Int:Input13Value": -78,
+            "26:HueSaturationAdjustment:Int:Input14Value": 0
+        }
+    }
+}

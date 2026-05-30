@@ -88,6 +88,33 @@ def test_concrete_base_iter_connections_accepts_typed_link_adapter():
     ]
 
 
+def test_concrete_base_iter_connection_infos_exposes_typed_adapter():
+    node = IntValueNode()
+    link_ref = LinkRef(
+        PortRef(
+            node_ref=NodeRef('1', 'Src'),
+            direction='Output',
+            data_type='Int',
+            index=1,
+            port_name='Output01',
+            dpg_tag='1:Src:Int:Output01',
+        ),
+        PortRef(
+            node_ref=NodeRef('2', 'IntValue'),
+            direction='Input',
+            data_type='Int',
+            index=1,
+            port_name='Input01',
+            dpg_tag='2:IntValue:Int:Input01',
+        ),
+    )
+    adapter = LinkConnectionAdapter(link_ref)
+
+    assert list(node._iter_connection_infos([adapter])) == [
+        (adapter, '1:Src:Int:Output01', '2:IntValue:Int:Input01', 'Int'),
+    ]
+
+
 def test_direct_node_add_node_graph_attributes_use_port_declarations():
     import re
     from pathlib import Path

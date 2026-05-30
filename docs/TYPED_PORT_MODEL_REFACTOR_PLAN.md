@@ -50,15 +50,16 @@ Important limitation of the current implementation:
 - The editor now exports and imports typed `link_refs` directly; graph sorting,
   cycle detection, delete-through-node reconnection, the runtime scheduler,
   undo/redo link history, and the node `update()` connection boundary all consume
-  or preserve typed `LinkRef` data when it is available. Most node implementations
-  still read those update connections through legacy string-unpacking helpers, but
-  the runtime now passes a typed compatibility adapter instead of flattening typed
-  links to raw string pairs.
+  or preserve typed `LinkRef` data when it is available. The declarative image
+  process base now reads typed adapter fields for image inputs and linked
+  parameters; most remaining individual node implementations still read update
+  connections through legacy string-unpacking helpers.
 
 ## Next work
 
-1. Migrate individual node `update()` implementations to use typed connection
-   adapter fields (`source`, `destination`, `link_ref`) instead of string parsing.
+1. Continue migrating individual non-declarative node `update()` implementations
+   to use typed connection adapter fields (`source`, `destination`, `link_ref`)
+   instead of string parsing.
 2. Remove remaining registered-port lookup fallbacks once all dynamic port creation
    paths are confirmed to register `PortRef` data.
 3. Drop any remaining compact-link compatibility tests that are no longer needed.
@@ -226,6 +227,9 @@ Current typed graph-consumer checkpoint:
 - Runtime scheduling prefers typed sorted connection refs and wraps typed links in
   a compatibility adapter for node `update()` calls; the adapter exposes typed
   endpoints while still iterating like the legacy source/destination tag pair.
+- `DeclarativeImageProcessNodeBase` consumes typed adapter fields for its image
+  source lookup and linked-parameter synchronization while keeping legacy pair
+  fallback behavior.
 - History replay normalizes stored link entries through a link-pair adapter, so
   commands can carry `LinkRef` payloads while older string-pair commands continue
   to replay through the same ID-remapping path. New link-add, link-replace,

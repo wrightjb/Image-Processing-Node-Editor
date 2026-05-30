@@ -178,9 +178,18 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         connection_info_src = ''
         self._sync_linked_parameters(connection_list)
 
-        for source_tag, _, connection_type in self._iter_connections(connection_list):
+        for (
+            connection_info,
+            source_tag,
+            _,
+            connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if connection_type == self.TYPE_IMAGE:
-                connection_info_src = self._extract_source_node_key(source_tag)
+                source_port = getattr(connection_info, 'source', None)
+                if source_port is not None:
+                    connection_info_src = source_port.node_ref.node_id_name
+                else:
+                    connection_info_src = self._extract_source_node_key(source_tag)
 
         frame = node_image_dict.get(connection_info_src, None)
         parameter_values = self._get_parameter_values(tag_node_name)
@@ -420,13 +429,27 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         pass
 
     def _sync_linked_parameters(self, connection_list):
-        for source_tag, destination_tag, connection_type in self._iter_connections(connection_list):
-            destination_port = self._extract_port_name(destination_tag)
+        for (
+            connection_info,
+            source_tag,
+            destination_tag,
+            connection_type,
+        ) in self._iter_connection_infos(connection_list):
+            destination_ref = getattr(connection_info, 'destination', None)
+            if destination_ref is not None:
+                destination_port = destination_ref.port_name
+            else:
+                destination_port = self._extract_port_name(destination_tag)
             parameter = self._find_parameter(connection_type, destination_port)
             if parameter is None:
                 continue
 
-            source_value = dpg_get_value(self._value_tag(source_tag))
+            source_ref = getattr(connection_info, 'source', None)
+            if source_ref is not None and source_ref.value_tag:
+                source_value_tag = source_ref.value_tag
+            else:
+                source_value_tag = self._value_tag(source_tag)
+            source_value = dpg_get_value(source_value_tag)
             if source_value is None:
                 continue
 

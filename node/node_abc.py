@@ -211,8 +211,10 @@ class DpgNodeBase(DpgNodeABC):
             return ''
         return tag_tokens[0]
 
-    def _iter_connections(self, connection_list):
+    def _iter_connection_infos(self, connection_list):
         for connection_info in connection_list:
+            source_port = getattr(connection_info, 'source', None)
+            destination_port = getattr(connection_info, 'destination', None)
             if hasattr(connection_info, 'legacy_pair'):
                 source_tag, destination_tag = connection_info.legacy_pair
             elif (
@@ -226,11 +228,27 @@ class DpgNodeBase(DpgNodeABC):
             if not isinstance(source_tag, str) or not isinstance(destination_tag, str):
                 continue
 
-            source_tokens = source_tag.split(':')
-            if len(source_tokens) < 4:
-                continue
+            if source_port is not None:
+                connection_type = source_port.data_type
+            else:
+                source_tokens = source_tag.split(':')
+                if len(source_tokens) < 4:
+                    continue
+                connection_type = source_tokens[2]
+            yield (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+            )
 
-            connection_type = source_tokens[2]
+    def _iter_connections(self, connection_list):
+        for (
+            _connection_info,
+            source_tag,
+            destination_tag,
+            connection_type,
+        ) in self._iter_connection_infos(connection_list):
             yield source_tag, destination_tag, connection_type
 
     def _editor_toolbar_attr_tag(self, node_id):

@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 
+from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
 from node.base import declarative_node_base as base_module
 from node import node_abc as node_abc_module
 import node.process_node.node_blur as blur_module
@@ -43,6 +44,24 @@ class DpgStub:
         return [10, 20]
 
 
+def _port_ref(node_id, node_tag, direction, data_type, port_name):
+    prefix = 'Input' if direction == 'Input' else 'Output'
+    dpg_tag = f'{node_id}:{node_tag}:{data_type}:{port_name}'
+    return PortRef(
+        node_ref=NodeRef(str(node_id), node_tag),
+        direction=direction,
+        data_type=data_type,
+        index=int(port_name[len(prefix):]),
+        port_name=port_name,
+        dpg_tag=dpg_tag,
+        value_tag=f'{dpg_tag}Value',
+    )
+
+
+def _link_adapter(source, destination):
+    return LinkConnectionAdapter(LinkRef(source, destination))
+
+
 def _prepare_node(node):
     node._opencv_setting_dict = {
         'process_width': 8,
@@ -62,8 +81,16 @@ def test_blur_node_update_with_parameter_link(monkeypatch):
     written = {}
 
     monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
-    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: written.setdefault(tag, value))
-    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: ('texture', frame.shape, w, h))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        lambda tag, value: written.setdefault(tag, value),
+    )
+    monkeypatch.setattr(
+        base_module,
+        'convert_cv_to_dpg',
+        lambda frame, w, h: ('texture', frame.shape, w, h),
+    )
     monkeypatch.setattr(blur_module.cv2, 'blur', lambda f, k: f, raising=False)
 
     frame = np.full((8, 8, 3), 127, dtype=np.uint8)
@@ -80,6 +107,50 @@ def test_blur_node_update_with_parameter_link(monkeypatch):
     assert result is None
     assert out_frame.shape == frame.shape
     assert written['2:Blur:Int:Input02Value'] == 5
+    assert written['2:Blur:Image:Output01Value'][0] == 'texture'
+
+
+def test_blur_node_update_with_typed_connection_adapters(monkeypatch):
+    node = BlurNode()
+    _prepare_node(node)
+
+    image_output = _port_ref(1, 'ImageSource', 'Output', 'Image', 'Output01')
+    image_input = _port_ref(2, 'Blur', 'Input', 'Image', 'Input01')
+    int_output = _port_ref(1, 'IntValue', 'Output', 'Int', 'Output01')
+    int_input = _port_ref(2, 'Blur', 'Input', 'Int', 'Input02')
+    values = {
+        int_output.value_tag: 7,
+        int_input.value_tag: 1,
+    }
+    written = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        lambda tag, value: written.setdefault(tag, value),
+    )
+    monkeypatch.setattr(
+        base_module,
+        'convert_cv_to_dpg',
+        lambda frame, w, h: ('texture', frame.shape, w, h),
+    )
+    monkeypatch.setattr(blur_module.cv2, 'blur', lambda f, k: f, raising=False)
+
+    frame = np.full((8, 8, 3), 127, dtype=np.uint8)
+    out_frame, result = node.update(
+        2,
+        [
+            _link_adapter(image_output, image_input),
+            _link_adapter(int_output, int_input),
+        ],
+        {image_output.node_ref.node_id_name: frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert written[int_input.value_tag] == 7
     assert written['2:Blur:Image:Output01Value'][0] == 'texture'
 
 

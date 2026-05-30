@@ -945,6 +945,29 @@ class DpgNodeEditor(object):
         parts[1] = resolved_tag
         return ':'.join(parts)
 
+    def _cntrl_history_link_pair(self, link):
+        source_tag = None
+        dest_tag = None
+        if hasattr(link, 'legacy_pair'):
+            source_tag, dest_tag = link.legacy_pair
+        elif isinstance(link, dict):
+            source_tag = link.get('source_tag')
+            dest_tag = link.get('destination_tag')
+            if source_tag is None:
+                source_payload = link.get('source')
+                if isinstance(source_payload, dict):
+                    source_tag = source_payload.get('dpg_tag')
+            if dest_tag is None:
+                destination_payload = link.get('destination')
+                if isinstance(destination_payload, dict):
+                    dest_tag = destination_payload.get('dpg_tag')
+        else:
+            source_tag, dest_tag = link
+        return [
+            self._cntrl_resolve_history_port_tag(source_tag),
+            self._cntrl_resolve_history_port_tag(dest_tag),
+        ]
+
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
             if not isinstance(data, dict):
@@ -1456,7 +1479,10 @@ class DpgNodeEditor(object):
                     user_data,
                     list(new_pos),
                     copy.deepcopy(node_setting),
-                    [(source_tag, input_tag)],
+                    [
+                        self._mdl_get_link_ref_by_destination(input_tag)
+                        or (source_tag, input_tag)
+                    ],
                     [],
                 )
             )
@@ -1520,7 +1546,10 @@ class DpgNodeEditor(object):
                                 user_data,
                                 list(new_pos),
                                 copy.deepcopy(node_setting),
-                                [(output_tag, dest_tag)],
+                                [
+                                    self._mdl_get_link_ref_by_destination(dest_tag)
+                                    or (output_tag, dest_tag)
+                                ],
                                 [],
                             ),
                         ]
@@ -1533,7 +1562,10 @@ class DpgNodeEditor(object):
                         user_data,
                         list(new_pos),
                         copy.deepcopy(node_setting),
-                        [(output_tag, dest_tag)],
+                        [
+                            self._mdl_get_link_ref_by_destination(dest_tag)
+                            or (output_tag, dest_tag)
+                        ],
                         [],
                     )
                 )
@@ -1828,9 +1860,12 @@ class DpgNodeEditor(object):
                 imported_links_payload = [
                     link
                     for link in imported_links_payload
-                    if link[1] != new_destination
+                    if self._cntrl_history_link_pair(link)[1] != new_destination
                 ]
-                imported_links_payload.append((new_source, new_destination))
+                imported_links_payload.append(
+                    self._mdl_get_link_ref_by_destination(new_destination)
+                    or (new_source, new_destination)
+                )
 
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()

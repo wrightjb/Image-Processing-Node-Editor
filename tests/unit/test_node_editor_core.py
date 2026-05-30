@@ -13,6 +13,7 @@ from node_editor.node_editor import (
     AddNodeCommand,
     CompositeCommand,
     DpgNodeEditor,
+    ImportGraphCommand,
     RemoveLinkCommand,
     SetParameterCommand,
 )
@@ -210,6 +211,38 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
         '1:TestNode:Image:Output01',
         '2:TestNode:Image:Input01',
     ]]
+
+
+def test_history_import_command_accepts_typed_link_refs(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = True
+    source_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+    )
+    dest_port = PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+    )
+    link_ref = LinkRef(source_port, dest_port)
+
+    ImportGraphCommand(nodes=[], links=[link_ref]).redo(editor)
+
+    assert editor._node_link_list == [link_ref.legacy_pair]
+    registered_link = editor._mdl_get_link_ref_by_destination(dest_port)
+    assert registered_link.source_tag == link_ref.source_tag
+    assert registered_link.destination_tag == link_ref.destination_tag
+    dpg.add_node_link.assert_called_once_with(
+        source_port.dpg_tag, dest_port.dpg_tag, parent=editor._node_editor_tag
+    )
 
 
 def test_add_node_registers_declared_port_refs(editor_and_dpg):

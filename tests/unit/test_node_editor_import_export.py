@@ -61,6 +61,16 @@ def _link_ref_pairs(link_refs):
     ]
 
 
+def _history_link_pairs(links):
+    pairs = []
+    for link in links:
+        if hasattr(link, 'legacy_pair'):
+            pairs.append(tuple(link.legacy_pair))
+        else:
+            pairs.append(tuple(link))
+    return pairs
+
+
 class TestDpgNodeEditorImportExport:
     """Test suite for DpgNodeEditor import/export functionality"""
 
@@ -496,7 +506,7 @@ class TestDpgNodeEditorImportExport:
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
-        assert node_editor._undo_stack[-1].links == [(
+        assert _history_link_pairs(node_editor._undo_stack[-1].links) == [(
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         )]
@@ -642,7 +652,7 @@ class TestDpgNodeEditorImportExport:
             '2:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
-        assert node_editor._undo_stack[-1].links == [(
+        assert _history_link_pairs(node_editor._undo_stack[-1].links) == [(
             '2:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         )]

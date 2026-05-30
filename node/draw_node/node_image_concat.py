@@ -237,17 +237,25 @@ class Node(DpgNodeBase):
         # Get source node name for image (with ID)
         connection_info_src = ''
         connection_info_src_dict = {}
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             # Get slot number from tag name
-            slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
+            destination_port_name = self._connection_port_name(
+                connection_info,
+                destination_tag,
+            )
+            slot_number = re.sub(r'\D', '', destination_port_name)
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
 
             if connection_type == self.TYPE_IMAGE:
                 # Get source node name for image (with ID)
-                connection_info_src = self._extract_source_node_key(source_tag)
+                connection_info_src = self._connection_source_node_key(connection_info, source_tag)
                 node_name = connection_info_src.split(':')[1]
 
                 connection_info_src_dict[slot_number] = connection_info_src

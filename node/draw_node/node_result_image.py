@@ -121,13 +121,13 @@ class Node(DpgNodeBase):
         # Get source node name for image (with ID)
         node_name = ''
         connection_info_src = ''
-        for source_tag, _, connection_type in self._iter_connections(
+        for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
                 connection_list):
             if connection_type != self.TYPE_IMAGE:
                 continue
 
-            connection_info_src = self._extract_source_node_key(source_tag)
-            node_name = self._extract_source_node_key(source_tag).split(':')[1]
+            connection_info_src = self._connection_source_node_key(connection_info, source_tag)
+            node_name = self._connection_source_node_key(connection_info, source_tag).split(':')[1]
 
         # Get image
         frame = node_image_dict.get(connection_info_src, None)

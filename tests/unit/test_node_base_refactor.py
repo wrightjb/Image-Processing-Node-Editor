@@ -211,3 +211,22 @@ def test_direct_node_add_node_graph_attributes_use_port_declarations():
             index += 1
 
     assert failures == []
+
+
+def test_direct_node_updates_use_typed_connection_info_iteration():
+    from pathlib import Path
+
+    node_root = Path(__file__).parents[2] / 'node'
+    failures = []
+    for path in sorted(node_root.rglob('*')):
+        if path.name == 'node_abc.py':
+            continue
+        if not (path.name.endswith('.py') or path.name.endswith('.py.disable')):
+            continue
+        source = path.read_text(encoding='utf-8')
+        if 'class Node(DpgNodeBase)' not in source:
+            continue
+        if 'self._iter_connections(' in source:
+            failures.append(str(path.relative_to(node_root.parent)))
+
+    assert failures == []

@@ -200,11 +200,11 @@ class Node(DpgNodeBase):
 
         # Check connection info
         seek_input_value = None
-        for source_tag, _, connection_type in self._iter_connections(
+        for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
                 connection_list):
             if connection_type == self.TYPE_INT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
                 # Get value
                 seek_input_value = int(dpg_get_value(source_value_tag))
                 seek_input_value = max([self._min_val, seek_input_value])

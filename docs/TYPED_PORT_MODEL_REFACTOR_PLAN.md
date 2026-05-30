@@ -37,6 +37,9 @@ Implemented so far:
 - Direct non-declarative node `add_node()` implementations now declare their DPG
   input/output graph attributes through `input_port()` / `output_port()` while
   preserving existing compact tag strings.
+- Direct non-declarative node `update()` implementations now iterate typed
+  connection info records through `_iter_connection_infos()` instead of the legacy
+  `_iter_connections()` adapter.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -51,16 +54,14 @@ Important limitation of the current implementation:
   cycle detection, delete-through-node reconnection, the runtime scheduler,
   undo/redo link history, and the node `update()` connection boundary all consume
   or preserve typed `LinkRef` data when it is available. The declarative image
-  process base now reads typed adapter fields for image inputs and linked
-  parameters, and the shared legacy connection helper now passes tag-compatible
-  strings that preserve typed endpoint metadata for non-declarative nodes still
-  using `_iter_connections()`.
+  process base and direct non-declarative nodes now read typed connection-info
+  records, while `_iter_connections()` remains only as a legacy compatibility
+  adapter for external callers and tests that explicitly cover that boundary.
 
 ## Next work
 
-1. Continue migrating individual non-declarative node `update()` implementations
-   to use `_iter_connection_infos()` and typed connection adapter fields directly
-   instead of relying on tag-compatible metadata wrappers.
+1. Continue shrinking legacy compact-tag helper usage inside node implementations
+   where the tag is not part of a DearPyGui UI boundary.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 

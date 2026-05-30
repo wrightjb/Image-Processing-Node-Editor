@@ -230,6 +230,24 @@ class DpgNodeBase(DpgNodeABC):
             return ''
         return tag_tokens[0]
 
+    def _connection_source_node_key(self, connection_info, source_tag):
+        source_port = getattr(connection_info, 'source', None)
+        if source_port is not None:
+            return source_port.node_ref.node_id_name
+        return self._extract_source_node_key(source_tag)
+
+    def _connection_port_name(self, connection_info, destination_tag):
+        destination_port = getattr(connection_info, 'destination', None)
+        if destination_port is not None:
+            return destination_port.port_name
+        return self._extract_port_name(destination_tag)
+
+    def _connection_value_tag(self, connection_info, endpoint, fallback_tag):
+        port_ref = getattr(connection_info, endpoint, None)
+        if port_ref is not None and port_ref.value_tag:
+            return port_ref.value_tag
+        return self._value_tag(fallback_tag)
+
     def _iter_connection_infos(self, connection_list):
         for connection_info in connection_list:
             source_port = getattr(connection_info, 'source', None)

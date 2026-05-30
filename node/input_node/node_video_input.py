@@ -226,12 +226,16 @@ class Node(DpgNodeBase):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
         # Check connection info
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if connection_type == self.TYPE_INT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
                 # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 input_value = max([self._min_val, input_value])

@@ -151,12 +151,16 @@ class Node(DpgNodeBase):
         # Check connection info
         src_node_name = ''
         connection_info_src = ''
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if connection_type == self.TYPE_INT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
                 # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 input_value = max([self._min_val, input_value])
@@ -164,7 +168,7 @@ class Node(DpgNodeBase):
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_IMAGE:
                 # Get source node name for image (with ID)
-                connection_info_src = self._extract_source_node_key(source_tag)
+                connection_info_src = self._connection_source_node_key(connection_info, source_tag)
                 src_node_name = connection_info_src.split(':')[1]
 
         # Get image

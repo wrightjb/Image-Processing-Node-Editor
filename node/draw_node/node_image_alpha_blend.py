@@ -252,19 +252,27 @@ class Node(DpgNodeBase):
         node_name_dict = {}
         connection_info_src = ''
         connection_info_src_dict = {}
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
 
             # Get slot number from tag name
-            slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
+            destination_port_name = self._connection_port_name(
+                connection_info,
+                destination_tag,
+            )
+            slot_number = re.sub(r'\D', '', destination_port_name)
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
-            connection_tag = self._extract_port_name(destination_tag)
+            connection_tag = destination_port_name
             if connection_type == self.TYPE_FLOAT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
                 # Update value
                 input_value = round(float(dpg_get_value(source_value_tag)), 3)
                 if connection_tag == 'Input03':
@@ -276,8 +284,8 @@ class Node(DpgNodeBase):
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_INT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
                 # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 if connection_tag == 'Input05':
@@ -286,7 +294,7 @@ class Node(DpgNodeBase):
                 dpg_set_value(destination_value_tag, input_value)
             if connection_type == self.TYPE_IMAGE:
                 # Get source node name for image (with ID)
-                connection_info_src = self._extract_source_node_key(source_tag)
+                connection_info_src = self._connection_source_node_key(connection_info, source_tag)
                 node_name = connection_info_src.split(':')[1]
                 node_name_dict[slot_number] = node_name
                 connection_info_src_dict[slot_number] = connection_info_src

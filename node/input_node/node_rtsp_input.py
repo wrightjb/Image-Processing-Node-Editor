@@ -9,7 +9,7 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -35,7 +35,7 @@ def receive_image_process(rtsp_url, image_queue, request):
             break
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'RTSP'
@@ -78,10 +78,12 @@ class Node(DpgNodeABC):
         tag_node_name = self._node_name(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
         tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
-        tag_node_output01_image_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
-        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
+        tag_node_output01_image_name = tag_node_output01_name_port.value_tag
+        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name = tag_node_output02_name_port.dpg_tag
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
         tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))

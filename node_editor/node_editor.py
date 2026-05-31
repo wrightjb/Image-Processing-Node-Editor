@@ -10,30 +10,9 @@ from glob import glob
 from collections import OrderedDict
 from importlib import import_module
 from pathlib import Path
-from dataclasses import dataclass
-
 import dearpygui.dearpygui as dpg
 
-
-@dataclass(frozen=True)
-class NodeRef:
-    node_id: str
-    node_tag: str
-
-    @property
-    def node_id_name(self):
-        return f'{self.node_id}:{self.node_tag}'
-
-
-@dataclass(frozen=True)
-class PortRef:
-    node_ref: NodeRef
-    direction: str
-    data_type: str
-    index: int
-    dpg_tag: str
-
-
+from node.port_model import LinkRef, NodeRef, PortRef
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,
@@ -100,6 +79,7 @@ class DpgNodeEditor(object):
         self._node_link_list = []
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
+        self._node_connection_ref_dict = OrderedDict([])
         self._pending_insert_link_dpg_id = None
         self._pending_add_from_output_tag = None
         self._pending_add_to_input_tag = None
@@ -108,6 +88,7 @@ class DpgNodeEditor(object):
         self._port_registry = {}
         self._link_registry = {}
         self._link_by_dest_port = {}
+        self._link_by_dest_port_ref = {}
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -132,6 +113,39 @@ class DpgNodeEditor(object):
     def _mdl_get_node_ref(self, node_id_name):
         return self._node_registry.get(node_id_name)
 
+    def _mdl_register_port_ref(self, port_ref):
+        self._port_registry[port_ref.dpg_tag] = port_ref
+        if port_ref.node_ref.node_id_name not in self._node_registry:
+            self._mdl_register_node_ref(port_ref.node_ref)
+
+    def _mdl_register_node_declared_ports(self, node, node_id):
+        get_declared_port_refs = getattr(node, 'get_declared_port_refs', None)
+        if not callable(get_declared_port_refs):
+            return
+        declared_ports = get_declared_port_refs(node_id)
+        if not isinstance(declared_ports, (list, tuple)):
+            return
+        for port_ref in declared_ports:
+            self._mdl_register_port_ref(port_ref)
+
+    def _mdl_iter_registered_ports(
+        self,
+        direction=None,
+        node_id_name=None,
+        data_type=None,
+    ):
+        for port_ref in list(self._port_registry.values()):
+            if direction is not None and port_ref.direction != direction:
+                continue
+            if (
+                node_id_name is not None
+                and port_ref.node_ref.node_id_name != node_id_name
+            ):
+                continue
+            if data_type is not None and port_ref.data_type != data_type:
+                continue
+            yield port_ref
+
     def _cntrl_parse_port_tag(self, port_tag):
         if not isinstance(port_tag, str):
             return None
@@ -154,44 +168,100 @@ class DpgNodeEditor(object):
             index = int(index_text)
         except ValueError:
             return None
-        parsed = PortRef(node_ref, direction, parts[2], index, port_tag)
-        self._port_registry[port_tag] = parsed
-        if node_ref.node_id_name not in self._node_registry:
-            self._mdl_register_node_ref(node_ref)
+        parsed = PortRef(
+            node_ref=node_ref,
+            direction=direction,
+            data_type=parts[2],
+            index=index,
+            port_name=port_name,
+            dpg_tag=port_tag,
+            value_tag=f'{port_tag}Value',
+        )
+        self._mdl_register_port_ref(parsed)
         return parsed
 
-    def _mdl_validate_link(self, source_tag, dest_tag):
-        source_port = self._cntrl_parse_port_tag(source_tag)
-        dest_port = self._cntrl_parse_port_tag(dest_tag)
+    def _mdl_resolve_port_ref(self, port):
+        if isinstance(port, PortRef):
+            return port
+        return self._cntrl_parse_port_tag(port)
+
+    def _mdl_validate_link(self, source, destination):
+        source_port = self._mdl_resolve_port_ref(source)
+        dest_port = self._mdl_resolve_port_ref(destination)
         if source_port is None or dest_port is None:
             return None
         if source_port.direction != 'Output' or dest_port.direction != 'Input':
             return None
         if source_port.data_type != dest_port.data_type:
             return None
-        return source_port, dest_port
+        return LinkRef(source_port, dest_port)
 
-    def _mdl_add_link(self, source_tag, dest_tag):
-        validated_ports = self._mdl_validate_link(source_tag, dest_tag)
-        if validated_ports is None:
+    def _mdl_add_link(self, source, destination):
+        link_ref = self._mdl_validate_link(source, destination)
+        if link_ref is None:
             return False
-        if dest_tag in self._link_by_dest_port:
+        source_tag = link_ref.source_tag
+        dest_tag = link_ref.destination_tag
+        if dest_tag in self._link_by_dest_port_ref:
             return False
-        self._node_link_list.append([source_tag, dest_tag])
-        self._link_registry[(source_tag, dest_tag)] = validated_ports
+        self._node_link_list.append(link_ref.legacy_pair)
+        self._link_registry[(source_tag, dest_tag)] = link_ref
         self._link_by_dest_port[dest_tag] = source_tag
+        self._link_by_dest_port_ref[dest_tag] = link_ref
         return True
 
+    def _mdl_get_link_ref_by_destination(self, destination):
+        dest_port = self._mdl_resolve_port_ref(destination)
+        if dest_port is None:
+            return None
+        return self._link_by_dest_port_ref.get(dest_port.dpg_tag)
+
     def _mdl_get_link_by_destination(self, dest_tag):
+        link_ref = self._mdl_get_link_ref_by_destination(dest_tag)
+        if link_ref is not None:
+            return link_ref.legacy_pair
         source_tag = self._link_by_dest_port.get(dest_tag)
         if source_tag is not None:
             return [source_tag, dest_tag]
         return None
 
+    def _mdl_serialize_port_ref(self, port_ref):
+        return {
+            'node': {
+                'id': port_ref.node_ref.node_id,
+                'tag': port_ref.node_ref.node_tag,
+            },
+            'direction': port_ref.direction,
+            'data_type': port_ref.data_type,
+            'index': port_ref.index,
+            'port_name': port_ref.port_name,
+            'dpg_tag': port_ref.dpg_tag,
+        }
+
+    def _mdl_serialize_link_ref(self, link_ref):
+        return {
+            'source': self._mdl_serialize_port_ref(link_ref.source),
+            'destination': self._mdl_serialize_port_ref(link_ref.destination),
+        }
+
+    def _mdl_iter_link_refs(self):
+        for source_tag, dest_tag in list(self._node_link_list):
+            link_ref = self._link_registry.get((source_tag, dest_tag))
+            if link_ref is None:
+                link_ref = self._mdl_validate_link(source_tag, dest_tag)
+            if link_ref is not None:
+                yield link_ref
+
+    def _mdl_get_link_refs_for_export(self):
+        return list(self._mdl_iter_link_refs())
+
     def _mdl_get_export_settings(self):
         setting_dict = {}
         setting_dict['node_list'] = self._node_list
-        setting_dict['link_list'] = self._node_link_list
+        setting_dict['link_refs'] = [
+            self._mdl_serialize_link_ref(link_ref)
+            for link_ref in self._mdl_get_link_refs_for_export()
+        ]
         for node_id_name in self._node_list:
             node_id, node_name = node_id_name.split(':')
             node = self._node_instance_list[node_name]
@@ -228,6 +298,7 @@ class DpgNodeEditor(object):
             if source_node == node_id_name or destination_node == node_id_name:
                 self._link_registry.pop((link_info[0], link_info[1]), None)
                 self._link_by_dest_port.pop(link_info[1], None)
+                self._link_by_dest_port_ref.pop(link_info[1], None)
                 self._node_link_list.remove(link_info)
         self._node_registry.pop(node_id_name, None)
         self._mdl_sort_node_graph()
@@ -236,35 +307,38 @@ class DpgNodeEditor(object):
         source_tag, dest_tag = link
         self._link_registry.pop((source_tag, dest_tag), None)
         self._link_by_dest_port.pop(dest_tag, None)
+        self._link_by_dest_port_ref.pop(dest_tag, None)
         self._node_link_list.remove(link)
         self._mdl_sort_node_graph()
 
     def _mdl_sort_node_graph(self):
         node_list = self._node_list
-        node_link_list = self._node_link_list
 
         node_id_dict = OrderedDict({})
         node_connection_dict = OrderedDict({})
+        node_connection_ref_dict = OrderedDict({})
 
         # Organize node IDs and node links as dictionaries
-        for source, destination in node_link_list:
-            source_id = int(source.split(':')[0])
-            destination_id = int(destination.split(':')[0])
+        for link_ref in self._mdl_iter_link_refs():
+            source_id = int(link_ref.source.node_ref.node_id)
+            destination_id = int(link_ref.destination.node_ref.node_id)
 
             if destination_id not in node_id_dict:
                 node_id_dict[destination_id] = [source_id]
             else:
                 node_id_dict[destination_id].append(source_id)
 
-            split_destination = destination.split(':')
-            node_name = split_destination[0] + ':' + split_destination[1]
+            node_name = link_ref.destination.node_ref.node_id_name
             if node_name not in node_connection_dict:
-                node_connection_dict[node_name] = [[source, destination]]
+                node_connection_dict[node_name] = [link_ref.legacy_pair]
+                node_connection_ref_dict[node_name] = [link_ref]
             else:
-                node_connection_dict[node_name].append([source, destination])
+                node_connection_dict[node_name].append(link_ref.legacy_pair)
+                node_connection_ref_dict[node_name].append(link_ref)
 
         node_id_list = list(node_id_dict.items())
         node_connection_list = list(node_connection_dict.items())
+        node_connection_ref_list = list(node_connection_ref_dict.items())
 
         # Reorder processing from input to output
         index = 0
@@ -287,6 +361,10 @@ class DpgNodeEditor(object):
                             check_index], node_connection_list[
                                 index] = node_connection_list[
                                     index], node_connection_list[check_index]
+                        node_connection_ref_list[
+                            check_index], node_connection_ref_list[
+                                index] = node_connection_ref_list[
+                                    index], node_connection_ref_list[check_index]
 
                         swap_flag = True
                         break
@@ -315,8 +393,10 @@ class DpgNodeEditor(object):
 
         for unfinded_value in unfinded_id_dict.values():
             node_connection_list.insert(0, (unfinded_value, []))
+            node_connection_ref_list.insert(0, (unfinded_value, []))
 
         self._node_connection_dict = OrderedDict(node_connection_list)
+        self._node_connection_ref_dict = OrderedDict(node_connection_ref_list)
 
     # -------------------------------------------------------------------------
     # View functions
@@ -611,6 +691,8 @@ class DpgNodeEditor(object):
 
     def _vw_add_node(self, node_tag, new_id, pos):
         node = self._node_instance_list[node_tag]
+        if hasattr(node, 'set_port_registration_callback'):
+            node.set_port_registration_callback(self._mdl_register_port_ref)
         node.add_node(
             self._node_editor_tag,
             new_id,
@@ -618,6 +700,7 @@ class DpgNodeEditor(object):
             opencv_setting_dict=self._opencv_setting_dict,
             callback=self._cntrl_node_callback,
         )
+        self._mdl_register_node_declared_ports(node, new_id)
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -774,6 +857,7 @@ class DpgNodeEditor(object):
         self._node_list.append(new_node_id_name)
         self._cntrl_update_node_position_cache(new_node_id_name)
         node_setting = self.get_node_instance(user_data).get_setting_dict(str(new_id))
+        self._cntrl_prime_parameter_last_values_from_setting(node_setting)
         self._cntrl_push_undo_command(
             AddNodeCommand(
                 new_id,
@@ -794,6 +878,19 @@ class DpgNodeEditor(object):
             print(f'\tself._node_list : {", ".join(self._node_list)}')
             print()
 
+    def _cntrl_remap_node_setting_for_id(self, node_tag, node_id, setting):
+        if not isinstance(setting, dict):
+            return setting
+        remapped_setting = {}
+        for key, value in setting.items():
+            if isinstance(key, str):
+                key_parts = key.split(':')
+                if len(key_parts) >= 2 and key_parts[1] == node_tag:
+                    key_parts[0] = str(node_id)
+                    key = ':'.join(key_parts)
+            remapped_setting[key] = value
+        return remapped_setting
+
     def _cntrl_add_node_with_id(self, node_tag, node_id, pos, setting):
         self._node_id = max(self._node_id, int(node_id))
         node_id_name = f'{node_id}:{node_tag}'
@@ -804,10 +901,14 @@ class DpgNodeEditor(object):
         self._node_list.append(node_id_name)
         self._cntrl_update_node_position_cache(node_id_name)
         node = self.get_node_instance(node_tag)
+        remapped_setting = self._cntrl_remap_node_setting_for_id(
+            node_tag, node_id, copy.deepcopy(setting)
+        )
         try:
-            node.set_setting_dict(str(node_id), copy.deepcopy(setting))
+            node.set_setting_dict(str(node_id), remapped_setting)
         except Exception:
             pass
+        self._cntrl_prime_parameter_last_values_from_setting(remapped_setting)
         return node_id_name
 
     def _cntrl_add_node_from_history(self, node_tag, requested_node_id, pos, setting):
@@ -843,6 +944,37 @@ class DpgNodeEditor(object):
         parts[0] = resolved_id
         parts[1] = resolved_tag
         return ':'.join(parts)
+
+    def _cntrl_history_link_pair(self, link):
+        source_tag = None
+        dest_tag = None
+        if hasattr(link, 'legacy_pair'):
+            source_tag, dest_tag = link.legacy_pair
+        elif isinstance(link, dict):
+            source_tag = link.get('source_tag')
+            dest_tag = link.get('destination_tag')
+            if source_tag is None:
+                source_payload = link.get('source')
+                if isinstance(source_payload, dict):
+                    source_tag = source_payload.get('dpg_tag')
+            if dest_tag is None:
+                destination_payload = link.get('destination')
+                if isinstance(destination_payload, dict):
+                    dest_tag = destination_payload.get('dpg_tag')
+        else:
+            source_tag, dest_tag = link
+        return [
+            self._cntrl_resolve_history_port_tag(source_tag),
+            self._cntrl_resolve_history_port_tag(dest_tag),
+        ]
+
+    def _cntrl_history_link_payload(self, source_tag, dest_tag):
+        source_tag = self._cntrl_resolve_history_port_tag(source_tag)
+        dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
+        link_ref = self._link_registry.get((source_tag, dest_tag))
+        if link_ref is not None:
+            return link_ref
+        return (source_tag, dest_tag)
 
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
@@ -1214,39 +1346,20 @@ class DpgNodeEditor(object):
         return None
 
 
-    def _cntrl_get_hovered_output_port_tag(self):
-        for node_id_name in self._node_list:
-            parts = node_id_name.split(':')
-            if len(parts) < 2:
-                continue
-            node_id = parts[0]
-            node_name = parts[1]
-            for index in range(100):
-                port_tag = f'{node_id}:{node_name}:Image:Output{index:02d}'
-                if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
-                    return port_tag
-                for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
-                    type_port_tag = f'{node_id}:{node_name}:{port_type}:Output{index:02d}'
-                    if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
-                        return type_port_tag
+    def _cntrl_get_hovered_registered_port_tag(self, direction):
+        for port_ref in self._mdl_iter_registered_ports(direction=direction):
+            if (
+                dpg.does_item_exist(port_ref.dpg_tag)
+                and dpg.is_item_hovered(port_ref.dpg_tag)
+            ):
+                return port_ref.dpg_tag
         return None
 
+    def _cntrl_get_hovered_output_port_tag(self):
+        return self._cntrl_get_hovered_registered_port_tag('Output')
+
     def _cntrl_get_hovered_input_port_tag(self):
-        for node_id_name in self._node_list:
-            parts = node_id_name.split(':')
-            if len(parts) < 2:
-                continue
-            node_id = parts[0]
-            node_name = parts[1]
-            for index in range(100):
-                port_tag = f'{node_id}:{node_name}:Image:Input{index:02d}'
-                if dpg.does_item_exist(port_tag) and dpg.is_item_hovered(port_tag):
-                    return port_tag
-                for port_type in ('Int', 'Float', 'Text', 'Time', 'TimeMs', 'TimeMS'):
-                    type_port_tag = f'{node_id}:{node_name}:{port_type}:Input{index:02d}'
-                    if dpg.does_item_exist(type_port_tag) and dpg.is_item_hovered(type_port_tag):
-                        return type_port_tag
-        return None
+        return self._cntrl_get_hovered_registered_port_tag('Input')
 
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
@@ -1259,6 +1372,14 @@ class DpgNodeEditor(object):
             int((source_pos[1] + dest_pos[1]) / 2),
         ]
 
+    def _cntrl_port_ref_has_dpg_attribute_type(self, port_ref, expected_attr_type):
+        if expected_attr_type is None:
+            return True
+        if not dpg.does_item_exist(port_ref.dpg_tag):
+            return False
+        config = dpg.get_item_configuration(port_ref.dpg_tag)
+        return config.get('attribute_type') == expected_attr_type
+
     def _cntrl_find_node_port(self, node_id_name, port_type, port_prefix):
         expected_attr_type = None
         if port_prefix == 'Input':
@@ -1266,18 +1387,16 @@ class DpgNodeEditor(object):
         elif port_prefix == 'Output':
             expected_attr_type = dpg.mvNode_Attr_Output
 
-        for index in range(100):
-            port_tag = (
-                f'{node_id_name}:{port_type}:{port_prefix}{index:02d}'
-            )
-            if not dpg.does_item_exist(port_tag):
-                continue
+        for port_ref in self._mdl_iter_registered_ports(
+            direction=port_prefix,
+            node_id_name=node_id_name,
+            data_type=port_type,
+        ):
+            if self._cntrl_port_ref_has_dpg_attribute_type(
+                port_ref, expected_attr_type
+            ):
+                return port_ref.dpg_tag
 
-            if expected_attr_type is not None:
-                config = dpg.get_item_configuration(port_tag)
-                if config.get('attribute_type') != expected_attr_type:
-                    continue
-            return port_tag
         return None
 
 
@@ -1327,7 +1446,9 @@ class DpgNodeEditor(object):
                     user_data,
                     list(new_pos),
                     copy.deepcopy(node_setting),
-                    [(source_tag, input_tag)],
+                    [
+                        self._cntrl_history_link_payload(source_tag, input_tag)
+                    ],
                     [],
                 )
             )
@@ -1369,7 +1490,11 @@ class DpgNodeEditor(object):
 
         replaced_links = []
         existing_link = self._mdl_get_link_by_destination(dest_tag)
+        existing_link_payload = None
         if existing_link is not None:
+            existing_link_payload = self._cntrl_history_link_payload(
+                existing_link[0], existing_link[1]
+            )
             self._cntrl_remove_link_by_tags(
                 existing_link[0], existing_link[1], record_history=False
             )
@@ -1385,13 +1510,15 @@ class DpgNodeEditor(object):
                 self._cntrl_push_undo_command(
                     CompositeCommand(
                         [
-                            RemoveLinkCommand(replaced_links[0][0], replaced_links[0][1]),
+                            RemoveLinkCommand(existing_link_payload),
                             AddNodeCommand(
                                 new_id,
                                 user_data,
                                 list(new_pos),
                                 copy.deepcopy(node_setting),
-                                [(output_tag, dest_tag)],
+                                [
+                                    self._cntrl_history_link_payload(output_tag, dest_tag)
+                                ],
                                 [],
                             ),
                         ]
@@ -1404,7 +1531,9 @@ class DpgNodeEditor(object):
                         user_data,
                         list(new_pos),
                         copy.deepcopy(node_setting),
-                        [(output_tag, dest_tag)],
+                        [
+                            self._cntrl_history_link_payload(output_tag, dest_tag)
+                        ],
                         [],
                     )
                 )
@@ -1474,6 +1603,7 @@ class DpgNodeEditor(object):
             return
 
         original_link = [source_tag, dest_tag]
+        original_link_payload = self._cntrl_history_link_payload(source_tag, dest_tag)
         self._mdl_delete_link(original_link)
         self._link_view_id_map.pop(tuple(original_link), None)
         self._vw_delete_item(selected_link_dpg_id)
@@ -1492,15 +1622,15 @@ class DpgNodeEditor(object):
         self._cntrl_push_undo_command(
             CompositeCommand(
                 [
-                    RemoveLinkCommand(source_tag, dest_tag),
+                    RemoveLinkCommand(original_link_payload),
                     AddNodeCommand(
                         new_id,
                         user_data,
                         list(insert_pos),
                         copy.deepcopy(node_setting),
                         [
-                            (source_tag, input_tag),
-                            (output_tag, dest_tag),
+                            self._cntrl_history_link_payload(source_tag, input_tag),
+                            self._cntrl_history_link_payload(output_tag, dest_tag),
                         ],
                         [],
                     ),
@@ -1558,7 +1688,11 @@ class DpgNodeEditor(object):
             return
 
         existing_link = self._mdl_get_link_by_destination(dest_tag)
+        existing_link_payload = None
         if existing_link is not None:
+            existing_link_payload = self._cntrl_history_link_payload(
+                existing_link[0], existing_link[1]
+            )
             if existing_link[0] == source_tag:
                 self._vw_set_link_feedback(
                     'Link rejected: input is already connected to that source.'
@@ -1575,13 +1709,16 @@ class DpgNodeEditor(object):
             if existing_link is not None:
                 self._cntrl_push_undo_command(
                     ReplaceLinkCommand(
-                        existing_link[0],
-                        source_tag,
-                        dest_tag,
+                        existing_link_payload,
+                        self._cntrl_history_link_payload(source_tag, dest_tag),
                     )
                 )
             else:
-                self._cntrl_push_undo_command(AddLinkCommand(source_tag, dest_tag))
+                self._cntrl_push_undo_command(
+                    AddLinkCommand(
+                        self._cntrl_history_link_payload(source_tag, dest_tag)
+                    )
+                )
             self._vw_set_link_feedback('')
         self._mdl_sort_node_graph()
 
@@ -1645,7 +1782,7 @@ class DpgNodeEditor(object):
         if setting_dict is None:
             return
 
-        if 'node_list' not in setting_dict or 'link_list' not in setting_dict:
+        if 'node_list' not in setting_dict or 'link_refs' not in setting_dict:
             raise KeyError('Invalid node editor setting file format.')
 
         id_map = {}
@@ -1692,22 +1829,18 @@ class DpgNodeEditor(object):
                 }
             )
 
-        for link_info in setting_dict['link_list']:
-            source_parts = link_info[0].split(':')
-            dest_parts = link_info[1].split(':')
-
-            if source_parts[0] in id_map and dest_parts[0] in id_map:
-                source_parts[0] = id_map[source_parts[0]]
-                dest_parts[0] = id_map[dest_parts[0]]
-                new_source = ':'.join(source_parts)
-                new_destination = ':'.join(dest_parts)
-                if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
-                    imported_links_payload = [
-                        link
-                        for link in imported_links_payload
-                        if link[1] != new_destination
-                    ]
-                    imported_links_payload.append((new_source, new_destination))
+        for new_source, new_destination in self._cntrl_iter_import_link_tags(
+            setting_dict, id_map
+        ):
+            if self._cntrl_add_or_replace_link_by_tags(new_source, new_destination):
+                imported_links_payload = [
+                    link
+                    for link in imported_links_payload
+                    if self._cntrl_history_link_pair(link)[1] != new_destination
+                ]
+                imported_links_payload.append(
+                    self._cntrl_history_link_payload(new_source, new_destination)
+                )
 
         self._mdl_sort_node_graph()
         self._cntrl_sync_position_cache()
@@ -1715,6 +1848,42 @@ class DpgNodeEditor(object):
             'nodes': imported_nodes_payload,
             'links': imported_links_payload,
         }
+
+    def _cntrl_iter_import_link_tags(self, setting_dict, id_map):
+        for link_ref_payload in setting_dict['link_refs']:
+            link_tags = self._cntrl_import_link_ref_payload_to_tags(
+                link_ref_payload, id_map
+            )
+            if link_tags is not None:
+                yield link_tags
+
+    def _cntrl_import_link_ref_payload_to_tags(self, link_ref_payload, id_map):
+        if not isinstance(link_ref_payload, dict):
+            return None
+        source_tag = self._cntrl_import_port_ref_payload_to_tag(
+            link_ref_payload.get('source'), id_map
+        )
+        destination_tag = self._cntrl_import_port_ref_payload_to_tag(
+            link_ref_payload.get('destination'), id_map
+        )
+        if source_tag is None or destination_tag is None:
+            return None
+        return source_tag, destination_tag
+
+    def _cntrl_import_port_ref_payload_to_tag(self, port_ref_payload, id_map):
+        if not isinstance(port_ref_payload, dict):
+            return None
+        node_payload = port_ref_payload.get('node')
+        if not isinstance(node_payload, dict):
+            return None
+        old_node_id = str(node_payload.get('id'))
+        new_node_id = id_map.get(old_node_id)
+        node_tag = node_payload.get('tag')
+        data_type = port_ref_payload.get('data_type')
+        port_name = port_ref_payload.get('port_name')
+        if not all([new_node_id, node_tag, data_type, port_name]):
+            return None
+        return f'{new_node_id}:{node_tag}:{data_type}:{port_name}'
 
     def _cntrl_sync_position_cache(self):
         self._node_position_cache = {}
@@ -1793,10 +1962,11 @@ class DpgNodeEditor(object):
         link = [source_tag, dest_tag]
         if link not in self._node_link_list:
             return False
+        history_link = self._cntrl_history_link_payload(source_tag, dest_tag)
         self._mdl_delete_link(link)
         self._vw_delete_link(source_tag, dest_tag)
         if record_history:
-            self._cntrl_push_undo_command(RemoveLinkCommand(source_tag, dest_tag))
+            self._cntrl_push_undo_command(RemoveLinkCommand(history_link))
         return True
 
     def _cntrl_capture_move_start_positions(self, sender, data):
@@ -1946,6 +2116,8 @@ class DpgNodeEditor(object):
         self._suspend_parameter_history = True
         try:
             action(self)
+            self._mdl_sort_node_graph()
+            self._cntrl_sync_position_cache()
         finally:
             self._suspend_parameter_history = False
 
@@ -1974,14 +2146,12 @@ class DpgNodeEditor(object):
 
         links_by_dest_node = {}
         outgoing_edges = []
-        for source_tag, dest_tag in self._node_link_list:
-            source_port = self._port_registry.get(source_tag)
-            dest_port = self._port_registry.get(dest_tag)
-            if source_port is None or dest_port is None:
-                continue
-            source_node = source_port.node_ref.node_id_name
-            dest_node = dest_port.node_ref.node_id_name
-            link_type = source_port.data_type
+        for link_ref in self._mdl_iter_link_refs():
+            source_tag = link_ref.source_tag
+            dest_tag = link_ref.destination_tag
+            source_node = link_ref.source.node_ref.node_id_name
+            dest_node = link_ref.destination.node_ref.node_id_name
+            link_type = link_ref.source.data_type
             links_by_dest_node.setdefault(dest_node, []).append(
                 (source_tag, dest_tag, source_node, dest_node, link_type)
             )
@@ -2054,14 +2224,20 @@ class DpgNodeEditor(object):
             )
             for source_tag, dest_tag in list(self._node_link_list):
                 if source_tag.startswith(f'{node_id}:{node_name}:') or dest_tag.startswith(f'{node_id}:{node_name}:'):
-                    removed_links.append((source_tag, dest_tag))
+                    removed_links.append(
+                        self._cntrl_history_link_payload(source_tag, dest_tag)
+                    )
         for node_tag in selected_node_tags:
             self._cntrl_delete_node_by_tag(node_tag)
 
+        reconnect_link_payloads = []
         for source_tag, dest_tag in reconnect_pairs:
             if self._mdl_add_link(source_tag, dest_tag):
                 link_dpg_id = self._vw_add_link(source_tag, dest_tag)
                 self._vw_register_link(source_tag, dest_tag, link_dpg_id)
+                reconnect_link_payloads.append(
+                    self._cntrl_history_link_payload(source_tag, dest_tag)
+                )
 
         for link_dpg_id in selected_link_ids:
             if not dpg.does_item_exist(link_dpg_id):
@@ -2070,15 +2246,16 @@ class DpgNodeEditor(object):
                 link = self._cntrl_get_link_from_dpg_id(link_dpg_id)
             except Exception:
                 continue
+            history_link = self._cntrl_history_link_payload(link[0], link[1])
             if self._cntrl_remove_link_by_tags(link[0], link[1], record_history=False):
-                removed_selected_links.append((link[0], link[1]))
+                removed_selected_links.append(history_link)
 
         if deleted_nodes_payload:
             self._cntrl_push_undo_command(
                 DeleteNodesCommand(
                     deleted_nodes_payload,
                     removed_links,
-                    reconnect_pairs,
+                    reconnect_link_payloads,
                     removed_selected_links,
                 )
             )
@@ -2090,25 +2267,20 @@ class DpgNodeEditor(object):
             print(f'\tself._node_connection_dict : {self._node_connection_dict}')
 
     def _cntrl_would_create_cycle(self, source_tag, dest_tag):
-        source_port = self._cntrl_parse_port_tag(source_tag)
-        dest_port = self._cntrl_parse_port_tag(dest_tag)
-        if source_port is None or dest_port is None:
+        link_ref = self._mdl_validate_link(source_tag, dest_tag)
+        if link_ref is None:
             return False
 
-        source_node = source_port.node_ref.node_id_name
-        dest_node = dest_port.node_ref.node_id_name
+        source_node = link_ref.source.node_ref.node_id_name
+        dest_node = link_ref.destination.node_ref.node_id_name
         if source_node == dest_node:
             return True
 
         adjacency = {}
-        for existing_source_tag, existing_dest_tag in self._node_link_list:
-            existing_source = self._cntrl_parse_port_tag(existing_source_tag)
-            existing_dest = self._cntrl_parse_port_tag(existing_dest_tag)
-            if existing_source is None or existing_dest is None:
-                continue
-            adjacency.setdefault(existing_source.node_ref.node_id_name, set()).add(
-                existing_dest.node_ref.node_id_name
-            )
+        for existing_link_ref in self._mdl_iter_link_refs():
+            adjacency.setdefault(
+                existing_link_ref.source.node_ref.node_id_name, set()
+            ).add(existing_link_ref.destination.node_ref.node_id_name)
         adjacency.setdefault(source_node, set()).add(dest_node)
 
         stack = [dest_node]
@@ -2142,6 +2314,9 @@ class DpgNodeEditor(object):
 
     def get_sorted_node_connection(self):
         return self._node_connection_dict
+
+    def get_sorted_node_connection_refs(self):
+        return self._node_connection_ref_dict
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

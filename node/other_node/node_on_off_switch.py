@@ -8,7 +8,7 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -16,7 +16,7 @@ def image_process(image):
     return image
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'ON/OFF Switch'
@@ -40,11 +40,11 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
-                                               'Input01')
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
-                                                'Output01')
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
         tag_switch_select_name = self._port_tag(tag_node_name, self.TYPE_TEXT,
@@ -130,12 +130,12 @@ class Node(DpgNodeABC):
 
         # Get source node name for image (with ID)
         connection_info_src = ''
-        for source_tag, _, connection_type in self._iter_connections(
+        for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
                 connection_list):
             if connection_type != self.TYPE_IMAGE:
                 continue
 
-            connection_info_src = self._extract_source_node_key(source_tag)
+            connection_info_src = self._connection_source_node_key(connection_info, source_tag)
 
         # Get ON/OFF selection state
         switch_status = dpg_get_value(tag_switch_select_value_name)

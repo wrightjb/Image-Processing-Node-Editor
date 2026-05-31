@@ -7,11 +7,16 @@ from unittest.mock import Mock, patch
 import pytest
 
 # Local application imports
+from node.node_abc import DpgNodeBase
+from node.port_model import LinkRef, NodeRef, PortRef
 from node_editor.node_editor import (
+    AddLinkCommand,
     AddNodeCommand,
     CompositeCommand,
     DpgNodeEditor,
+    ImportGraphCommand,
     RemoveLinkCommand,
+    ReplaceLinkCommand,
     SetParameterCommand,
 )
 
@@ -38,6 +43,51 @@ class DummyNode:
         callback=None,
     ):
         del callback
+        return f"{node_id}:{self.node_tag}"
+
+    def update(self, node_id, connection_list, img_dict, res_dict):
+        return f"img{node_id}", f"res{node_id}"
+
+    def get_setting_dict(self, node_id):
+        return {"ver": self._ver, "pos": [0, 0]}
+
+    def set_setting_dict(self, node_id, setting_dict):
+        pass
+
+    def close(self, node_id):
+        pass
+
+
+class ParameterDefaultDummyNode(DummyNode):
+    def get_setting_dict(self, node_id):
+        return {
+            "ver": self._ver,
+            "pos": [0, 0],
+            f"{node_id}:TestNode:Text:Input04Value": False,
+        }
+
+    def set_setting_dict(self, node_id, setting_dict):
+        self.last_setting = setting_dict
+
+
+class PortDeclaringDummyNode(DpgNodeBase):
+    _ver = '1.0'
+    node_tag = 'TestNode'
+    node_label = 'Test Node'
+
+    def add_node(
+        self,
+        parent,
+        node_id,
+        pos=None,
+        opencv_setting_dict=None,
+        callback=None,
+    ):
+        del parent, pos, opencv_setting_dict, callback
+        self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        self.input_port(node_id, self.TYPE_INT, 'Input01')
+        self.output_port(node_id, self.TYPE_INT, 'Output01')
         return f"{node_id}:{self.node_tag}"
 
     def update(self, node_id, connection_list, img_dict, res_dict):
@@ -120,9 +170,171 @@ def test_link_callback_basic(editor_and_dpg):
     link_ids = [101, 102]
     editor._cntrl_link('NodeEditor', link_ids)
     assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
-    assert ('1:TestNode:Int:Output01', '2:TestNode:Int:Input01') in editor._link_registry
+    link_ref = editor._link_registry[(
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    )]
+    assert isinstance(link_ref, LinkRef)
+    assert link_ref.source.dpg_tag == '1:TestNode:Int:Output01'
+    assert link_ref.destination.dpg_tag == '2:TestNode:Int:Input01'
+    assert link_ref.legacy_pair == [
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
     assert editor._link_by_dest_port['2:TestNode:Int:Input01'] == '1:TestNode:Int:Output01'
+    assert editor._mdl_get_link_ref_by_destination(
+        '2:TestNode:Int:Input01'
+    ) == link_ref
+    undo_command = editor._undo_stack[-1]
+    assert isinstance(undo_command, AddLinkCommand)
+    assert undo_command.source_tag == link_ref
+    assert undo_command.dest_tag is None
     dpg.add_node_link.assert_called_once_with(101, 102, parent='NodeEditor')
+
+
+def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    source_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+    )
+    dest_port = PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+    )
+
+    assert editor._mdl_add_link(source_port, dest_port) is True
+
+    link_ref = editor._mdl_get_link_ref_by_destination(dest_port)
+    assert link_ref == LinkRef(source_port, dest_port)
+    assert editor._node_link_list == [[
+        '1:TestNode:Image:Output01',
+        '2:TestNode:Image:Input01',
+    ]]
+
+
+def test_history_import_command_accepts_typed_link_refs(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    dpg.does_item_exist.return_value = True
+    source_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+    )
+    dest_port = PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+    )
+    link_ref = LinkRef(source_port, dest_port)
+
+    ImportGraphCommand(nodes=[], links=[link_ref]).redo(editor)
+
+    assert editor._node_link_list == [link_ref.legacy_pair]
+    registered_link = editor._mdl_get_link_ref_by_destination(dest_port)
+    assert registered_link.source_tag == link_ref.source_tag
+    assert registered_link.destination_tag == link_ref.destination_tag
+    dpg.add_node_link.assert_called_once_with(
+        source_port.dpg_tag, dest_port.dpg_tag, parent=editor._node_editor_tag
+    )
+
+
+def test_add_node_registers_declared_port_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+
+    input_port = editor._port_registry['1:TestNode:Image:Input01']
+    output_port = editor._port_registry['1:TestNode:Image:Output01']
+    assert input_port.node_ref.node_id_name == '1:TestNode'
+    assert input_port.direction == 'Input'
+    assert input_port.port_name == 'Input01'
+    assert output_port.direction == 'Output'
+    assert output_port.port_name == 'Output01'
+    assert editor._node_registry['1:TestNode'] == input_port.node_ref
+
+
+def test_add_node_keeps_dynamic_port_registration_callback(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    node = PortDeclaringDummyNode()
+    editor._node_instance_list['TestNode'] = node
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    node.input_port(1, node.TYPE_TEXT, 'Input02')
+
+    assert '1:TestNode:Text:Input02' in editor._port_registry
+
+
+def test_registered_hovered_output_port_beyond_legacy_scan_range(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    output_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Int',
+        index=125,
+        port_name='Output125',
+        dpg_tag='1:TestNode:Int:Output125',
+        value_tag='1:TestNode:Int:Output125Value',
+    )
+    editor._mdl_register_port_ref(output_port)
+    dpg.does_item_exist.side_effect = lambda tag: tag == output_port.dpg_tag
+    dpg.is_item_hovered.side_effect = lambda tag: tag == output_port.dpg_tag
+
+    assert editor._cntrl_get_hovered_output_port_tag() == output_port.dpg_tag
+
+
+def test_find_node_port_uses_registered_port_beyond_legacy_scan_range(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    input_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=125,
+        port_name='Input125',
+        dpg_tag='1:TestNode:Image:Input125',
+        value_tag='1:TestNode:Image:Input125Value',
+    )
+    editor._mdl_register_port_ref(input_port)
+    dpg.does_item_exist.side_effect = lambda tag: tag == input_port.dpg_tag
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == input_port.dpg_tag
+        else {}
+    )
+
+    assert (
+        editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input')
+        == input_port.dpg_tag
+    )
+
+
+def test_find_node_port_requires_registered_port(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    input_tag = '1:TestNode:Image:Input01'
+    dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
+    dpg.get_item_configuration.side_effect = lambda tag: (
+        {'attribute_type': dpg.mvNode_Attr_Input}
+        if tag == input_tag
+        else {}
+    )
+
+    assert editor._cntrl_find_node_port('1:TestNode', 'Image', 'Input') is None
+    assert input_tag not in editor._port_registry
 
 
 def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
@@ -135,6 +347,8 @@ def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
     assert port.direction == 'Input'
     assert port.data_type == 'Float'
     assert port.index == 3
+    assert port.port_name == 'Input03'
+    assert port.value_tag == '7:TestNode:Float:Input03Value'
     assert editor._port_registry['7:TestNode:Float:Input03'] == port
 
 
@@ -191,6 +405,17 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     assert dpg.configure_item.call_args_list[-1].kwargs == {
         'label': 'Node editor'
     }
+    undo_command = editor._undo_stack[-1]
+    assert isinstance(undo_command, ReplaceLinkCommand)
+    assert undo_command.dest_tag is None
+    assert undo_command.old_source_tag.legacy_pair == [
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
+    assert undo_command.new_source_tag.legacy_pair == [
+        '3:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]
 
 
 def test_link_mismatched_type_ignored(editor_and_dpg):
@@ -281,6 +506,7 @@ def test_link_cycle_is_rejected(editor_and_dpg):
 
 def test_insert_node_into_selected_link(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dpg.get_item_alias.side_effect = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
@@ -344,6 +570,7 @@ def test_insert_node_into_selected_link(editor_and_dpg):
 
 def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dpg.does_item_exist.side_effect = lambda _tag: True
     dpg.get_item_pos.side_effect = lambda tag: [300, 200] if tag == '2:TestNode' else [0, 0]
     dpg.get_item_configuration.side_effect = lambda tag: (
@@ -374,6 +601,7 @@ def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
 
 def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     alias_map = {
         101: '1:TestNode:Int:Output01',
         102: '2:TestNode:Int:Input01',
@@ -598,6 +826,46 @@ def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     assert value_state[param_tag] == 5
     editor._cntrl_redo(None, None)
     assert value_state[param_tag] == 7
+
+
+def test_raw_widget_callback_uses_primed_add_node_defaults(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    node = ParameterDefaultDummyNode()
+    editor._node_instance_list['TestNode'] = node
+    dpg.does_item_exist.side_effect = lambda _tag: True
+    param_tag = '1:TestNode:Text:Input04Value'
+    value_state = {param_tag: True}
+    dpg.get_value.side_effect = lambda tag: value_state.get(tag)
+    dpg.set_value.side_effect = lambda tag, value: value_state.__setitem__(tag, value)
+
+    editor._cntrl_add_node(None, None, 'TestNode')
+    editor._undo_stack.clear()
+    editor._redo_stack.clear()
+
+    editor._cntrl_node_callback(param_tag, True)
+
+    assert len(editor._undo_stack) == 1
+    assert editor._undo_stack[-1].before_value is False
+    assert editor._undo_stack[-1].after_value is True
+    editor._cntrl_undo(None, None)
+    assert value_state[param_tag] is False
+
+
+def test_add_node_from_history_remaps_parameter_setting_keys(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    node = ParameterDefaultDummyNode()
+    editor._node_instance_list['TestNode'] = node
+    dpg.does_item_exist.return_value = True
+    setting = {
+        'ver': '1.0',
+        'pos': [0, 0],
+        '1:TestNode:Text:Input04Value': False,
+    }
+
+    editor._cntrl_add_node_with_id('TestNode', 7, [0, 0], setting)
+
+    assert node.last_setting['7:TestNode:Text:Input04Value'] is False
+    assert editor._parameter_last_values['7:TestNode:Text:Input04Value'] is False
 
 
 def test_raw_widget_callback_records_parameter_history(editor_and_dpg):
@@ -833,6 +1101,14 @@ def test_open_add_node_popup_from_hovered_output_port(editor_and_dpg):
     editor, dpg = editor_and_dpg
     output_tag = '1:TestNode:Int:Output01'
     editor._node_list = ['1:TestNode']
+    editor._mdl_register_port_ref(PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Int',
+        index=1,
+        port_name='Output01',
+        dpg_tag=output_tag,
+    ))
     editor._vw_populate_append_popup_menu = Mock()
     dpg.does_item_exist.side_effect = lambda tag: tag == output_tag
     dpg.is_item_hovered.side_effect = lambda tag: tag == output_tag
@@ -857,6 +1133,14 @@ def test_open_add_node_popup_from_hovered_input_port(editor_and_dpg):
     editor, dpg = editor_and_dpg
     input_tag = '1:TestNode:Int:Input01'
     editor._node_list = ['1:TestNode']
+    editor._mdl_register_port_ref(PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Input',
+        data_type='Int',
+        index=1,
+        port_name='Input01',
+        dpg_tag=input_tag,
+    ))
     editor._vw_populate_prepend_popup_menu = Mock()
     dpg.does_item_exist.side_effect = lambda tag: tag == input_tag
     dpg.is_item_hovered.side_effect = lambda tag: tag == input_tag
@@ -879,6 +1163,7 @@ def test_open_add_node_popup_from_hovered_input_port(editor_and_dpg):
 
 def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     source_tag = '1:TestNode:Int:Output01'
     input_tag = '2:TestNode:Int:Input01'
     editor._node_id = 1
@@ -911,6 +1196,7 @@ def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
 
 def test_add_node_to_hovered_input_creates_connected_node(editor_and_dpg):
     editor, dpg = editor_and_dpg
+    editor._node_instance_list['TestNode'] = PortDeclaringDummyNode()
     dest_tag = '1:TestNode:Int:Input01'
     output_tag = '2:TestNode:Int:Output01'
     editor._node_id = 1
@@ -1046,10 +1332,10 @@ def test_sort_node_graph(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_list = ['1:TestNode', '2:TestNode', '3:TestNode', '4:TestNode']
     editor._node_link_list = [
-        ['1:TestNode:Output01', '2:TestNode:Input01'],
-        ['1:TestNode:Output01', '3:TestNode:Input01'],
-        ['2:TestNode:Output01', '4:TestNode:Input01'],
-        ['3:TestNode:Output01', '4:TestNode:Input01'],
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
+        ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
+        ['2:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
+        ['3:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
     ]
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()

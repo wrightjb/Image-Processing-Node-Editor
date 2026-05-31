@@ -4,10 +4,10 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Float Value'
@@ -26,7 +26,8 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Output01')
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_FLOAT, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
 
         # Settings
@@ -69,9 +70,7 @@ class Node(DpgNodeABC):
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
-        output_value_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Output01')
-        )
+        output_value_tag = self._node_value_tag(node_id, self.TYPE_FLOAT, 'Output01')
 
         output_value = round((dpg_get_value(output_value_tag)), 3)
 
@@ -86,9 +85,7 @@ class Node(DpgNodeABC):
 
     def set_setting_dict(self, node_id, setting_dict):
         tag_node_name = self._node_name(node_id)
-        output_value_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Output01')
-        )
+        output_value_tag = self._node_value_tag(node_id, self.TYPE_FLOAT, 'Output01')
 
         output_value = float(setting_dict[output_value_tag])
 

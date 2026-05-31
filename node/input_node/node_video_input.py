@@ -8,11 +8,11 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Video'
@@ -58,19 +58,22 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input01')
-        tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input03')
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
-        tag_node_output01_image_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
-        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        tag_node_input01_name = self._node_port_tag(node_id, self.TYPE_INT, 'Input01')
+        tag_node_input02_name = self._node_port_tag(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input02_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input03_name_port = self.input_port(node_id, self.TYPE_INT, 'Input03')
+        tag_node_input03_name = tag_node_input03_name_port.dpg_tag
+        tag_node_input03_value_name = tag_node_input03_name_port.value_tag
+        tag_node_input04_name = self._node_port_tag(node_id, self.TYPE_TEXT, 'Input04')
+        tag_node_input04_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input04')
+        tag_node_input05_name = self._node_port_tag(node_id, self.TYPE_TEXT, 'Input05')
+        tag_node_input05_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input05')
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
+        tag_node_output01_image_name = tag_node_output01_name_port.value_tag
+        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name = tag_node_output02_name_port.dpg_tag
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -210,12 +213,12 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
-        output_image_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        tag_node_input02_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input03_value_name = self._node_value_tag(node_id, self.TYPE_INT, 'Input03')
+        tag_node_input04_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input04')
+        tag_node_input05_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input05')
+        output_image_tag = self._node_value_tag(node_id, self.TYPE_IMAGE, 'Output01')
+        output_value02_tag = self._node_value_tag(node_id, self.TYPE_TIME_MS, 'Output02')
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']
@@ -223,12 +226,16 @@ class Node(DpgNodeABC):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
         # Check connection info
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if connection_type == self.TYPE_INT:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
                 # Update value
                 input_value = int(dpg_get_value(source_value_tag))
                 input_value = max([self._min_val, input_value])
@@ -398,10 +405,10 @@ class Node(DpgNodeABC):
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
+        tag_node_input02_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input03_value_name = self._node_value_tag(node_id, self.TYPE_INT, 'Input03')
+        tag_node_input04_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input04')
+        tag_node_input05_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input05')
 
         pos = dpg.get_item_pos(tag_node_name)
 
@@ -424,10 +431,10 @@ class Node(DpgNodeABC):
 
     def set_setting_dict(self, node_id, setting_dict):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
+        tag_node_input02_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input03_value_name = self._node_value_tag(node_id, self.TYPE_INT, 'Input03')
+        tag_node_input04_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input04')
+        tag_node_input05_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Input05')
 
         movie_path = setting_dict.get('movie_path', None)
         node_id = str(node_id)

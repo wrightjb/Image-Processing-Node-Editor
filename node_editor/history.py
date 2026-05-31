@@ -1,6 +1,17 @@
 from dataclasses import dataclass
 
 
+def _iter_history_link_pairs(editor, links):
+    for link in links:
+        yield editor._cntrl_history_link_pair(link)
+
+
+def _history_link_pair(editor, source_tag, dest_tag=None):
+    if dest_tag is None:
+        return editor._cntrl_history_link_pair(source_tag)
+    return editor._cntrl_history_link_pair((source_tag, dest_tag))
+
+
 @dataclass(frozen=True)
 class AddNodeCommand:
     node_id: int
@@ -15,7 +26,9 @@ class AddNodeCommand:
             f'{self.node_id}:{self.node_tag}'
         )
         editor._cntrl_delete_node_by_tag(node_id_name)
-        for source_tag, dest_tag in self.replaced_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.replaced_links
+        ):
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def redo(self, editor):
@@ -25,9 +38,13 @@ class AddNodeCommand:
             self.pos,
             self.setting,
         )
-        for source_tag, dest_tag in self.replaced_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.replaced_links
+        ):
             editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
-        for source_tag, dest_tag in self.created_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.created_links
+        ):
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
         return recreated_node_id_name
 
@@ -47,21 +64,32 @@ class DeleteNodesCommand:
                 node_info['pos'],
                 node_info['setting'],
             )
-        for source_tag, dest_tag in self.healed_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.healed_links
+        ):
             editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
-        for source_tag, dest_tag in self.removed_links + self.removed_selected_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.removed_links + self.removed_selected_links
+        ):
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def redo(self, editor):
-        for source_tag, dest_tag in self.removed_selected_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.removed_selected_links
+        ):
             editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
-        for source_tag, dest_tag in self.removed_links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.removed_links
+        ):
             editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
         for node_info in self.nodes:
-            editor._cntrl_delete_node_by_tag(editor._cntrl_resolve_history_node_id_name(
+            node_id_name = editor._cntrl_resolve_history_node_id_name(
                 f"{node_info['node_id']}:{node_info['node_tag']}"
-            ))
-        for source_tag, dest_tag in self.healed_links:
+            )
+            editor._cntrl_delete_node_by_tag(node_id_name)
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.healed_links
+        ):
             editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
 
@@ -85,7 +113,9 @@ class ImportGraphCommand:
                 node_info['pos'],
                 node_info['setting'],
             )
-        for source_tag, dest_tag in self.links:
+        for source_tag, dest_tag in _iter_history_link_pairs(
+            editor, self.links
+        ):
             editor._cntrl_add_or_replace_link_by_tags(source_tag, dest_tag)
 
 
@@ -108,41 +138,65 @@ class MoveNodeCommand:
 
 @dataclass(frozen=True)
 class AddLinkCommand:
-    source_tag: str
-    dest_tag: str
+    source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
-        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+        source_tag, dest_tag = _history_link_pair(
+            editor, self.source_tag, self.dest_tag
+        )
+        editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
 
     def redo(self, editor):
-        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+        source_tag, dest_tag = _history_link_pair(
+            editor, self.source_tag, self.dest_tag
+        )
+        editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
 
 @dataclass(frozen=True)
 class RemoveLinkCommand:
-    source_tag: str
-    dest_tag: str
+    source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
-        editor._cntrl_add_link_by_tags(self.source_tag, self.dest_tag)
+        source_tag, dest_tag = _history_link_pair(
+            editor, self.source_tag, self.dest_tag
+        )
+        editor._cntrl_add_link_by_tags(source_tag, dest_tag)
 
     def redo(self, editor):
-        editor._cntrl_remove_link_by_tags(self.source_tag, self.dest_tag)
+        source_tag, dest_tag = _history_link_pair(
+            editor, self.source_tag, self.dest_tag
+        )
+        editor._cntrl_remove_link_by_tags(source_tag, dest_tag)
 
 
 @dataclass(frozen=True)
 class ReplaceLinkCommand:
-    old_source_tag: str
-    new_source_tag: str
-    dest_tag: str
+    old_source_tag: object
+    new_source_tag: object
+    dest_tag: object = None
 
     def undo(self, editor):
-        editor._cntrl_remove_link_by_tags(self.new_source_tag, self.dest_tag)
-        editor._cntrl_add_link_by_tags(self.old_source_tag, self.dest_tag)
+        new_source_tag, dest_tag = _history_link_pair(
+            editor, self.new_source_tag, self.dest_tag
+        )
+        old_source_tag, _ = _history_link_pair(
+            editor, self.old_source_tag, self.dest_tag
+        )
+        editor._cntrl_remove_link_by_tags(new_source_tag, dest_tag)
+        editor._cntrl_add_link_by_tags(old_source_tag, dest_tag)
 
     def redo(self, editor):
-        editor._cntrl_remove_link_by_tags(self.old_source_tag, self.dest_tag)
-        editor._cntrl_add_link_by_tags(self.new_source_tag, self.dest_tag)
+        old_source_tag, dest_tag = _history_link_pair(
+            editor, self.old_source_tag, self.dest_tag
+        )
+        new_source_tag, _ = _history_link_pair(
+            editor, self.new_source_tag, self.dest_tag
+        )
+        editor._cntrl_remove_link_by_tags(old_source_tag, dest_tag)
+        editor._cntrl_add_link_by_tags(new_source_tag, dest_tag)
 
 
 @dataclass(frozen=True)

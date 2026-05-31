@@ -83,22 +83,22 @@ class Node(DeclarativeImageProcessNodeBase):
         if min_x > max_x:
             min_x, max_x = max_x - 0.01, min_x + 0.01
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input02')),
+                self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input02'),
                 min_x,
             )
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')),
+                self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input03'),
                 max_x,
             )
 
         if min_y > max_y:
             min_y, max_y = max_y - 0.01, min_y + 0.01
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input04')),
+                self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input04'),
                 min_y,
             )
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input05')),
+                self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input05'),
                 max_y,
             )
 

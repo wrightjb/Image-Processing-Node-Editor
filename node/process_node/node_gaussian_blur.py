@@ -56,12 +56,8 @@ class Node(DeclarativeImageProcessNodeBase):
     ]
 
     def on_node_added(self, tag_node_name):
-        sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
-        )
-        auto_sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input04')
-        )
+        sigma_tag = self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
+        auto_sigma_tag = self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input04')
 
         def _toggle_sigma(_sender, app_data, user_data):
             dpg.configure_item(user_data, enabled=not app_data)
@@ -84,12 +80,8 @@ class Node(DeclarativeImageProcessNodeBase):
         dpg.configure_item(sigma_tag, enabled=not auto_sigma)
 
     def on_settings_applied(self, tag_node_name):
-        sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
-        )
-        auto_sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input04')
-        )
+        sigma_tag = self._port_value_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
+        auto_sigma_tag = self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input04')
         auto_sigma = bool(dpg.get_value(auto_sigma_tag))
         dpg.configure_item(sigma_tag, enabled=not auto_sigma)
 

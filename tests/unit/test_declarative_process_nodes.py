@@ -1,7 +1,9 @@
 import pytest
 import numpy as np
 
+from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
 from node.base import declarative_node_base as base_module
+from node import node_abc as node_abc_module
 import node.process_node.node_blur as blur_module
 import node.process_node.node_brightness as brightness_module
 import node.process_node.node_contrast as contrast_module
@@ -42,6 +44,24 @@ class DpgStub:
         return [10, 20]
 
 
+def _port_ref(node_id, node_tag, direction, data_type, port_name):
+    prefix = 'Input' if direction == 'Input' else 'Output'
+    dpg_tag = f'{node_id}:{node_tag}:{data_type}:{port_name}'
+    return PortRef(
+        node_ref=NodeRef(str(node_id), node_tag),
+        direction=direction,
+        data_type=data_type,
+        index=int(port_name[len(prefix):]),
+        port_name=port_name,
+        dpg_tag=dpg_tag,
+        value_tag=f'{dpg_tag}Value',
+    )
+
+
+def _link_adapter(source, destination):
+    return LinkConnectionAdapter(LinkRef(source, destination))
+
+
 def _prepare_node(node):
     node._opencv_setting_dict = {
         'process_width': 8,
@@ -61,8 +81,16 @@ def test_blur_node_update_with_parameter_link(monkeypatch):
     written = {}
 
     monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
-    monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: written.setdefault(tag, value))
-    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: ('texture', frame.shape, w, h))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        lambda tag, value: written.setdefault(tag, value),
+    )
+    monkeypatch.setattr(
+        base_module,
+        'convert_cv_to_dpg',
+        lambda frame, w, h: ('texture', frame.shape, w, h),
+    )
     monkeypatch.setattr(blur_module.cv2, 'blur', lambda f, k: f, raising=False)
 
     frame = np.full((8, 8, 3), 127, dtype=np.uint8)
@@ -79,6 +107,50 @@ def test_blur_node_update_with_parameter_link(monkeypatch):
     assert result is None
     assert out_frame.shape == frame.shape
     assert written['2:Blur:Int:Input02Value'] == 5
+    assert written['2:Blur:Image:Output01Value'][0] == 'texture'
+
+
+def test_blur_node_update_with_typed_connection_adapters(monkeypatch):
+    node = BlurNode()
+    _prepare_node(node)
+
+    image_output = _port_ref(1, 'ImageSource', 'Output', 'Image', 'Output01')
+    image_input = _port_ref(2, 'Blur', 'Input', 'Image', 'Input01')
+    int_output = _port_ref(1, 'IntValue', 'Output', 'Int', 'Output01')
+    int_input = _port_ref(2, 'Blur', 'Input', 'Int', 'Input02')
+    values = {
+        int_output.value_tag: 7,
+        int_input.value_tag: 1,
+    }
+    written = {}
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        lambda tag, value: written.setdefault(tag, value),
+    )
+    monkeypatch.setattr(
+        base_module,
+        'convert_cv_to_dpg',
+        lambda frame, w, h: ('texture', frame.shape, w, h),
+    )
+    monkeypatch.setattr(blur_module.cv2, 'blur', lambda f, k: f, raising=False)
+
+    frame = np.full((8, 8, 3), 127, dtype=np.uint8)
+    out_frame, result = node.update(
+        2,
+        [
+            _link_adapter(image_output, image_input),
+            _link_adapter(int_output, int_input),
+        ],
+        {image_output.node_ref.node_id_name: frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert written[int_input.value_tag] == 7
     assert written['2:Blur:Image:Output01Value'][0] == 'texture'
 
 
@@ -972,3 +1044,98 @@ def test_warmth_tint_node_update_clamps_linked_values(monkeypatch):
     assert out_frame.shape == frame.shape
     assert writes['301:WarmthTint:Int:Input02Value'] == 100
     assert writes['301:WarmthTint:Int:Input03Value'] == -100
+
+
+class DpgContextRecorder:
+    mvNode_Attr_Input = 'input'
+    mvNode_Attr_Output = 'output'
+    mvNode_Attr_Static = 'static'
+    mvFormat_Float_rgb = 'float-rgb'
+
+    def __init__(self):
+        self.node_attributes = []
+        self.raw_textures = []
+        self.widgets = []
+
+    class _Context:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def texture_registry(self, **kwargs):
+        return self._Context()
+
+    def node(self, **kwargs):
+        return self._Context()
+
+    def node_attribute(self, **kwargs):
+        self.node_attributes.append(kwargs)
+        return self._Context()
+
+    def group(self, **kwargs):
+        return self._Context()
+
+    def add_raw_texture(self, *args, **kwargs):
+        self.raw_textures.append((args, kwargs))
+
+    def add_button(self, **kwargs):
+        self.widgets.append(('button', kwargs))
+
+    def add_checkbox(self, **kwargs):
+        self.widgets.append(('checkbox', kwargs))
+
+    def add_slider_int(self, **kwargs):
+        self.widgets.append(('slider_int', kwargs))
+
+    def add_slider_float(self, **kwargs):
+        self.widgets.append(('slider_float', kwargs))
+
+    def add_input_int(self, **kwargs):
+        self.widgets.append(('input_int', kwargs))
+
+    def add_combo(self, *args, **kwargs):
+        self.widgets.append(('combo', args, kwargs))
+
+    def add_text(self, **kwargs):
+        self.widgets.append(('text', kwargs))
+
+
+def test_declarative_add_node_declares_typed_ports(monkeypatch):
+    node = BlurNode()
+    dpg_recorder = DpgContextRecorder()
+    registered_ports = []
+    node.set_port_registration_callback(registered_ports.append)
+
+    monkeypatch.setattr(base_module, 'dpg', dpg_recorder)
+    monkeypatch.setattr(node_abc_module, 'dpg', dpg_recorder)
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda image, w, h: image)
+
+    tag_node_name = node.add_node(
+        'NodeEditor',
+        6,
+        pos=[10, 20],
+        opencv_setting_dict={
+            'process_width': 8,
+            'process_height': 8,
+            'use_pref_counter': True,
+        },
+    )
+
+    declared_tags = [port.dpg_tag for port in node.get_declared_port_refs(6)]
+    assert tag_node_name == '6:Blur'
+    assert declared_tags == [
+        '6:Blur:Image:Input01',
+        '6:Blur:Image:Output01',
+        '6:Blur:TimeMS:Output02',
+        '6:Blur:Int:Input02',
+    ]
+    assert registered_ports == node.get_declared_port_refs(6)
+    assert [attr['tag'] for attr in dpg_recorder.node_attributes] == [
+        '6:Blur:ToolbarAttr',
+        '6:Blur:Image:Input01',
+        '6:Blur:Image:Output01',
+        '6:Blur:Int:Input02',
+        '6:Blur:TimeMS:Output02',
+    ]

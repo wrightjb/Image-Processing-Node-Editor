@@ -51,11 +51,11 @@ class Node(DeclarativeImageProcessNodeBase):
         if min_val > max_val:
             min_val, max_val = max_val - 1, min_val + 1
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')),
+                self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input02'),
                 min_val,
             )
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03')),
+                self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input03'),
                 max_val,
             )
 

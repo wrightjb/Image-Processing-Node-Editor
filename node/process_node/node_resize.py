@@ -73,18 +73,18 @@ class Node(DeclarativeImageProcessNodeBase):
         height = max(1, min(4096, height))
 
         dpg_set_value(
-            self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')),
+            self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input02'),
             width,
         )
         dpg_set_value(
-            self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03')),
+            self._port_value_tag(tag_node_name, self.TYPE_INT, 'Input03'),
             height,
         )
 
         if interpolation_text not in self._interpolation:
             interpolation_text = 'INTER_LINEAR'
             dpg_set_value(
-                self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')),
+                self._port_value_tag(tag_node_name, self.TYPE_TEXT, 'Input04'),
                 interpolation_text,
             )
 

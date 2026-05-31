@@ -7,10 +7,10 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'FPS'
@@ -39,13 +39,15 @@ class Node(DpgNodeABC):
 
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input00')
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input01')
-        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input01'))
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01')
-        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
-        tag_node_output02_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02')
-        tag_node_output02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        tag_node_input00_name = self._node_port_tag(node_id, self.TYPE_TIME_MS, 'Input00')
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_TIME_MS, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
+        tag_node_input01_value_name = tag_node_input01_name_port.value_tag
+        tag_node_output01_name = self._node_port_tag(node_id, self.TYPE_TEXT, 'Output01')
+        tag_node_output01_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Output01')
+        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name = tag_node_output02_name_port.dpg_tag
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -111,18 +113,22 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
-        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        output_value01_tag = self._node_value_tag(node_id, self.TYPE_TEXT, 'Output01')
+        output_value02_tag = self._node_value_tag(node_id, self.TYPE_TIME_MS, 'Output02')
 
         total_elapsed_time = 0
 
         # Get source node name for image (with ID)
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if connection_type == self.TYPE_TIME_MS:
                 # Get connection tag
-                source_value_tag = self._value_tag(source_tag)
-                destination_value_tag = self._value_tag(destination_tag)
+                source_value_tag = self._connection_value_tag(connection_info, 'source', source_tag)
+                destination_value_tag = self._connection_value_tag(connection_info, 'destination', destination_tag)
 
                 # Update value
                 input_value = dpg_get_value(source_value_tag)
@@ -214,14 +220,14 @@ class Node(DpgNodeABC):
             self._slot_id[tag_node_name] += 1
 
             # Generate insertion destination tag name
-            before_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
+            before_tag = self._node_port_tag(node_id, self.TYPE_TIME_MS, 'Input')
             before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
 
             # Generate added slot tag
-            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
+            tag_node_inputXX_name = self._node_port_tag(node_id, self.TYPE_TIME_MS, 'Input')
             tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
 
-            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
+            tag_node_inputXX_value_name = self._node_port_tag(node_id, self.TYPE_TIME_MS, 'Input')
             tag_node_inputXX_value_name += str(
                 self._slot_id[tag_node_name]).zfill(2) + 'Value'
 

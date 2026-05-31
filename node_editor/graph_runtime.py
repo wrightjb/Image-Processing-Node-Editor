@@ -4,6 +4,8 @@ import copy
 import hashlib
 import pickle
 
+from node.port_model import LinkConnectionAdapter
+
 
 class GraphRuntime:
     """Owns graph update state (images/results/cache) and executes update ticks."""
@@ -158,6 +160,31 @@ def _strip_cache_meta(result):
     }
 
 
+def _connection_info_to_update_connection(connection_info):
+    if isinstance(connection_info, LinkConnectionAdapter):
+        return connection_info
+    if (
+        hasattr(connection_info, 'source')
+        and hasattr(connection_info, 'destination')
+        and hasattr(connection_info, 'legacy_pair')
+    ):
+        return LinkConnectionAdapter(connection_info)
+    return connection_info
+
+
+def _connection_info_node_names(connection_info):
+    if (
+        hasattr(connection_info, 'source')
+        and hasattr(connection_info, 'destination')
+    ):
+        return (
+            connection_info.source.node_ref.node_id_name,
+            connection_info.destination.node_ref.node_id_name,
+        )
+
+    source_tag, dest_tag = connection_info
+    return ':'.join(source_tag.split(':')[:2]), ':'.join(dest_tag.split(':')[:2])
+
 def update_node_info(
     node_editor,
     node_image_dict,
@@ -187,9 +214,9 @@ def update_node_info(
         if len(connection_info) != 2:
             return False
 
-        source_tag, dest_tag = connection_info
-        source_node_id_name = ':'.join(source_tag.split(':')[:2])
-        dest_node_id_name = ':'.join(dest_tag.split(':')[:2])
+        source_node_id_name, dest_node_id_name = _connection_info_node_names(
+            connection_info
+        )
         if source_node_id_name not in valid_nodes:
             return False
         if dest_node_id_name not in valid_nodes:
@@ -214,7 +241,10 @@ def update_node_info(
     for deleted_node_id_name in deleted_result_node_id_name_list:
         del node_result_dict[deleted_node_id_name]
 
-    sorted_node_connection_dict = node_editor.get_sorted_node_connection()
+    if hasattr(node_editor, 'get_sorted_node_connection_refs'):
+        sorted_node_connection_dict = node_editor.get_sorted_node_connection_refs()
+    else:
+        sorted_node_connection_dict = node_editor.get_sorted_node_connection()
 
     for node_id_name in node_list:
         if node_id_name not in node_image_dict:
@@ -229,10 +259,14 @@ def update_node_info(
             except Exception:
                 pass
 
-        connection_list = sorted_node_connection_dict.get(node_id_name, [])
-        connection_list = [
-            connection_info for connection_info in connection_list
+        connection_refs = sorted_node_connection_dict.get(node_id_name, [])
+        connection_refs = [
+            connection_info for connection_info in connection_refs
             if _is_valid_connection(connection_info, active_node_set)
+        ]
+        connection_list = [
+            _connection_info_to_update_connection(connection_info)
+            for connection_info in connection_refs
         ]
 
         node_instance = node_editor.get_node_instance(node_name)

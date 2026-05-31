@@ -8,11 +8,11 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Image'
@@ -51,10 +51,9 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT,
-                                               'Input01')
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
-                                                'Output01')
+        tag_node_input01_name = self._node_port_tag(node_id, self.TYPE_INT, 'Input01')
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_image_name = self._value_tag(tag_node_output01_name)
 
         # OpenCV settings
@@ -137,8 +136,7 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        output_image_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        output_image_tag = self._node_value_tag(node_id, self.TYPE_IMAGE, 'Output01')
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']

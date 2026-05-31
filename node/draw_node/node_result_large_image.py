@@ -6,12 +6,12 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 from node.draw_node.draw_util.draw_util import draw_info
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Result Image(Large)'
@@ -53,8 +53,8 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE,
-                                               'Input01')
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_image_name = self._value_tag(tag_node_input01_name)
 
         # OpenCV settings
@@ -114,8 +114,7 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        input_image_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        input_image_tag = self._node_value_tag(node_id, self.TYPE_IMAGE, 'Input01')
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         # OpenCV settings
@@ -124,13 +123,13 @@ class Node(DpgNodeABC):
         # Get source node name for image (with ID)
         node_name = ''
         connection_info_src = ''
-        for source_tag, _, connection_type in self._iter_connections(
+        for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
                 connection_list):
             if connection_type != self.TYPE_IMAGE:
                 continue
 
-            connection_info_src = self._extract_source_node_key(source_tag)
-            node_name = self._extract_source_node_key(source_tag).split(':')[1]
+            connection_info_src = self._connection_source_node_key(connection_info, source_tag)
+            node_name = self._connection_source_node_key(connection_info, source_tag).split(':')[1]
 
         # Get image
         frame = node_image_dict.get(connection_info_src, None)

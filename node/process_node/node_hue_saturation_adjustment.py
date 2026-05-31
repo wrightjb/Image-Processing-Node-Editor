@@ -172,7 +172,7 @@ class Node(DeclarativeImageProcessNodeBase):
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del callback
         with dpg.node_attribute(
-            tag=self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input99'),
+            tag=self._node_port_tag(node_id, self.TYPE_TEXT, 'Input99'),
             attribute_type=dpg.mvNode_Attr_Static,
         ):
             dpg.add_button(
@@ -190,8 +190,10 @@ class Node(DeclarativeImageProcessNodeBase):
                 dpg.add_key_press_handler(dpg.mvKey_Right, callback=self._nudge_slider, user_data=1)
 
         for parameter in self.parameters:
-            slider_tag = self._value_tag(
-                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            slider_tag = self._node_value_tag(
+                node_id,
+                parameter['type'],
+                parameter['port'],
             )
             dpg.configure_item(slider_tag, callback=self._slider_touched_callback, user_data=node_id)
 
@@ -245,11 +247,12 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def _reset_all_callback(self, sender, app_data, user_data):
         del sender, app_data
-        tag_node_name = self._node_name(user_data)
         batch_changes = []
         for parameter in self.parameters:
-            parameter_value_tag = self._value_tag(
-                self._port_tag(tag_node_name, parameter['type'], parameter['port'])
+            parameter_value_tag = self._node_value_tag(
+                user_data,
+                parameter['type'],
+                parameter['port'],
             )
             before_value = dpg.get_value(parameter_value_tag)
             after_value = parameter['default']

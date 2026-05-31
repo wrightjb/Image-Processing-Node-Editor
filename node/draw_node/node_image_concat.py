@@ -9,7 +9,7 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 from node.draw_node.draw_util.draw_util import draw_info
 
@@ -120,7 +120,7 @@ def create_image_dict(
     return frame_dict
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Image Concat'
@@ -146,11 +146,13 @@ class Node(DpgNodeABC):
 
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input00')
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
-        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
-        tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01')
-        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        tag_node_input00_name = self._node_port_tag(node_id, self.TYPE_IMAGE, 'Input00')
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
+        tag_node_input01_value_name = tag_node_input01_name_port.value_tag
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name = tag_node_output01_name_port.dpg_tag
+        tag_node_output01_value_name = tag_node_output01_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -225,7 +227,7 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        output_value01_tag = self._node_value_tag(node_id, self.TYPE_IMAGE, 'Output01')
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         resize_width = self._opencv_setting_dict['result_width']
@@ -235,17 +237,25 @@ class Node(DpgNodeABC):
         # Get source node name for image (with ID)
         connection_info_src = ''
         connection_info_src_dict = {}
-        for source_tag, destination_tag, connection_type in self._iter_connections(
-                connection_list):
+        for (
+                connection_info,
+                source_tag,
+                destination_tag,
+                connection_type,
+        ) in self._iter_connection_infos(connection_list):
             # Get slot number from tag name
-            slot_number = re.sub(r'\D', '', destination_tag.split(':')[-1])
+            destination_port_name = self._connection_port_name(
+                connection_info,
+                destination_tag,
+            )
+            slot_number = re.sub(r'\D', '', destination_port_name)
             if slot_number == '':
                 continue
             slot_number = int(slot_number) - 1
 
             if connection_type == self.TYPE_IMAGE:
                 # Get source node name for image (with ID)
-                connection_info_src = self._extract_source_node_key(source_tag)
+                connection_info_src = self._connection_source_node_key(connection_info, source_tag)
                 node_name = connection_info_src.split(':')[1]
 
                 connection_info_src_dict[slot_number] = connection_info_src
@@ -316,17 +326,23 @@ class Node(DpgNodeABC):
         if self._max_slot_number > self._slot_id[tag_node_name]:
             self._slot_id[tag_node_name] += 1
 
+            node_id = self._extract_node_id(tag_node_name)
+            before_port_name = 'Input' + str(
+                self._slot_id[tag_node_name] - 1
+            ).zfill(2)
+            port_name = 'Input' + str(self._slot_id[tag_node_name]).zfill(2)
+
             # Generate insertion destination tag name
-            before_tag = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
-            before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
+            before_tag = self._port_tag(
+                tag_node_name,
+                self.TYPE_IMAGE,
+                before_port_name,
+            )
 
             # Generate added slot tag
-            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
-            tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
-
-            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input')
-            tag_node_inputXX_value_name += str(
-                self._slot_id[tag_node_name]).zfill(2) + 'Value'
+            input_port = self.input_port(node_id, self.TYPE_IMAGE, port_name)
+            tag_node_inputXX_name = input_port.dpg_tag
+            tag_node_inputXX_value_name = input_port.value_tag
 
             # Add slot
             with dpg.node_attribute(

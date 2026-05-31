@@ -10,11 +10,11 @@ import dearpygui.dearpygui as dpg
 
 from node_editor.util import dpg_get_value, dpg_set_value
 
-from node.node_abc import DpgNodeABC
+from node.node_abc import DpgNodeBase
 from node_editor.util import convert_cv_to_dpg
 
 
-class Node(DpgNodeABC):
+class Node(DpgNodeBase):
     _ver = '0.0.1'
 
     node_label = 'Video Writer'
@@ -41,11 +41,12 @@ class Node(DpgNodeABC):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01')
-        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_input01_name = tag_node_input01_name_port.dpg_tag
+        tag_node_input01_value_name = tag_node_input01_name_port.value_tag
 
-        tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        tag_node_button_name = self._node_port_tag(node_id, self.TYPE_TEXT, 'Button')
+        tag_node_button_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Button')
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -106,17 +107,17 @@ class Node(DpgNodeABC):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        input_value01_tag = self._node_value_tag(node_id, self.TYPE_IMAGE, 'Input01')
+        tag_node_button_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Button')
 
         # Get source node name for image (with ID)
         connection_info_src = ''
-        for source_tag, _, connection_type in self._iter_connections(
+        for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
                 connection_list):
             if connection_type != self.TYPE_IMAGE:
                 continue
 
-            connection_info_src = self._extract_source_node_key(source_tag)
+            connection_info_src = self._connection_source_node_key(connection_info, source_tag)
 
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
@@ -197,7 +198,7 @@ class Node(DpgNodeABC):
 
     def _recording_button(self, sender, data, user_data):
         tag_node_name = user_data
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        tag_node_button_value_name = self._node_value_tag(node_id, self.TYPE_TEXT, 'Button')
 
         label = dpg.get_item_label(tag_node_button_value_name)
 

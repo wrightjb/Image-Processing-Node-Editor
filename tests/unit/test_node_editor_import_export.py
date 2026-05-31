@@ -7,6 +7,60 @@ from collections import OrderedDict
 from node_editor.node_editor import DpgNodeEditor
 
 
+def _typed_port_payload(port_tag):
+    parts = str(port_tag).split(':')
+    if len(parts) < 4:
+        return {'dpg_tag': port_tag}
+    node_id, node_tag, data_type, port_name = parts[:4]
+    direction = ''
+    index = 0
+    if port_name.startswith('Input'):
+        direction = 'Input'
+        index_text = port_name[len('Input'):]
+    elif port_name.startswith('Output'):
+        direction = 'Output'
+        index_text = port_name[len('Output'):]
+    else:
+        index_text = ''
+    if index_text.isdigit():
+        index = int(index_text)
+    return {
+        'node': {'id': node_id, 'tag': node_tag},
+        'direction': direction,
+        'data_type': data_type,
+        'index': index,
+        'port_name': port_name,
+        'dpg_tag': port_tag,
+    }
+
+
+def _typed_link_refs(link_pairs):
+    return [
+        {
+            'source': _typed_port_payload(source_tag),
+            'destination': _typed_port_payload(dest_tag),
+        }
+        for source_tag, dest_tag in link_pairs
+    ]
+
+
+def _link_ref_pairs(link_refs):
+    return [
+        [link_ref['source']['dpg_tag'], link_ref['destination']['dpg_tag']]
+        for link_ref in link_refs
+    ]
+
+
+def _history_link_pairs(links):
+    pairs = []
+    for link in links:
+        if hasattr(link, 'legacy_pair'):
+            pairs.append(tuple(link.legacy_pair))
+        else:
+            pairs.append(tuple(link))
+    return pairs
+
+
 class TestDpgNodeEditorImportExport:
     """Test suite for DpgNodeEditor import/export functionality"""
 
@@ -71,9 +125,10 @@ class TestDpgNodeEditorImportExport:
             exported_data = json.load(f)
 
         assert 'node_list' in exported_data
-        assert 'link_list' in exported_data
+        assert 'link_list' not in exported_data
+        assert 'link_refs' in exported_data
         assert exported_data['node_list'] == []
-        assert exported_data['link_list'] == []
+        assert exported_data['link_refs'] == []
 
     def test_export_with_nodes(
         self,
@@ -99,10 +154,27 @@ class TestDpgNodeEditorImportExport:
             exported_data = json.load(f)
 
         assert exported_data['node_list'] == ['1:test_node', '2:test_node']
-        assert exported_data['link_list'] == [[
-            '1:test_node:Image:Output01',
-            '2:test_node:Image:Input01'
-        ]]
+        assert 'link_list' not in exported_data
+        assert exported_data['link_refs'] == [
+            {
+                'source': {
+                    'node': {'id': '1', 'tag': 'test_node'},
+                    'direction': 'Output',
+                    'data_type': 'Image',
+                    'index': 1,
+                    'port_name': 'Output01',
+                    'dpg_tag': '1:test_node:Image:Output01',
+                },
+                'destination': {
+                    'node': {'id': '2', 'tag': 'test_node'},
+                    'direction': 'Input',
+                    'data_type': 'Image',
+                    'index': 1,
+                    'port_name': 'Input01',
+                    'dpg_tag': '2:test_node:Image:Input01',
+                },
+            }
+        ]
 
         assert '1:test_node' in exported_data
         assert '2:test_node' in exported_data
@@ -140,10 +212,10 @@ class TestDpgNodeEditorImportExport:
         """Test successful file import"""
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -189,6 +261,65 @@ class TestDpgNodeEditorImportExport:
             parent=node_editor._node_editor_tag
         )
 
+    def test_import_prefers_typed_link_refs(
+        self,
+        node_editor,
+        mock_dpg,
+        mock_node_instance,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:test_node'],
+            'link_refs': [
+                {
+                    'source': {
+                        'node': {'id': '1', 'tag': 'test_node'},
+                        'direction': 'Output',
+                        'data_type': 'Image',
+                        'index': 1,
+                        'port_name': 'Output01',
+                        'dpg_tag': '1:test_node:Image:Output01',
+                    },
+                    'destination': {
+                        'node': {'id': '2', 'tag': 'test_node'},
+                        'direction': 'Input',
+                        'data_type': 'Image',
+                        'index': 1,
+                        'port_name': 'Input01',
+                        'dpg_tag': '2:test_node:Image:Input01',
+                    },
+                }
+            ],
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:test_node': {
+                'id': '2',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [300, 400]},
+            },
+        }
+        temp_path = tmp_path / 'typed_import.json'
+        temp_path.write_text(json.dumps(test_data))
+
+        node_editor._cntrl_file_import(
+            'file_import',
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        assert node_editor._node_link_list == [[
+            '1:test_node:Image:Output01',
+            '2:test_node:Image:Input01',
+        ]]
+        link_ref = node_editor._mdl_get_link_ref_by_destination(
+            '2:test_node:Image:Input01'
+        )
+        assert link_ref is not None
+        assert link_ref.source.dpg_tag == '1:test_node:Image:Output01'
+        assert link_ref.destination.dpg_tag == '2:test_node:Image:Input01'
+
     def test_import_is_undoable_and_redoable(
         self,
         node_editor,
@@ -197,10 +328,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -249,10 +380,17 @@ class TestDpgNodeEditorImportExport:
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
         ]]
+        assert node_editor.get_sorted_node_connection() == OrderedDict([
+            ('1:test_node', []),
+            ('2:test_node', [[
+                '1:test_node:Image:Output01',
+                '2:test_node:Image:Input01',
+            ]]),
+        ])
         assert len(node_editor._undo_stack) == 1
 
     @pytest.mark.parametrize(
-        "link_list",
+        "link_pairs",
         [
             [["1:test_node:output", "2:test_node:Image:Input01"]],
             [["1:test_node:Image:Output01", "2:test_node:input"]],
@@ -263,11 +401,11 @@ class TestDpgNodeEditorImportExport:
         node_editor,
         mock_dpg,
         tmp_path,
-        link_list,
+        link_pairs,
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': link_list,
+            'link_refs': _typed_link_refs(link_pairs),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -313,7 +451,7 @@ class TestDpgNodeEditorImportExport:
         ]
         test_data = {
             'node_list': ['1:test_node', '2:test_node', '3:test_node'],
-            'link_list': [valid_link, replacement_link],
+            'link_refs': _typed_link_refs([valid_link, replacement_link]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -357,7 +495,7 @@ class TestDpgNodeEditorImportExport:
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
-        assert node_editor._undo_stack[-1].links == [(
+        assert _history_link_pairs(node_editor._undo_stack[-1].links) == [(
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         )]
@@ -379,10 +517,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output99',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -418,7 +556,7 @@ class TestDpgNodeEditorImportExport:
         mock_dpg.add_node_link.assert_not_called()
 
     @pytest.mark.parametrize(
-        "link_list",
+        "link_pairs",
         [
             [["1:test_node:Image:Input01", "2:test_node:Image:Input01"]],
             [["1:test_node:Int:Output01", "2:test_node:Float:Input01"]],
@@ -429,11 +567,11 @@ class TestDpgNodeEditorImportExport:
         node_editor,
         mock_dpg,
         tmp_path,
-        link_list,
+        link_pairs,
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': link_list,
+            'link_refs': _typed_link_refs(link_pairs),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -469,10 +607,10 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node', '2:test_node', '3:test_node'],
-            'link_list': [
+            'link_refs': _typed_link_refs([
                 ['1:test_node:Image:Output01', '3:test_node:Image:Input01'],
                 ['2:test_node:Image:Output01', '3:test_node:Image:Input01'],
-            ],
+            ]),
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -503,7 +641,7 @@ class TestDpgNodeEditorImportExport:
             '2:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
-        assert node_editor._undo_stack[-1].links == [(
+        assert _history_link_pairs(node_editor._undo_stack[-1].links) == [(
             '2:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         )]
@@ -516,7 +654,7 @@ class TestDpgNodeEditorImportExport:
     ):
         test_data = {
             'node_list': ['1:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -561,7 +699,7 @@ class TestDpgNodeEditorImportExport:
         mock_node_instance._ver = '2.0.0'
         test_data = {
             'node_list': ['1:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '1:test_node': {
                 'id': '1',
                 'name': 'test_node',
@@ -595,7 +733,7 @@ class TestDpgNodeEditorImportExport:
         node_editor._node_id = 1
         test_data = {
             'node_list': ['5:test_node'],
-            'link_list': [],
+            'link_refs': [],
             '5:test_node': {
                 'id': '5',
                 'name': 'test_node',
@@ -622,7 +760,7 @@ class TestDpgNodeEditorImportExport:
         """Test that importing JSON missing mandatory keys raises
            KeyError"""
         # Create JSON missing 'node_list'
-        bad = {'link_list': []}
+        bad = {'link_refs': []}
         path = tmp_path / 'bad.json'
         path.write_text(json.dumps(bad))
         with pytest.raises(KeyError):
@@ -762,7 +900,8 @@ class TestDpgNodeEditorImportExport:
 
         # Assert export structure is correct
         assert set(exported['node_list']) == set(original_nodes)
-        assert (set(tuple(l) for l in exported['link_list'])
+        assert 'link_list' not in exported
+        assert (set(tuple(l) for l in _link_ref_pairs(exported['link_refs']))
                 == set(tuple(l) for l in original_links))
 
         # Act: import into a fresh editor
@@ -804,10 +943,10 @@ class TestDpgNodeEditorImportExport:
         # import JSON with the same IDs (1 & 2), so they must be remapped
         imported = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1', 'name': 'test_node',
                 'setting': {'ver': '1.0.0', 'pos': [10, 20]}
@@ -868,10 +1007,10 @@ class TestDpgNodeEditorImportExport:
     ):
         imported = {
             'node_list': ['1:test_node', '2:test_node'],
-            'link_list': [[
+            'link_refs': _typed_link_refs([[
                 '1:test_node:Image:Output01',
                 '2:test_node:Image:Input01',
-            ]],
+            ]]),
             '1:test_node': {
                 'id': '1', 'name': 'test_node',
                 'setting': {'ver': '1.0.0', 'pos': [10, 20]}

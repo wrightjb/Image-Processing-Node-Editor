@@ -28,9 +28,8 @@ Implemented so far:
 - `node.port_model` defines the first reusable passive `NodeRef` / `PortRef`
   records for node-side declarations.
 - `DpgNodeBase` also has typed port declaration APIs (`input_port`,
-  `output_port`, `parameter_port`) that create passive `PortRef` metadata while
-  preserving the compact DPG tag format, plus lookup/value-tag helpers for code
-  paths that can reuse existing declarations instead of rebuilding compact tags.
+  `output_port`, `parameter_port`) that create passive `PortRef` metadata using
+  `PortDirection` enum values while preserving the compact DPG tag format.
 - `DeclarativeImageProcessNodeBase` uses typed `PortRef` declarations for its
   standard image input/output, elapsed-time output, and declared parameter ports;
   cache/result toggles still use value tags because they are toolbar controls,
@@ -41,7 +40,8 @@ Implemented so far:
 - Direct non-declarative node `update()` implementations now iterate typed
   connection info records through `_iter_connection_infos()` instead of the legacy
   `_iter_connections()` adapter. Source value nodes and the still-image node now
-  reuse declared output port value tags in setting/update paths.
+  keep their declared output `PortRef` handles and read value tags from those
+  handles in setting/update paths.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -313,5 +313,6 @@ plus a readable compact boundary string.
   string pairs to typed refs.
 - In progress: continue shrinking compact-tag helper usage in node implementations
   where the tag is not part of a DearPyGui UI boundary. The current pass added
-  declared-port lookup/value-tag helpers and migrated `IntValue`, `FloatValue`,
-  and `Image` source-node output value access to them.
+  `PortDirection` and migrated `IntValue`, `FloatValue`, and `Image` source nodes
+  to store output `PortRef` handles instead of re-querying value tags by compact
+  `port_name` / direction strings.

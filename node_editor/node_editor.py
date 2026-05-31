@@ -12,7 +12,7 @@ from importlib import import_module
 from pathlib import Path
 import dearpygui.dearpygui as dpg
 
-from node.port_model import LinkRef, NodeRef, PortRef
+from node.port_model import LinkRef, NodeRef, PortDirection, PortRef
 from node_editor.history import (
     AddNodeCommand,
     DeleteNodesCommand,
@@ -136,6 +136,8 @@ class DpgNodeEditor(object):
         node_id_name=None,
         data_type=None,
     ):
+        if isinstance(direction, PortDirection):
+            direction = direction.value
         for port_ref in list(self._port_registry.values()):
             if direction is not None and port_ref.direction != direction:
                 continue
@@ -159,11 +161,11 @@ class DpgNodeEditor(object):
         node_ref = NodeRef(parts[0], parts[1])
         port_name = parts[3]
         if port_name.startswith('Input'):
-            direction = 'Input'
-            index_text = port_name[len('Input'):]
+            direction = PortDirection.INPUT
+            index_text = port_name[len(PortDirection.INPUT.value):]
         elif port_name.startswith('Output'):
-            direction = 'Output'
-            index_text = port_name[len('Output'):]
+            direction = PortDirection.OUTPUT
+            index_text = port_name[len(PortDirection.OUTPUT.value):]
         else:
             return None
         try:
@@ -192,7 +194,10 @@ class DpgNodeEditor(object):
         dest_port = self._mdl_resolve_port_ref(destination)
         if source_port is None or dest_port is None:
             return None
-        if source_port.direction != 'Output' or dest_port.direction != 'Input':
+        if (
+            source_port.direction != PortDirection.OUTPUT
+            or dest_port.direction != PortDirection.INPUT
+        ):
             return None
         if source_port.data_type != dest_port.data_type:
             return None
@@ -235,12 +240,15 @@ class DpgNodeEditor(object):
         return None
 
     def _mdl_serialize_port_ref(self, port_ref):
+        direction = port_ref.direction
+        if isinstance(direction, PortDirection):
+            direction = direction.value
         return {
             'node': {
                 'id': port_ref.node_ref.node_id,
                 'tag': port_ref.node_ref.node_tag,
             },
-            'direction': port_ref.direction,
+            'direction': direction,
             'data_type': port_ref.data_type,
             'index': port_ref.index,
             'port_name': port_ref.port_name,
@@ -1377,10 +1385,10 @@ class DpgNodeEditor(object):
         return None
 
     def _cntrl_get_hovered_output_port_tag(self):
-        return self._cntrl_get_hovered_registered_port_tag('Output')
+        return self._cntrl_get_hovered_registered_port_tag(PortDirection.OUTPUT)
 
     def _cntrl_get_hovered_input_port_tag(self):
-        return self._cntrl_get_hovered_registered_port_tag('Input')
+        return self._cntrl_get_hovered_registered_port_tag(PortDirection.INPUT)
 
     def _cntrl_get_insert_node_pos(self, source_tag, dest_tag):
         source_node = ':'.join(source_tag.split(':')[:2])
@@ -1403,9 +1411,9 @@ class DpgNodeEditor(object):
 
     def _cntrl_find_node_port(self, node_id_name, port_type, port_prefix):
         expected_attr_type = None
-        if port_prefix == 'Input':
+        if port_prefix == PortDirection.INPUT.value:
             expected_attr_type = dpg.mvNode_Attr_Input
-        elif port_prefix == 'Output':
+        elif port_prefix == PortDirection.OUTPUT.value:
             expected_attr_type = dpg.mvNode_Attr_Output
 
         for port_ref in self._mdl_iter_registered_ports(

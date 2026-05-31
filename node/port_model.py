@@ -1,4 +1,10 @@
 from dataclasses import dataclass
+from enum import Enum
+
+
+class PortDirection(str, Enum):
+    INPUT = 'Input'
+    OUTPUT = 'Output'
 
 
 @dataclass(frozen=True)
@@ -14,7 +20,7 @@ class NodeRef:
 @dataclass(frozen=True)
 class PortRef:
     node_ref: NodeRef
-    direction: str
+    direction: PortDirection
     data_type: str
     index: int
     port_name: str

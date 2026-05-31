@@ -28,6 +28,10 @@ class Node(DpgNodeBase):
         self._display_size_dict = {}
         self._current_texture_tag_dict = {}
         self._texture_tags_dict = {}
+        self._output_ports = {}
+
+    def _output_port(self, node_id):
+        return self._output_ports[str(node_id)]
 
     def _compute_display_size(self, frame, width):
         image_h, image_w = frame.shape[:2]
@@ -51,10 +55,11 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input01')
-        tag_node_output01_name_port = self.output_port(
-            node_id, self.TYPE_IMAGE, 'Output01'
+        tag_node_input01_name = self._port_tag(
+            tag_node_name, self.TYPE_INT, 'Input01'
         )
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE)
+        self._output_ports[str(node_id)] = tag_node_output01_name_port
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_image_name = tag_node_output01_name_port.value_tag
 
@@ -137,9 +142,7 @@ class Node(DpgNodeBase):
         node_image_dict,
         node_result_dict,
     ):
-        output_image_tag = self.declared_port_value_tag(
-            node_id, self.TYPE_IMAGE, 'Output01', direction='Output'
-        )
+        output_image_tag = self._output_port(node_id).value_tag
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']

@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 import dearpygui.dearpygui as dpg
 
-from node.port_model import NodeRef, PortRef
+from node.port_model import NodeRef, PortDirection, PortRef
 
 
 class _PortTagString(str):
@@ -113,51 +113,21 @@ class DpgNodeBase(DpgNodeABC):
         node_ports = self._declared_port_refs.get(self._node_name(node_id), {})
         return list(node_ports.values())
 
-    def get_declared_port_ref(
-        self,
-        node_id,
-        data_type=None,
-        port_name=None,
-        direction=None,
-    ):
-        for port_ref in self.get_declared_port_refs(node_id):
-            if data_type is not None and port_ref.data_type != data_type:
-                continue
-            if port_name is not None and port_ref.port_name != port_name:
-                continue
-            if direction is not None and port_ref.direction != direction:
-                continue
-            return port_ref
-        return None
-
-    def declared_port_value_tag(
-        self,
-        node_id,
-        data_type,
-        port_name,
-        direction=None,
-    ):
-        port_ref = self.get_declared_port_ref(
-            node_id,
-            data_type=data_type,
-            port_name=port_name,
-            direction=direction,
-        )
-        if port_ref is not None and port_ref.value_tag:
-            return port_ref.value_tag
-        return self._node_value_tag(node_id, data_type, port_name)
-
     def input_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(node_id, data_type, 'Input', port_name)
+        return self._declare_port(
+            node_id, data_type, PortDirection.INPUT, port_name
+        )
 
     def output_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(node_id, data_type, 'Output', port_name)
+        return self._declare_port(
+            node_id, data_type, PortDirection.OUTPUT, port_name
+        )
 
     def parameter_port(self, node_id, data_type, port_name=None, control_tag=None):
         return self._declare_port(
             node_id,
             data_type,
-            'Input',
+            PortDirection.INPUT,
             port_name,
             control_tag=control_tag,
             default_control_tag=True,
@@ -193,11 +163,12 @@ class DpgNodeBase(DpgNodeABC):
         return port_ref
 
     def _resolve_port_name(self, node_ref, direction, port_name):
-        counter_key = (node_ref.node_id_name, direction)
+        direction_value = self._port_direction_value(direction)
+        counter_key = (node_ref.node_id_name, direction_value)
         if port_name is None:
             index = self._port_index_counters.get(counter_key, 0) + 1
             self._port_index_counters[counter_key] = index
-            return f'{direction}{index:02d}', index
+            return f'{direction_value}{index:02d}', index
 
         index = self._port_index(port_name, direction)
         self._port_index_counters[counter_key] = max(
@@ -206,17 +177,28 @@ class DpgNodeBase(DpgNodeABC):
         )
         return port_name, index
 
+    def _port_direction_value(self, direction):
+        if isinstance(direction, PortDirection):
+            return direction.value
+        return direction
+
     def _port_index(self, port_name, direction):
-        if not isinstance(port_name, str) or not port_name.startswith(direction):
+        direction_value = self._port_direction_value(direction)
+        if (
+            not isinstance(port_name, str)
+            or not port_name.startswith(direction_value)
+        ):
             raise ValueError(
-                f'{direction} port names must start with {direction}: {port_name}'
+                f'{direction_value} port names must start with '
+                f'{direction_value}: {port_name}'
             )
-        index_text = port_name[len(direction):]
+        index_text = port_name[len(direction_value):]
         try:
             return int(index_text)
         except ValueError as exc:
             raise ValueError(
-                f'{direction} port names must end with a numeric index: {port_name}'
+                f'{direction_value} port names must end with a numeric '
+                f'index: {port_name}'
             ) from exc
 
     def _remember_port_ref(self, port_ref):

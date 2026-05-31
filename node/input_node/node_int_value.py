@@ -14,7 +14,10 @@ class Node(DpgNodeBase):
     node_tag = 'IntValue'
 
     def __init__(self):
-        pass
+        self._output_ports = {}
+
+    def _output_port(self, node_id):
+        return self._output_ports[str(node_id)]
 
     def add_node(
         self,
@@ -26,9 +29,8 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_output01_name_port = self.output_port(
-            node_id, self.TYPE_INT, 'Output01'
-        )
+        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_INT)
+        self._output_ports[str(node_id)] = tag_node_output01_name_port
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_value_name = tag_node_output01_name_port.value_tag
 
@@ -72,9 +74,7 @@ class Node(DpgNodeBase):
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
-        output_value_tag = self.declared_port_value_tag(
-            node_id, self.TYPE_INT, 'Output01', direction='Output'
-        )
+        output_value_tag = self._output_port(node_id).value_tag
 
         output_value = round((dpg_get_value(output_value_tag)), 3)
 
@@ -88,9 +88,7 @@ class Node(DpgNodeBase):
         return setting_dict
 
     def set_setting_dict(self, node_id, setting_dict):
-        output_value_tag = self.declared_port_value_tag(
-            node_id, self.TYPE_INT, 'Output01', direction='Output'
-        )
+        output_value_tag = self._output_port(node_id).value_tag
 
         output_value = float(setting_dict[output_value_tag])
 

@@ -60,6 +60,39 @@ def test_declared_port_refs_are_stored_by_node():
     assert node.get_declared_port_refs() == [first, second]
 
 
+def test_declared_port_ref_lookup_filters_by_metadata():
+    node = IntValueNode()
+
+    int_output = node.output_port(10, node.TYPE_INT, 'Output01')
+    node.output_port(10, node.TYPE_FLOAT, 'Output02')
+
+    assert node.get_declared_port_ref(
+        10,
+        data_type=node.TYPE_INT,
+        port_name='Output01',
+        direction='Output',
+    ) == int_output
+    assert node.get_declared_port_ref(
+        10,
+        data_type=node.TYPE_TEXT,
+        port_name='Output01',
+        direction='Output',
+    ) is None
+
+
+def test_declared_port_value_tag_prefers_port_ref_with_legacy_fallback():
+    node = IntValueNode()
+
+    declared = node.output_port(11, node.TYPE_INT, 'Output01')
+
+    assert node.declared_port_value_tag(
+        11, node.TYPE_INT, 'Output01', direction='Output'
+    ) == declared.value_tag
+    assert node.declared_port_value_tag(
+        12, node.TYPE_INT, 'Output01', direction='Output'
+    ) == '12:IntValue:Int:Output01Value'
+
+
 def test_port_declaration_invokes_registration_callback():
     node = IntValueNode()
     registered_ports = []

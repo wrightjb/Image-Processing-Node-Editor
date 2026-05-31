@@ -48,15 +48,18 @@ Implemented so far:
   parsing remains as a compatibility boundary for imported graphs, callback
   aliases, and undo/redo data.
 
-Important limitation of the current implementation:
+Current implementation note:
 
 - The editor now exports and imports typed `link_refs` directly; graph sorting,
   cycle detection, delete-through-node reconnection, the runtime scheduler,
   undo/redo link history, and the node `update()` connection boundary all consume
-  or preserve typed `LinkRef` data when it is available. The declarative image
-  process base and direct non-declarative nodes now read typed connection-info
-  records, while `_iter_connections()` remains only as a legacy compatibility
-  adapter for external callers and tests that explicitly cover that boundary.
+  or preserve typed `LinkRef` data. The editor stores canonical links in
+  `_link_refs`; `_node_link_list` remains only as a legacy compact-pair adapter
+  for compatibility with older tests/integrations and DearPyGui boundary code. The
+  declarative image process base and direct non-declarative nodes read typed
+  connection-info records, while `_iter_connections()` remains only as a legacy
+  compatibility adapter for external callers and tests that explicitly cover that
+  boundary.
 
 ## Next work
 
@@ -298,11 +301,13 @@ plus a readable compact boundary string.
 - Done: replace hovered-port discovery and node-port lookup with registered
   `PortRef` iteration; legacy compact-tag scanning has been removed from these
   normal paths.
-- Done: add typed `LinkRef` registry entries while preserving legacy `_node_link_list`
-  pairs for existing history/runtime code.
+- Done: add canonical typed `LinkRef` storage in `_link_refs` while preserving
+  legacy `_node_link_list` compact pairs as a compatibility adapter.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
 - Done: move graph sorting, cycle detection, delete-through-node reconnection, and
   runtime scheduling onto typed `LinkRef` iteration.
-- Next: migrate history payloads and node `update()` connection consumers from
+- Done: migrate history payloads and node `update()` connection consumers from
   string pairs to typed refs.
+- Next: continue shrinking compact-tag helper usage in node implementations where
+  the tag is not part of a DearPyGui UI boundary.

@@ -46,6 +46,7 @@ class DpgNodeEditor(object):
     _node_instance_list = {}
     _node_list = []
     _node_link_list = []
+    _link_refs = []
     _link_view_id_map = {}
 
     _last_pos = None
@@ -77,6 +78,7 @@ class DpgNodeEditor(object):
         self._node_instance_list = {}
         self._node_list = []
         self._node_link_list = []
+        self._link_refs = []
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
         self._node_connection_ref_dict = OrderedDict([])
@@ -196,6 +198,12 @@ class DpgNodeEditor(object):
             return None
         return LinkRef(source_port, dest_port)
 
+    def _mdl_link_key(self, link):
+        if hasattr(link, 'legacy_pair'):
+            return tuple(link.legacy_pair)
+        source_tag, dest_tag = link
+        return source_tag, dest_tag
+
     def _mdl_add_link(self, source, destination):
         link_ref = self._mdl_validate_link(source, destination)
         if link_ref is None:
@@ -204,6 +212,7 @@ class DpgNodeEditor(object):
         dest_tag = link_ref.destination_tag
         if dest_tag in self._link_by_dest_port_ref:
             return False
+        self._link_refs.append(link_ref)
         self._node_link_list.append(link_ref.legacy_pair)
         self._link_registry[(source_tag, dest_tag)] = link_ref
         self._link_by_dest_port[dest_tag] = source_tag
@@ -245,11 +254,28 @@ class DpgNodeEditor(object):
         }
 
     def _mdl_iter_link_refs(self):
+        yielded = set()
+        for link_ref in list(self._link_refs):
+            key = (link_ref.source_tag, link_ref.destination_tag)
+            yielded.add(key)
+            yield link_ref
+
+        # Compatibility boundary: some tests and old integrations still seed
+        # ``_node_link_list`` directly. Normalize those compact pairs once, but
+        # keep typed ``_link_refs`` as the normal graph model.
         for source_tag, dest_tag in list(self._node_link_list):
-            link_ref = self._link_registry.get((source_tag, dest_tag))
+            key = (source_tag, dest_tag)
+            if key in yielded:
+                continue
+            link_ref = self._link_registry.get(key)
             if link_ref is None:
                 link_ref = self._mdl_validate_link(source_tag, dest_tag)
             if link_ref is not None:
+                self._link_refs.append(link_ref)
+                self._link_registry[key] = link_ref
+                self._link_by_dest_port[dest_tag] = source_tag
+                self._link_by_dest_port_ref[dest_tag] = link_ref
+                yielded.add(key)
                 yield link_ref
 
     def _mdl_get_link_refs_for_export(self):
@@ -281,34 +307,29 @@ class DpgNodeEditor(object):
         node_instance.close(node_id)
         self._node_list.remove(node_id_name)
 
-        copy_node_link_list = copy.deepcopy(self._node_link_list)
-        for link_info in copy_node_link_list:
-            source_port = self._port_registry.get(link_info[0])
-            dest_port = self._port_registry.get(link_info[1])
-            source_node = source_port.node_ref.node_id_name if source_port else ''
-            destination_node = dest_port.node_ref.node_id_name if dest_port else ''
-            if not source_node and isinstance(link_info[0], str):
-                source_parts = link_info[0].split(':')
-                if len(source_parts) >= 2:
-                    source_node = f'{source_parts[0]}:{source_parts[1]}'
-            if not destination_node and isinstance(link_info[1], str):
-                dest_parts = link_info[1].split(':')
-                if len(dest_parts) >= 2:
-                    destination_node = f'{dest_parts[0]}:{dest_parts[1]}'
+        for link_ref in list(self._mdl_iter_link_refs()):
+            source_node = link_ref.source.node_ref.node_id_name
+            destination_node = link_ref.destination.node_ref.node_id_name
             if source_node == node_id_name or destination_node == node_id_name:
-                self._link_registry.pop((link_info[0], link_info[1]), None)
-                self._link_by_dest_port.pop(link_info[1], None)
-                self._link_by_dest_port_ref.pop(link_info[1], None)
-                self._node_link_list.remove(link_info)
+                self._mdl_delete_link(link_ref)
         self._node_registry.pop(node_id_name, None)
         self._mdl_sort_node_graph()
 
     def _mdl_delete_link(self, link):
-        source_tag, dest_tag = link
+        source_tag, dest_tag = self._mdl_link_key(link)
         self._link_registry.pop((source_tag, dest_tag), None)
         self._link_by_dest_port.pop(dest_tag, None)
         self._link_by_dest_port_ref.pop(dest_tag, None)
-        self._node_link_list.remove(link)
+        self._link_refs = [
+            link_ref for link_ref in self._link_refs
+            if (
+                link_ref.source_tag,
+                link_ref.destination_tag,
+            ) != (source_tag, dest_tag)
+        ]
+        legacy_pair = [source_tag, dest_tag]
+        if legacy_pair in self._node_link_list:
+            self._node_link_list.remove(legacy_pair)
         self._mdl_sort_node_graph()
 
     def _mdl_sort_node_graph(self):
@@ -1244,11 +1265,11 @@ class DpgNodeEditor(object):
         )
         if source_output_tag is None:
             return None
-        for source_tag, dest_tag in self._node_link_list:
-            if source_tag != source_output_tag:
+        for link_ref in self._mdl_iter_link_refs():
+            if link_ref.source_tag != source_output_tag:
                 continue
-            dest_port = self._port_registry.get(dest_tag)
-            if dest_port and dest_port.node_ref.node_tag == result_node_tag:
+            dest_port = link_ref.destination
+            if dest_port.node_ref.node_tag == result_node_tag:
                 return dest_port.node_ref.node_id_name
         return None
 
@@ -1959,11 +1980,12 @@ class DpgNodeEditor(object):
     def _cntrl_remove_link_by_tags(self, source_tag, dest_tag, record_history=False):
         source_tag = self._cntrl_resolve_history_port_tag(source_tag)
         dest_tag = self._cntrl_resolve_history_port_tag(dest_tag)
+        link_ref = self._link_registry.get((source_tag, dest_tag))
         link = [source_tag, dest_tag]
-        if link not in self._node_link_list:
+        if link_ref is None and link not in self._node_link_list:
             return False
         history_link = self._cntrl_history_link_payload(source_tag, dest_tag)
-        self._mdl_delete_link(link)
+        self._mdl_delete_link(link_ref if link_ref is not None else link)
         self._vw_delete_link(source_tag, dest_tag)
         if record_history:
             self._cntrl_push_undo_command(RemoveLinkCommand(history_link))
@@ -2222,11 +2244,11 @@ class DpgNodeEditor(object):
                     'setting': copy.deepcopy(node.get_setting_dict(node_id)),
                 }
             )
-            for source_tag, dest_tag in list(self._node_link_list):
-                if source_tag.startswith(f'{node_id}:{node_name}:') or dest_tag.startswith(f'{node_id}:{node_name}:'):
-                    removed_links.append(
-                        self._cntrl_history_link_payload(source_tag, dest_tag)
-                    )
+            for link_ref in list(self._mdl_iter_link_refs()):
+                source_node = link_ref.source.node_ref.node_id_name
+                dest_node = link_ref.destination.node_ref.node_id_name
+                if source_node == node_tag or dest_node == node_tag:
+                    removed_links.append(link_ref)
         for node_tag in selected_node_tags:
             self._cntrl_delete_node_by_tag(node_tag)
 

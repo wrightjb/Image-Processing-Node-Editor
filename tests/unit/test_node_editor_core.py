@@ -11,8 +11,6 @@ from node_editor.node_editor import (
     AddNodeCommand,
     CompositeCommand,
     DpgNodeEditor,
-    NodeRef,
-    PortRef,
     RemoveLinkCommand,
     SetParameterCommand,
 )
@@ -138,43 +136,6 @@ def test_parse_port_tag_returns_typed_metadata(editor_and_dpg):
     assert port.data_type == 'Float'
     assert port.index == 3
     assert editor._port_registry['7:TestNode:Float:Input03'] == port
-
-
-def test_registered_hovered_output_port_beyond_legacy_scan_range(editor_and_dpg):
-    editor, dpg = editor_and_dpg
-    port_tag = '1:TestNode:Float:Output123'
-    editor._node_list = ['1:TestNode']
-    port = PortRef(NodeRef('1', 'TestNode'), 'Output', 'Float', 123, port_tag)
-    editor._mdl_register_port_ref(port)
-    dpg.does_item_exist.side_effect = lambda tag: tag == port_tag
-    dpg.is_item_hovered.side_effect = lambda tag: tag == port_tag
-
-    assert editor._cntrl_get_hovered_output_port_tag() == port_tag
-    assert editor._cntrl_get_hovered_input_port_tag() is None
-
-
-def test_registered_find_node_port_uses_typed_registry_before_string_scan(editor_and_dpg):
-    editor, dpg = editor_and_dpg
-    port_tag = '2:TestNode:Int:Input123'
-    port = PortRef(NodeRef('2', 'TestNode'), 'Input', 'Int', 123, port_tag)
-    editor._mdl_register_port_ref(port)
-    dpg.does_item_exist.side_effect = lambda tag: tag == port_tag
-    dpg.get_item_configuration.side_effect = lambda tag: (
-        {'attribute_type': dpg.mvNode_Attr_Input} if tag == port_tag else {}
-    )
-
-    assert editor._cntrl_find_node_port('2:TestNode', 'Int', 'Input') == port_tag
-
-
-def test_registered_hovered_port_falls_back_to_legacy_scan_for_unregistered_graphs(editor_and_dpg):
-    editor, dpg = editor_and_dpg
-    output_tag = '1:TestNode:Int:Output01'
-    editor._node_list = ['1:TestNode']
-    dpg.does_item_exist.side_effect = lambda tag: tag == output_tag
-    dpg.is_item_hovered.side_effect = lambda tag: tag == output_tag
-
-    assert editor._cntrl_get_hovered_output_port_tag() == output_tag
-    assert output_tag in editor._port_registry
 
 
 def test_delete_link_updates_typed_registries(editor_and_dpg):

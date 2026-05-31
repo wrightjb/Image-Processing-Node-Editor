@@ -63,10 +63,64 @@ Current implementation note:
   compatibility adapter for external callers and tests that explicitly cover that
   boundary.
 
+## Chosen near-term architecture: Option A
+
+After discussion, the refactor will **not** switch immediately to one Python
+object per graph node. The current plugin/editor architecture keeps one node
+object per node type and passes `node_id` into lifecycle methods. That shape is
+confusing for per-node state, but rewriting it now would touch node loading, the
+runtime loop, history, import/export, and callbacks all at once.
+
+Instead, use Option A as the near-term plan:
+
+- Keep the existing editor/runtime lifecycle and one-node-object-per-node-type
+  plugin model for now.
+- Stop doing broad mechanical conversions that merely replace one compact string
+  lookup with another compact or semantic string lookup.
+- Add a base-owned, typed per-node port-handle layer so node implementations can
+  keep using `node_id` lifecycle methods while accessing ports through handles
+  created by `DpgNodeBase`, not through node-local dictionaries.
+- Introduce typed `PortSpec` / `PortDataType` declarations before migrating more
+  nodes, so `Input01` / `Output01` and data-type strings are derived at the
+  DearPyGui/import/export boundary instead of being authored throughout node
+  implementations.
+- Keep compact DPG aliases and legacy pair adapters only at explicit boundary
+  functions: DearPyGui item creation/callbacks, import/export, compatibility
+  tests, and old history payload replay.
+
+The intended node authoring style after this foundation is closer to:
+
+```python
+class Node(DpgNodeBase):
+    port_specs = PortSpecs(
+        value=OutputPort(PortDataType.INT),
+    )
+
+    def add_node(...):
+        ports = self.create_ports(node_id)
+        dpg.add_input_int(tag=ports.value.value_tag)
+
+    def get_setting_dict(self, node_id):
+        ports = self.ports(node_id)
+        return {ports.value.value_tag: dpg_get_value(ports.value.value_tag)}
+```
+
+Normal node code should not repeatedly call string-keyed helpers such as
+`port_handle(node_id, "value")`, and it should not define ad hoc maps such as
+`self._output_ports[str(node_id)]`. A string key may appear once in a declaration
+(`value=...` or equivalent), but regular node logic should use generated handle
+attributes (`ports.value`).
+
 ## Next work
 
-1. Continue shrinking legacy compact-tag helper usage inside node implementations
-   where the tag is not part of a DearPyGui UI boundary.
+1. Add `PortDataType` and keep compatibility aliases for the existing
+   `TYPE_*` constants.
+2. Add `PortSpec` / `InputPort` / `OutputPort` declarations and a base-owned
+   per-`node_id` port-handle registry on `DpgNodeBase`.
+3. Move compact tag build/parse functions into an explicit serialization
+   boundary module.
+4. Convert one small node (for example `IntValue`) to the new handle style and
+   evaluate ergonomics before continuing the broader node migration.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -94,21 +148,25 @@ Move concrete behavior to `DpgNodeBase`:
 - new typed port declaration/registration helpers.
 
 The new base should provide explicit port declaration APIs that create both the
-compact DearPyGui tag and typed metadata in one place. Suggested shape:
+compact DearPyGui tag and typed metadata in one place. The initial helpers accept
+legacy `TYPE_*` data-type values and optional compatibility port names, but the
+Option A target is to declare ports by semantic spec/handle and let the base
+derive legacy names from direction plus numeric index:
 
 ```python
-image_in = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
-image_out = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
-threshold = self.parameter_port(node_id, self.TYPE_INT, 'Input02')
+ports = self.create_ports(node_id)
+image_in = ports.image
+image_out = ports.result
+threshold = ports.threshold
 ```
 
-Each returned object should expose at least:
+Each returned or generated port handle should expose at least:
 
 - `node_ref`,
-- `direction`,
-- `data_type`,
-- `index` / port name,
-- `dpg_tag`,
+- typed `direction`,
+- typed `data_type`,
+- numeric `index`,
+- boundary `dpg_tag`,
 - optional value/control tags for parameter widgets.
 
 The editor should receive these declarations through a registration callback or
@@ -180,27 +238,41 @@ Boundary-only parsing is still acceptable for:
 - undo/redo payloads until history commands are migrated,
 - tests that intentionally exercise malformed serialized data.
 
-## Step 5: Migrate all remaining nodes to the concrete base in one mechanical wave
+## Step 5: Add typed port specs and base-owned per-node handles before more node migration
 
-Do one broad, mechanical pass changing direct `DpgNodeABC` subclasses to inherit
-from `DpgNodeBase` and use the typed port helpers.
+Do **not** continue a broad mechanical pass that only swaps compact string
+helpers for another lookup helper. Before migrating more nodes, add the small
+foundation needed for consistent node authoring inside the current architecture.
 
-There is no need to introduce extra source/capture/model/sink/dynamic-slot base
-families as part of this step. The current nodes already work because they share
-the same tag construction convention, so this migration should be mostly
-risk-controlled and repetitive:
+Near-term target:
 
-1. replace direct `_port_tag(...)` / `_value_tag(...)` construction with concrete
-   base port helper calls,
-2. keep existing UI layout and business logic intact,
-3. register static ports during `add_node()`,
-4. register dynamic ports at the same time they are added to DearPyGui,
-5. preserve existing external tag strings for compatibility during the first
-   pass.
+1. Add `PortDataType` for `Int`, `Float`, `Image`, `TimeMS`, and `Text`, while
+   keeping existing `TYPE_*` constants as compatibility aliases during migration.
+2. Add `PortSpec` declarations for static graph ports. A spec should describe a
+   semantic handle name, direction, data type, optional index override, and UI
+   label/control metadata if needed.
+3. Add base-owned per-`node_id` handle storage on `DpgNodeBase`, so node code can
+   call `ports = self.create_ports(node_id)` in `add_node()` and
+   `ports = self.ports(node_id)` in later lifecycle methods.
+4. Generate attribute-style handles from declarations (`ports.value`,
+   `ports.image`, `ports.elapsed`) rather than requiring repeated string-keyed
+   calls such as `port_handle(node_id, "value")`.
+5. Derive legacy `Input01` / `Output01` names from `PortDirection` plus numeric
+   index. `port_name` should become a compatibility/serialization value, not the
+   node-authored source of truth.
+6. Move compact DPG tag serialization/deserialization into an explicit boundary
+   helper/module. Normal node logic should work with `PortRef` handles; only
+   DearPyGui aliases, import/export, and legacy compatibility paths should build
+   or parse compact strings.
 
-If family-specific abstractions are useful later, add them only after this
-migration exposes real duplication. They are not required to make `PortRef`
-authoritative.
+Only after this foundation exists should remaining nodes be migrated. The first
+validation migration should be a small node such as `IntValue`; if the resulting
+node code is not simpler than the current node-local `_output_ports` map, pause
+and revisit the design before touching more files.
+
+Family-specific abstractions can still be added later if repeated UI/state
+patterns emerge, but they should build on the same typed spec/handle layer rather
+than introducing separate graph identity conventions.
 
 ## Step 6: Move runtime/history/import/export to typed graph data
 
@@ -311,8 +383,8 @@ plus a readable compact boundary string.
   runtime scheduling onto typed `LinkRef` iteration.
 - Done: migrate history payloads and node `update()` connection consumers from
   string pairs to typed refs.
-- In progress: continue shrinking compact-tag helper usage in node implementations
-  where the tag is not part of a DearPyGui UI boundary. The current pass added
-  `PortDirection` and migrated `IntValue`, `FloatValue`, and `Image` source nodes
-  to store output `PortRef` handles instead of re-querying value tags by compact
-  `port_name` / direction strings.
+- In progress: adopt Option A before further node migration: keep the current
+  editor/runtime lifecycle, add `PortDataType`, typed `PortSpec` declarations,
+  base-owned per-node port handles, and explicit compact tag serialization
+  boundaries. Then rework one small node to prove the authoring style before
+  touching the remaining compact-tag-heavy node implementations.

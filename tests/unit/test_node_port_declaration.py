@@ -1,7 +1,15 @@
 import pytest
 
 from node.input_node.node_int_value import Node as IntValueNode
-from node.port_model import NodeRef, PortRef
+from node.port_serialization import port_ref_from_tag
+from node.port_model import (
+    NodeRef,
+    OutputPort,
+    PortDataType,
+    PortDirection,
+    PortRef,
+    PortSpecs,
+)
 
 
 def test_explicit_port_declaration_preserves_compact_tag_shape():
@@ -11,7 +19,7 @@ def test_explicit_port_declaration_preserves_compact_tag_shape():
 
     assert port == PortRef(
         node_ref=NodeRef('7', 'IntValue'),
-        direction='Output',
+        direction=PortDirection.OUTPUT,
         data_type='Int',
         index=1,
         port_name='Output01',
@@ -58,6 +66,67 @@ def test_declared_port_refs_are_stored_by_node():
     assert node.get_declared_port_refs(1) == [first]
     assert node.get_declared_port_refs(2) == [second]
     assert node.get_declared_port_refs() == [first, second]
+
+
+def test_declared_ports_use_direction_enum_values():
+    node = IntValueNode()
+
+    output_port = node.output_port(10, node.TYPE_INT)
+    input_port = node.input_port(10, node.TYPE_FLOAT)
+
+    assert output_port.direction is PortDirection.OUTPUT
+    assert output_port.direction == 'Output'
+    assert output_port.port_name == 'Output01'
+    assert output_port.value_tag == '10:IntValue:Int:Output01Value'
+    assert input_port.direction is PortDirection.INPUT
+    assert input_port.direction == 'Input'
+    assert input_port.port_name == 'Input01'
+
+
+def test_port_specs_create_base_owned_attribute_handles():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.INT),
+            image=OutputPort(PortDataType.IMAGE),
+        )
+
+    node = SpecNode()
+
+    ports = node.create_ports(12)
+
+    assert ports.value.direction is PortDirection.OUTPUT
+    assert ports.value.data_type is PortDataType.INT
+    assert ports.value.port_name == 'Output01'
+    assert ports.value.spec_key == 'value'
+    assert ports.image.direction is PortDirection.OUTPUT
+    assert ports.image.data_type is PortDataType.IMAGE
+    assert ports.image.port_name == 'Output02'
+    assert node.ports(12) is ports
+    assert node.get_declared_port_refs(12) == [ports.value, ports.image]
+
+
+def test_port_spec_index_override_derives_legacy_name():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            elapsed=OutputPort(PortDataType.TIME_MS, index=2),
+        )
+
+    ports = SpecNode().create_ports(13)
+
+    assert ports.elapsed.index == 2
+    assert ports.elapsed.port_name == 'Output02'
+    assert ports.elapsed.dpg_tag == '13:IntValue:TimeMS:Output02'
+
+
+def test_port_serialization_parses_legacy_tag_to_typed_ref():
+    port = port_ref_from_tag('21:IntValue:Float:Input03')
+
+    assert port.node_ref == NodeRef('21', 'IntValue')
+    assert port.direction is PortDirection.INPUT
+    assert port.data_type is PortDataType.FLOAT
+    assert port.index == 3
+    assert port.port_name == 'Input03'
+    assert port.value_tag == '21:IntValue:Float:Input03Value'
 
 
 def test_port_declaration_invokes_registration_callback():

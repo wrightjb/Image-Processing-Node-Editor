@@ -179,6 +179,13 @@ def test_direct_node_add_node_graph_attributes_use_port_declarations():
                 add_node_source,
             )
         }
+        declared_tag_variables.update(
+            declaration.group(1)
+            for declaration in re.finditer(
+                r'(\w+)_port = ports\.\w+',
+                add_node_source,
+            )
+        )
         lines = add_node_source.splitlines()
         index = 0
         while index < len(lines):

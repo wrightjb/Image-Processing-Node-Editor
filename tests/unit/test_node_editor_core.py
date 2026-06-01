@@ -219,6 +219,73 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
         '1:TestNode:Image:Output01',
         '2:TestNode:Image:Input01',
     ]]
+    assert editor._link_refs == [link_ref]
+    assert list(editor._mdl_iter_link_refs()) == [link_ref]
+
+
+def test_legacy_link_pairs_normalize_to_typed_link_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._node_link_list = [[
+        '1:TestNode:Image:Output01',
+        '2:TestNode:Image:Input01',
+    ]]
+
+    link_refs = list(editor._mdl_iter_link_refs())
+
+    assert len(link_refs) == 1
+    assert link_refs[0].source == PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+        value_tag='1:TestNode:Image:Output01Value',
+    )
+    assert link_refs[0].destination == PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+        value_tag='2:TestNode:Image:Input01Value',
+    )
+    assert editor._link_refs == link_refs
+    assert editor._link_registry[(
+        '1:TestNode:Image:Output01',
+        '2:TestNode:Image:Input01',
+    )] == link_refs[0]
+
+
+def test_delete_link_accepts_typed_link_refs(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    source_port = PortRef(
+        node_ref=NodeRef('1', 'TestNode'),
+        direction='Output',
+        data_type='Image',
+        index=1,
+        port_name='Output01',
+        dpg_tag='1:TestNode:Image:Output01',
+    )
+    dest_port = PortRef(
+        node_ref=NodeRef('2', 'TestNode'),
+        direction='Input',
+        data_type='Image',
+        index=1,
+        port_name='Input01',
+        dpg_tag='2:TestNode:Image:Input01',
+    )
+    editor._mdl_add_link(source_port, dest_port)
+    link_ref = editor._link_refs[0]
+
+    editor._mdl_delete_link(link_ref)
+
+    assert editor._link_refs == []
+    assert editor._node_link_list == []
+    assert editor._link_registry == {}
+    assert editor._link_by_dest_port == {}
+    assert editor._link_by_dest_port_ref == {}
 
 
 def test_history_import_command_accepts_typed_link_refs(editor_and_dpg):

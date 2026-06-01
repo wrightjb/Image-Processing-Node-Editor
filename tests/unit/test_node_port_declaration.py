@@ -1,6 +1,10 @@
 import pytest
 
+from node.draw_node.node_result_image import Node as ResultImageNode
 from node.input_node.node_int_value import Node as IntValueNode
+from node.preview_release_node.node_screen_capture import (
+    Node as ScreenCaptureNode,
+)
 from node.port_serialization import port_ref_from_tag
 from node.port_model import (
     NodeRef,
@@ -127,6 +131,29 @@ def test_port_serialization_parses_legacy_tag_to_typed_ref():
     assert port.index == 3
     assert port.port_name == 'Input03'
     assert port.value_tag == '21:IntValue:Float:Input03Value'
+
+
+def test_migrated_sink_and_source_nodes_expose_named_port_handles():
+    result_node = ResultImageNode()
+    result_ports = result_node.create_ports(31)
+
+    assert result_ports.image.direction is PortDirection.INPUT
+    assert result_ports.image.data_type is PortDataType.IMAGE
+    assert result_ports.image.port_name == 'Input01'
+    assert result_ports.image.value_tag == '31:ResultImage:Image:Input01Value'
+
+    capture_node = ScreenCaptureNode()
+    capture_ports = capture_node.create_ports(32)
+
+    assert capture_ports.image.direction is PortDirection.OUTPUT
+    assert capture_ports.image.data_type is PortDataType.IMAGE
+    assert capture_ports.image.port_name == 'Output01'
+    assert capture_ports.elapsed.direction is PortDirection.OUTPUT
+    assert capture_ports.elapsed.data_type is PortDataType.TIME_MS
+    assert capture_ports.elapsed.port_name == 'Output02'
+    assert capture_ports.elapsed.value_tag == (
+        '32:ScreenCapture:TimeMS:Output02Value'
+    )
 
 
 def test_port_declaration_invokes_registration_callback():

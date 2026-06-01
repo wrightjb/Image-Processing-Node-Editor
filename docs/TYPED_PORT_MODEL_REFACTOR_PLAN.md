@@ -44,9 +44,10 @@ Implemented so far:
   preserving existing compact tag strings.
 - Direct non-declarative node `update()` implementations now iterate typed
   connection info records through `_iter_connection_infos()` instead of the legacy
-  `_iter_connections()` adapter. Source value nodes and the still-image node now
-  use base-owned `PortSpecs` / `PortHandles` and read value tags from generated
-  handles in setting/update paths.
+  `_iter_connections()` adapter. Source value nodes, the still-image node,
+  `ResultImage`, and `ScreenCapture` now use base-owned `PortSpecs` /
+  `PortHandles` and read value tags from generated handles in setting/update
+  paths.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -272,9 +273,10 @@ Near-term target:
    should build or parse compact strings.
 
 Only after this foundation proves ergonomic should remaining nodes be migrated.
-`IntValue`, `FloatValue`, and `Image` are the first validation nodes; if this
-style is not simpler than node-local `_output_ports` maps, pause and revisit the
-design before touching more files.
+`IntValue`, `FloatValue`, `Image`, `ResultImage`, and `ScreenCapture` are
+the first validation nodes; if this style is not simpler than node-local
+`_output_ports` maps or repeated compact tag reconstruction, pause and revisit
+the design before touching more files.
 
 Family-specific abstractions can still be added later if repeated UI/state
 patterns emerge, but they should build on the same typed spec/handle layer rather
@@ -392,6 +394,6 @@ plus a readable compact boundary string.
 - In progress: Option A foundation is underway. `PortDataType`, typed
   `PortSpec` declarations, base-owned per-node port handles, and the
   `node.port_serialization` boundary module have been introduced; `IntValue`,
-  `FloatValue`, and `Image` now use generated handles. Continue reviewing the
-  authoring style before touching the remaining compact-tag-heavy node
-  implementations.
+  `FloatValue`, `Image`, `ResultImage`, and `ScreenCapture` now use generated
+  handles. Continue reviewing the authoring style before touching the remaining
+  compact-tag-heavy node implementations.

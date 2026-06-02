@@ -44,10 +44,10 @@ Implemented so far:
   preserving existing compact tag strings.
 - Direct non-declarative node `update()` implementations now iterate typed
   connection info records through `_iter_connection_infos()` instead of the legacy
-  `_iter_connections()` adapter. All direct `DpgNodeBase` node classes now
-  declare their static graph ports with base-owned `PortSpecs` / `PortHandles` and read value tags from generated
-  handles in setting/update paths; only dynamic slot creation still calls the
-  legacy declaration adapters at runtime.
+  `_iter_connections()` adapter. All active direct `DpgNodeBase` node classes now
+  declare their static graph ports with base-owned `PortSpecs` / `PortHandles`
+  and read value tags from generated handles in setting/update paths; only
+  dynamic slot creation still calls declaration adapters at runtime.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -117,16 +117,43 @@ Normal node code should not repeatedly call string-keyed helpers such as
 (`value=...` or equivalent), but regular node logic should use generated handle
 attributes (`ports.value`).
 
-## Next work
+## What is left
 
-1. Expand use of `PortDataType`, keeping compatibility aliases for the existing
-   `TYPE_*` constants until all node code can move to enum values.
-2. Continue hardening `PortSpec` / `InputPort` / `OutputPort` declarations and
-   the base-owned per-`node_id` port-handle registry on `DpgNodeBase`.
-3. Continue moving compact tag build/parse functions into the explicit
-   `node.port_serialization` boundary module.
-4. Review the converted `IntValue`, `FloatValue`, and `Image` source nodes for
-   authoring ergonomics before continuing the broader node migration.
+The broad static graph-port migration is done for active `DpgNodeBase` node
+classes: every active direct node now has a class-level `port_specs` declaration
+for static graph ports and uses generated handles for those ports in normal
+lifecycle code. Remaining work is narrower and should be treated as cleanup and
+boundary-hardening rather than another broad node pass:
+
+1. **Dynamic ports:** decide whether dynamic-slot nodes need first-class dynamic
+   `PortSpec` support. `ImageConcat` still calls `input_port()` when users add
+   extra image slots at runtime, and `FPS` still builds some dynamic slot aliases
+   directly. This is acceptable for now because those ports are created after the
+   initial static handle set, but it is the main remaining graph-port ergonomics
+   gap.
+2. **Declarative process base:** `DeclarativeImageProcessNodeBase` still declares
+   its standard image/elapsed ports and parameter ports through the lower-level
+   declaration helpers because its parameters are data-driven. Either keep that
+   as the dynamic/data-driven declaration path or add a `PortSpec` builder for
+   declarative parameter metadata.
+3. **Static/control UI tags:** many non-graph controls still use compact tags
+   (`Input02` model selectors, `Provider`, `Button`, `ColorEdit`, cache/result
+   toggles, etc.). These are DearPyGui UI/control aliases rather than graph
+   endpoint identity. Do not convert them mechanically unless a separate typed
+   control/widget model is introduced.
+4. **Legacy helper containment:** keep pushing compact tag construction/parsing
+   into `node.port_serialization` or narrowly named boundary helpers. The target
+   is not zero compact strings; it is compact strings only at DearPyGui,
+   import/export, history compatibility, tests for malformed data, and dynamic UI
+   boundary points.
+5. **Compatibility aliases:** keep `TYPE_*`, `input_port()`, `output_port()`, and
+   `parameter_port()` as compatibility/dynamic declaration adapters until the
+   dynamic-port story is settled. Static node-authored graph ports should use
+   `PortSpecs` going forward.
+6. **Disabled/legacy nodes:** `*.py.disable` files such as the disabled QR-code
+   node are not part of the active migration. If they are re-enabled, migrate
+   their static graph ports to `PortSpecs` before adding them back to the active
+   node set.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 
@@ -226,22 +253,23 @@ once.
 Once hovered-port lookup is backed by creation-time port registration, continue
 shifting editor internals from string pairs toward typed objects.
 
-Implemented intermediate model:
+Implemented model:
 
-- keep `_node_link_list` as an internal string-pair adapter until history/runtime
-  are migrated,
-- add `LinkRef` as the canonical typed link record stored in `_link_registry` and
-  `_link_by_dest_port_ref`,
-- make `_mdl_add_link()` accept string aliases or `PortRef` endpoints on the normal
-  path and normalize successful links to `LinkRef`,
-- export typed `link_refs` from `LinkRef` data and import `link_refs` without
-  normal-path fallback to legacy `link_list`.
+- `_link_refs` is the canonical in-memory list of typed `LinkRef` records,
+- `_node_link_list` remains only as a legacy compact-pair adapter for older tests,
+  integrations, and DearPyGui boundary code,
+- `_mdl_add_link()` accepts string aliases or `PortRef` endpoints and normalizes
+  successful links to `LinkRef`,
+- graph sorting, cycle detection, delete/reconnect, runtime scheduling, history
+  replay, and node connection adapters consume or preserve typed links,
+- export writes typed `link_refs`, and import expects/remaps `link_refs` rather
+  than performing normal-path legacy `link_list` conversion.
 
 Boundary-only parsing is still acceptable for:
 
 - DearPyGui callback aliases,
-- old import files,
-- undo/redo payloads until history commands are migrated,
+- legacy compatibility adapters and tests,
+- dynamic UI/port creation boundaries,
 - tests that intentionally exercise malformed serialized data.
 
 ## Step 5: Add typed port specs and base-owned per-node handles before more node migration
@@ -264,19 +292,20 @@ Near-term target:
 4. Done initially: generate attribute-style handles from declarations
    (`ports.value`, `ports.image`, `ports.elapsed`) rather than requiring repeated
    string-keyed calls such as `port_handle(node_id, "value")`.
-5. In progress: derive legacy `Input01` / `Output01` names from `PortDirection`
-   plus numeric index. `port_name` should become a compatibility/serialization
-   value, not the node-authored source of truth.
-6. In progress: move compact DPG tag serialization/deserialization into an
-   explicit boundary helper/module. Normal node logic should work with `PortRef`
-   handles; only DearPyGui aliases, import/export, and legacy compatibility paths
-   should build or parse compact strings.
+5. Done for static graph ports: derive legacy `Input01` / `Output01` names from
+   `PortDirection` plus numeric index. `port_name` is now primarily a
+   compatibility/serialization value for static `PortSpecs`; dynamic/data-driven
+   declaration paths may still pass explicit legacy names.
+6. In progress: compact DPG tag serialization/deserialization lives partly in the
+   explicit `node.port_serialization` boundary module, but many static/control UI
+   aliases still call base tag helpers. Normal graph-port logic should work with
+   `PortRef` handles; only DearPyGui aliases, import/export, legacy compatibility
+   paths, tests, and dynamic UI boundaries should build or parse compact strings.
 
-Only after this foundation proves ergonomic should remaining nodes be migrated.
-All direct `DpgNodeBase` node classes now serve as the validation set for this
-style. Dynamic-slot nodes may still declare additional ports at runtime through
-the compatibility declaration adapters, but static graph ports should be authored
-through `PortSpecs` going forward.
+All active direct `DpgNodeBase` node classes now serve as the validation set for
+this style. Dynamic-slot nodes may still declare additional ports at runtime
+through the compatibility declaration adapters, but static graph ports should be
+authored through `PortSpecs` going forward.
 
 Family-specific abstractions can still be added later if repeated UI/state
 patterns emerge, but they should build on the same typed spec/handle layer rather
@@ -391,9 +420,11 @@ plus a readable compact boundary string.
   runtime scheduling onto typed `LinkRef` iteration.
 - Done: migrate history payloads and node `update()` connection consumers from
   string pairs to typed refs.
-- In progress: Option A foundation is underway. `PortDataType`, typed
+- Done: Option A static graph-port foundation is in place. `PortDataType`, typed
   `PortSpec` declarations, base-owned per-node port handles, and the
-  `node.port_serialization` boundary module have been introduced; all direct
-  `DpgNodeBase` node classes now use generated handles for static graph ports.
-  Continue reviewing dynamic-slot behavior and remaining compact static/control
-  tags before removing the legacy declaration adapters.
+  `node.port_serialization` boundary module have been introduced; all active
+  direct `DpgNodeBase` node classes now use generated handles for static graph
+  ports.
+- Remaining: review dynamic-slot behavior, the declarative parameter-port path,
+  and remaining compact static/control tags before removing or narrowing the
+  legacy declaration adapters.

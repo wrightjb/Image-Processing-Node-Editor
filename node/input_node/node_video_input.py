@@ -9,6 +9,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -30,6 +31,12 @@ class Node(DpgNodeBase):
 
     _min_val = 1
     _max_val = 10
+
+    port_specs = PortSpecs(
+        skip_rate=InputPort(PortDataType.INT, index=3),
+        image=OutputPort(PortDataType.IMAGE),
+        elapsed=OutputPort(PortDataType.TIME_MS),
+    )
 
     def __init__(self):
         self._display_size_dict = {}
@@ -58,20 +65,27 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
+        ports = self.create_ports(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_INT, 'Input01')
         tag_node_input02_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_name_port = self.input_port(node_id, self.TYPE_INT, 'Input03')
+        tag_node_input02_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
+        )
+        tag_node_input03_name_port = ports.skip_rate
         tag_node_input03_name = tag_node_input03_name_port.dpg_tag
         tag_node_input03_value_name = tag_node_input03_name_port.value_tag
         tag_node_input04_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
+        tag_node_input04_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
+        )
         tag_node_input05_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
-        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_input05_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
+        )
+        tag_node_output01_name_port = ports.image
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_image_name = tag_node_output01_name_port.value_tag
-        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name_port = ports.elapsed
         tag_node_output02_name = tag_node_output02_name_port.dpg_tag
         tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
@@ -213,12 +227,19 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
-        output_image_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        ports = self.ports(node_id)
+        tag_node_input02_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
+        )
+        tag_node_input03_value_name = ports.skip_rate.value_tag
+        tag_node_input04_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
+        )
+        tag_node_input05_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
+        )
+        output_image_tag = ports.image.value_tag
+        output_value02_tag = ports.elapsed.value_tag
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']
@@ -405,10 +426,16 @@ class Node(DpgNodeBase):
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
+        tag_node_input02_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
+        )
+        tag_node_input03_value_name = self.ports(node_id).skip_rate.value_tag
+        tag_node_input04_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
+        )
+        tag_node_input05_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
+        )
 
         pos = dpg.get_item_pos(tag_node_name)
 
@@ -431,10 +458,16 @@ class Node(DpgNodeBase):
 
     def set_setting_dict(self, node_id, setting_dict):
         tag_node_name = self._node_name(node_id)
-        tag_node_input02_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_input03_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input03'))
-        tag_node_input04_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04'))
-        tag_node_input05_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05'))
+        tag_node_input02_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02')
+        )
+        tag_node_input03_value_name = self.ports(node_id).skip_rate.value_tag
+        tag_node_input04_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input04')
+        )
+        tag_node_input05_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input05')
+        )
 
         movie_path = setting_dict.get('movie_path', None)
         node_id = str(node_id)

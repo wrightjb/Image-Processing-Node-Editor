@@ -1,7 +1,17 @@
 import pytest
 
+from node.draw_node.node_draw_information import Node as DrawInformationNode
+from node.draw_node.node_image_alpha_blend import Node as ImageAlphaBlendNode
 from node.draw_node.node_result_image import Node as ResultImageNode
+from node.draw_node.node_result_large_image import Node as ResultLargeImageNode
 from node.input_node.node_int_value import Node as IntValueNode
+from node.input_node.node_rtsp_input import Node as RtspInputNode
+from node.input_node.node_video_input import Node as VideoInputNode
+from node.input_node.node_video_set_frame_pos_input import (
+    Node as VideoSetFramePosNode,
+)
+from node.input_node.node_webcam_input import Node as WebCamNode
+from node.other_node.node_on_off_switch import Node as OnOffSwitchNode
 from node.preview_release_node.node_screen_capture import (
     Node as ScreenCaptureNode,
 )
@@ -154,6 +164,95 @@ def test_migrated_sink_and_source_nodes_expose_named_port_handles():
     assert capture_ports.elapsed.value_tag == (
         '32:ScreenCapture:TimeMS:Output02Value'
     )
+
+
+def test_expanded_migrated_nodes_expose_expected_port_handles():
+    cases = (
+        (
+            DrawInformationNode,
+            'DrawInformation',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+            },
+        ),
+        (
+            ImageAlphaBlendNode,
+            'ImageAlphaBlend',
+            {
+                'image_a': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image_b': (PortDirection.INPUT, PortDataType.IMAGE, 'Input02'),
+                'alpha': (PortDirection.INPUT, PortDataType.FLOAT, 'Input03'),
+                'beta': (PortDirection.INPUT, PortDataType.FLOAT, 'Input04'),
+                'gamma': (PortDirection.INPUT, PortDataType.INT, 'Input05'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            ResultLargeImageNode,
+            'ResultImageLarge',
+            {
+                'image': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+            },
+        ),
+        (
+            RtspInputNode,
+            'RTSPInput',
+            {
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            VideoInputNode,
+            'Video',
+            {
+                'skip_rate': (PortDirection.INPUT, PortDataType.INT, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            VideoSetFramePosNode,
+            'VideoSetFramePos',
+            {
+                'seek': (PortDirection.INPUT, PortDataType.INT, 'Input02'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+                'frame_pos': (PortDirection.OUTPUT, PortDataType.INT, 'Output03'),
+            },
+        ),
+        (
+            WebCamNode,
+            'WebCam',
+            {
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            OnOffSwitchNode,
+            'OnOffSwitch',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+            },
+        ),
+    )
+
+    for node_class, node_tag, expectations in cases:
+        ports = node_class().create_ports(41)
+
+        for handle_name, (direction, data_type, port_name) in expectations.items():
+            port = getattr(ports, handle_name)
+
+            assert port.direction is direction
+            assert port.data_type is data_type
+            assert port.port_name == port_name
+            assert port.spec_key == handle_name
+            assert port.dpg_tag == f'41:{node_tag}:{data_type.value}:{port_name}'
+            assert port.value_tag == f'{port.dpg_tag}Value'
 
 
 def test_port_declaration_invokes_registration_callback():

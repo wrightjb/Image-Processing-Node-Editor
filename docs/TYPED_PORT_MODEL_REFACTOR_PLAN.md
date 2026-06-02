@@ -44,10 +44,10 @@ Implemented so far:
   preserving existing compact tag strings.
 - Direct non-declarative node `update()` implementations now iterate typed
   connection info records through `_iter_connection_infos()` instead of the legacy
-  `_iter_connections()` adapter. Source value nodes, sink/draw utility nodes,
-  and selected video/control nodes now use base-owned `PortSpecs` /
-  `PortHandles` and read value tags from generated handles in setting/update
-  paths.
+  `_iter_connections()` adapter. All direct `DpgNodeBase` node classes now
+  declare their static graph ports with base-owned `PortSpecs` / `PortHandles` and read value tags from generated
+  handles in setting/update paths; only dynamic slot creation still calls the
+  legacy declaration adapters at runtime.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -273,12 +273,10 @@ Near-term target:
    should build or parse compact strings.
 
 Only after this foundation proves ergonomic should remaining nodes be migrated.
-`IntValue`, `FloatValue`, `Image`, `ResultImage`, `ResultImageLarge`,
-`ScreenCapture`, `WebCam`, `RTSPInput`, `Video`, `VideoSetFramePos`,
-`DrawInformation`, `ImageAlphaBlend`, and `OnOffSwitch` are the first validation
-nodes; if this style is not simpler than node-local `_output_ports` maps or
-repeated compact tag reconstruction, pause and revisit the design before touching
-more files.
+All direct `DpgNodeBase` node classes now serve as the validation set for this
+style. Dynamic-slot nodes may still declare additional ports at runtime through
+the compatibility declaration adapters, but static graph ports should be authored
+through `PortSpecs` going forward.
 
 Family-specific abstractions can still be added later if repeated UI/state
 patterns emerge, but they should build on the same typed spec/handle layer rather
@@ -395,7 +393,7 @@ plus a readable compact boundary string.
   string pairs to typed refs.
 - In progress: Option A foundation is underway. `PortDataType`, typed
   `PortSpec` declarations, base-owned per-node port handles, and the
-  `node.port_serialization` boundary module have been introduced; thirteen
-  direct nodes now use generated handles for graph ports. Continue reviewing the
-  authoring style before touching the remaining compact-tag-heavy node
-  implementations.
+  `node.port_serialization` boundary module have been introduced; all direct
+  `DpgNodeBase` node classes now use generated handles for static graph ports.
+  Continue reviewing dynamic-slot behavior and remaining compact static/control
+  tags before removing the legacy declaration adapters.

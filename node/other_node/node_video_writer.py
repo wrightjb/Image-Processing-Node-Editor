@@ -11,6 +11,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -28,6 +29,10 @@ class Node(DpgNodeBase):
 
     _prev_frame_flag = False
 
+    port_specs = PortSpecs(
+        image=InputPort(PortDataType.IMAGE),
+    )
+
     def __init__(self):
         pass
 
@@ -41,7 +46,8 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        ports = self.create_ports(node_id)
+        tag_node_input01_name_port = ports.image
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_value_name = tag_node_input01_name_port.value_tag
 
@@ -107,7 +113,7 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        input_value01_tag = self.ports(node_id).image.value_tag
         tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
 
         # Get source node name for image (with ID)

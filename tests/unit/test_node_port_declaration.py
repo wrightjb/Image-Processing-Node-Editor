@@ -1,9 +1,27 @@
 import pytest
 
+from node.analysis_node.node_BRISQUE import Node as BrisqueNode
+from node.analysis_node.node_fps import Node as FpsNode
+from node.analysis_node.node_rgb_histgram import Node as RgbHistgramNode
+from node.deep_learning_node.node_classification import Node as ClassificationNode
+from node.deep_learning_node.node_face_detection import Node as FaceDetectionNode
+from node.deep_learning_node.node_low_light_image_enhancement import (
+    Node as LowLightImageEnhancementNode,
+)
+from node.deep_learning_node.node_monocular_depth_estimation import (
+    Node as MonocularDepthEstimationNode,
+)
+from node.deep_learning_node.node_object_detection import Node as ObjectDetectionNode
+from node.deep_learning_node.node_pose_estimation import Node as PoseEstimationNode
+from node.deep_learning_node.node_semantic_segmentation import (
+    Node as SemanticSegmentationNode,
+)
 from node.draw_node.node_draw_information import Node as DrawInformationNode
 from node.draw_node.node_image_alpha_blend import Node as ImageAlphaBlendNode
 from node.draw_node.node_result_image import Node as ResultImageNode
 from node.draw_node.node_result_large_image import Node as ResultLargeImageNode
+from node.draw_node.node_image_concat import Node as ImageConcatNode
+from node.draw_node.node_puttext import Node as PutTextNode
 from node.input_node.node_int_value import Node as IntValueNode
 from node.input_node.node_rtsp_input import Node as RtspInputNode
 from node.input_node.node_video_input import Node as VideoInputNode
@@ -12,6 +30,9 @@ from node.input_node.node_video_set_frame_pos_input import (
 )
 from node.input_node.node_webcam_input import Node as WebCamNode
 from node.other_node.node_on_off_switch import Node as OnOffSwitchNode
+from node.other_node.node_video_writer import Node as VideoWriterNode
+from node.preview_release_node.node_code_exec import Node as CodeExecNode
+from node.preview_release_node.node_mot import Node as MotNode
 from node.preview_release_node.node_screen_capture import (
     Node as ScreenCaptureNode,
 )
@@ -169,6 +190,33 @@ def test_migrated_sink_and_source_nodes_expose_named_port_handles():
 def test_expanded_migrated_nodes_expose_expected_port_handles():
     cases = (
         (
+            BrisqueNode,
+            'BRISQUE',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            ClassificationNode,
+            'Classification',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            CodeExecNode,
+            'ExecPythonCode',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
             DrawInformationNode,
             'DrawInformation',
             {
@@ -190,8 +238,115 @@ def test_expanded_migrated_nodes_expose_expected_port_handles():
             },
         ),
         (
+            FaceDetectionNode,
+            'FaceDetection',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'threshold': (PortDirection.INPUT, PortDataType.FLOAT, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            FpsNode,
+            'FPS',
+            {
+                'elapsed_input': (PortDirection.INPUT, PortDataType.TIME_MS, 'Input01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            ImageConcatNode,
+            'ImageConcat',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+            },
+        ),
+        (
+            LowLightImageEnhancementNode,
+            'LLIE',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            MonocularDepthEstimationNode,
+            'MonocularDepthEstimation',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            MotNode,
+            'MultiObjectTracking',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            ObjectDetectionNode,
+            'ObjectDetection',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'threshold': (PortDirection.INPUT, PortDataType.FLOAT, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            PoseEstimationNode,
+            'PoseEstimation',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'threshold': (PortDirection.INPUT, PortDataType.FLOAT, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            PutTextNode,
+            'PutText',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'text': (PortDirection.INPUT, PortDataType.TEXT, 'Input02'),
+                'elapsed_input': (PortDirection.INPUT, PortDataType.TIME_MS, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+            },
+        ),
+        (
+            RgbHistgramNode,
+            'RGBHistgram',
+            {
+                'image': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+            },
+        ),
+        (
             ResultLargeImageNode,
             'ResultImageLarge',
+            {
+                'image': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+            },
+        ),
+        (
+            SemanticSegmentationNode,
+            'SemanticSegmentation',
+            {
+                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
+                'threshold': (PortDirection.INPUT, PortDataType.FLOAT, 'Input03'),
+                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
+                'elapsed': (PortDirection.OUTPUT, PortDataType.TIME_MS, 'Output02'),
+            },
+        ),
+        (
+            VideoWriterNode,
+            'VideoWriter',
             {
                 'image': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
             },

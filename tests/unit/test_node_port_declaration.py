@@ -38,6 +38,7 @@ from node.preview_release_node.node_screen_capture import (
 )
 from node.port_serialization import port_ref_from_tag
 from node.port_model import (
+    InputPort,
     NodeRef,
     OutputPort,
     PortDataType,
@@ -151,6 +152,45 @@ def test_port_spec_index_override_derives_legacy_name():
     assert ports.elapsed.index == 2
     assert ports.elapsed.port_name == 'Output02'
     assert ports.elapsed.dpg_tag == '13:IntValue:TimeMS:Output02'
+
+
+def test_create_port_adds_dynamic_handle_and_collection_entries():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.INT),
+        )
+
+    node = SpecNode()
+    ports = node.create_ports(14)
+
+    dynamic_slot = node.create_port(
+        14,
+        'slot_2',
+        InputPort(PortDataType.IMAGE, index=2),
+        collection='image_slots',
+    )
+    debug_port = node.create_port(
+        14,
+        'debug',
+        OutputPort(PortDataType.TEXT, index=3),
+    )
+
+    assert ports.image_slots['slot_2'] is dynamic_slot
+    assert dynamic_slot.direction is PortDirection.INPUT
+    assert dynamic_slot.data_type is PortDataType.IMAGE
+    assert dynamic_slot.port_name == 'Input02'
+    assert dynamic_slot.spec_key == 'slot_2'
+    assert dynamic_slot.dpg_tag == '14:IntValue:Image:Input02'
+    assert ports.debug is debug_port
+    assert debug_port.direction is PortDirection.OUTPUT
+    assert debug_port.port_name == 'Output03'
+    assert debug_port.spec_key == 'debug'
+    assert node.ports(14) is ports
+    assert node.get_declared_port_refs(14) == [
+        ports.value,
+        dynamic_slot,
+        debug_port,
+    ]
 
 
 def test_port_serialization_parses_legacy_tag_to_typed_ref():

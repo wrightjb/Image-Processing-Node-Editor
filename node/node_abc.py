@@ -137,6 +137,30 @@ class DpgNodeBase(DpgNodeABC):
         self._port_handles[node_key] = handles
         return handles
 
+    def create_port(self, node_id, key, spec, collection=None):
+        self._ensure_port_declaration_state()
+        handle_key = key if key is not None else spec.key
+        if handle_key is None:
+            raise ValueError('Dynamic port declarations require a handle key')
+
+        node_key = self._node_name(node_id)
+        handles = self._port_handles.setdefault(node_key, PortHandles())
+        port_ref = self._declare_port_from_spec(
+            node_id,
+            spec.with_key(str(handle_key)),
+        )
+
+        if collection is None:
+            setattr(handles, str(handle_key), port_ref)
+        else:
+            collection_name = str(collection)
+            port_collection = getattr(handles, collection_name, None)
+            if port_collection is None:
+                port_collection = {}
+                setattr(handles, collection_name, port_collection)
+            port_collection[handle_key] = port_ref
+        return port_ref
+
     def ports(self, node_id):
         self._ensure_port_declaration_state()
         node_key = self._node_name(node_id)

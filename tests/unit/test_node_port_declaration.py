@@ -36,11 +36,13 @@ from node.preview_release_node.node_mot import Node as MotNode
 from node.preview_release_node.node_screen_capture import (
     Node as ScreenCaptureNode,
 )
+from node.process_node.node_brightness import Node as BrightnessNode
 from node.port_serialization import port_ref_from_tag
 from node.port_model import (
     InputPort,
     NodeRef,
     OutputPort,
+    ParameterPort,
     PortDataType,
     PortDirection,
     PortRef,
@@ -191,6 +193,47 @@ def test_create_port_adds_dynamic_handle_and_collection_entries():
         dynamic_slot,
         debug_port,
     ]
+
+
+
+def test_parameter_port_spec_defaults_control_tag_to_value_tag():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            threshold=ParameterPort(PortDataType.INT, index=2),
+        )
+
+    ports = SpecNode().create_ports(15)
+
+    assert ports.threshold.direction is PortDirection.INPUT
+    assert ports.threshold.data_type is PortDataType.INT
+    assert ports.threshold.port_name == 'Input02'
+    assert ports.threshold.value_tag == '15:IntValue:Int:Input02Value'
+    assert ports.threshold.control_tag == ports.threshold.value_tag
+
+
+def test_declarative_process_base_creates_parameter_collection_handles():
+    node = BrightnessNode()
+
+    ports = node._ensure_declarative_port_handles(16, include_elapsed=True)
+
+    assert ports.image_input.direction is PortDirection.INPUT
+    assert ports.image_input.data_type is PortDataType.IMAGE
+    assert ports.image_input.port_name == 'Input01'
+    assert ports.image.direction is PortDirection.OUTPUT
+    assert ports.image.data_type is PortDataType.IMAGE
+    assert ports.image.port_name == 'Output01'
+    assert ports.elapsed.direction is PortDirection.OUTPUT
+    assert ports.elapsed.data_type is PortDataType.TIME_MS
+    assert ports.elapsed.port_name == 'Output02'
+
+    beta = ports.parameters['beta']
+    assert beta.direction is PortDirection.INPUT
+    assert beta.data_type is PortDataType.INT
+    assert beta.index == 2
+    assert beta.port_name == 'Input02'
+    assert beta.spec_key == 'beta'
+    assert beta.control_tag == beta.value_tag
+    assert node._parameter_port_ref(16, node.parameters[0]) is beta
 
 
 def test_dynamic_slot_nodes_create_collection_port_handles(monkeypatch):

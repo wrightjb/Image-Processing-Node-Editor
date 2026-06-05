@@ -52,6 +52,7 @@ class PortSpec:
     index: int = None
     label: str = None
     control_tag: str = None
+    default_control_tag: bool = False
 
     def with_key(self, key):
         if self.key == key:
@@ -59,13 +60,20 @@ class PortSpec:
         return replace(self, key=key)
 
 
-def InputPort(data_type, index=None, label=None, control_tag=None):
+def InputPort(
+    data_type,
+    index=None,
+    label=None,
+    control_tag=None,
+    default_control_tag=False,
+):
     return PortSpec(
         direction=PortDirection.INPUT,
         data_type=normalize_port_data_type(data_type),
         index=index,
         label=label,
         control_tag=control_tag,
+        default_control_tag=default_control_tag,
     )
 
 
@@ -76,6 +84,16 @@ def OutputPort(data_type, index=None, label=None, control_tag=None):
         index=index,
         label=label,
         control_tag=control_tag,
+    )
+
+
+def ParameterPort(data_type, index=None, label=None, control_tag=None):
+    return InputPort(
+        data_type,
+        index=index,
+        label=label,
+        control_tag=control_tag,
+        default_control_tag=True,
     )
 
 

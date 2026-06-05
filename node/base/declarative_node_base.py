@@ -7,6 +7,7 @@ import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, OutputPort, ParameterPort, PortDirection
 from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
 
 
@@ -43,11 +44,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
-        input_image_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
-        output_image_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
-        elapsed_port = None
-        if self.show_elapsed_time and use_pref_counter:
-            elapsed_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        ports = self._ensure_declarative_port_handles(
+            node_id,
+            include_elapsed=self.show_elapsed_time and use_pref_counter,
+        )
+        input_image_port = ports.image_input
+        output_image_port = ports.image
+        elapsed_port = getattr(ports, 'elapsed', None)
         cache_toggle_value_tag = self._node_value_tag(
             node_id, self.TYPE_TEXT, 'Cache'
         )
@@ -122,6 +125,70 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         self.on_node_added(tag_node_name)
         return tag_node_name
 
+    def _ensure_declarative_port_handles(self, node_id, include_elapsed=False):
+        try:
+            ports = self.ports(node_id)
+        except KeyError:
+            ports = None
+
+        if ports is None or not hasattr(ports, 'image_input'):
+            self.create_port(
+                node_id,
+                'image_input',
+                InputPort(self.TYPE_IMAGE, index=1),
+            )
+        if ports is None or not hasattr(self.ports(node_id), 'image'):
+            self.create_port(
+                node_id,
+                'image',
+                OutputPort(self.TYPE_IMAGE, index=1),
+            )
+        if include_elapsed and not hasattr(self.ports(node_id), 'elapsed'):
+            self.create_port(
+                node_id,
+                'elapsed',
+                OutputPort(self.TYPE_TIME_MS, index=2),
+            )
+
+        for parameter in self.parameters:
+            self._parameter_port_ref(node_id, parameter)
+
+        return self.ports(node_id)
+
+    def _parameter_port_ref(self, node_id, parameter, attribute_type=None):
+        self._ensure_port_declaration_state()
+        parameter_key = str(parameter['name'])
+        try:
+            parameter_ports = self.ports(node_id).parameters
+        except (AttributeError, KeyError):
+            parameter_ports = {}
+
+        if parameter_key in parameter_ports:
+            return parameter_ports[parameter_key]
+
+        input_attr = getattr(dpg, 'mvNode_Attr_Input', None)
+        output_attr = getattr(dpg, 'mvNode_Attr_Output', None)
+        if attribute_type is None:
+            attribute_type = parameter.get('attribute_type', input_attr)
+        if output_attr is not None and attribute_type == output_attr:
+            direction = PortDirection.OUTPUT
+            spec = OutputPort(
+                parameter['type'],
+                index=self._port_index(parameter['port'], direction),
+            )
+        else:
+            direction = PortDirection.INPUT
+            spec = ParameterPort(
+                parameter['type'],
+                index=self._port_index(parameter['port'], direction),
+            )
+        return self.create_port(
+            node_id,
+            parameter_key,
+            spec,
+            collection='parameters',
+        )
+
     def _add_image_toolbar_controls(
         self,
         node_id,
@@ -164,12 +231,15 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         del node_result_dict
 
         tag_node_name = self._node_name(node_id)
-        output_image_value_tag = self._node_value_tag(
-            node_id, self.TYPE_IMAGE, 'Output01'
+        ports = self._ensure_declarative_port_handles(
+            node_id,
+            include_elapsed=self.show_elapsed_time
+            and self._opencv_setting_dict.get('use_pref_counter', False),
         )
-        elapsed_value_tag = self._node_value_tag(
-            node_id, self.TYPE_TIME_MS, 'Output02'
-        )
+        output_image_value_tag = ports.image.value_tag
+        elapsed_value_tag = getattr(ports, 'elapsed', None)
+        if elapsed_value_tag is not None:
+            elapsed_value_tag = elapsed_value_tag.value_tag
 
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
@@ -192,7 +262,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     connection_info_src = self._extract_source_node_key(source_tag)
 
         frame = node_image_dict.get(connection_info_src, None)
-        parameter_values = self._get_parameter_values(tag_node_name)
+        parameter_values = self._get_parameter_values(node_id)
         parameter_values = self.normalize_parameter_values(tag_node_name, parameter_values)
 
         start_time = None
@@ -219,12 +289,15 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             return
 
         start_time = time.perf_counter()
-        output_image_value_tag = self._node_value_tag(
-            node_id, self.TYPE_IMAGE, 'Output01'
+        ports = self._ensure_declarative_port_handles(
+            node_id,
+            include_elapsed=self.show_elapsed_time
+            and self._opencv_setting_dict.get('use_pref_counter', False),
         )
-        elapsed_value_tag = self._node_value_tag(
-            node_id, self.TYPE_TIME_MS, 'Output02'
-        )
+        output_image_value_tag = ports.image.value_tag
+        elapsed_value_tag = getattr(ports, 'elapsed', None)
+        if elapsed_value_tag is not None:
+            elapsed_value_tag = elapsed_value_tag.value_tag
         small_window_w = self._opencv_setting_dict['process_width']
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
@@ -246,9 +319,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         }
 
         for parameter in self.parameters:
-            parameter_value_tag = self._port_value_tag(
-                tag_node_name, parameter['type'], parameter['port']
-            )
+            parameter_value_tag = self._parameter_port_ref(
+                node_id, parameter
+            ).value_tag
             setting_dict[parameter_value_tag] = dpg_get_value(parameter_value_tag)
 
         setting_dict.update(self.get_custom_setting_dict(tag_node_name, node_id))
@@ -268,9 +341,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         tag_node_name = self._node_name(node_id)
 
         for parameter in self.parameters:
-            parameter_value_tag = self._port_value_tag(
-                tag_node_name, parameter['type'], parameter['port']
-            )
+            parameter_value_tag = self._parameter_port_ref(
+                node_id, parameter
+            ).value_tag
             if parameter_value_tag not in setting_dict:
                 continue
             value = self._cast_parameter_value(parameter, setting_dict[parameter_value_tag])
@@ -455,14 +528,18 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
             value = self._cast_parameter_value(parameter, source_value)
             value = self._clamp_parameter_value(parameter, value)
-            dpg_set_value(self._value_tag(destination_tag), value)
+            if destination_ref is not None and destination_ref.value_tag:
+                destination_value_tag = destination_ref.value_tag
+            else:
+                destination_value_tag = self._value_tag(destination_tag)
+            dpg_set_value(destination_value_tag, value)
 
-    def _get_parameter_values(self, tag_node_name):
+    def _get_parameter_values(self, node_id):
         values = {}
         for parameter in self.parameters:
-            parameter_value_tag = self._port_value_tag(
-                tag_node_name, parameter['type'], parameter['port']
-            )
+            parameter_value_tag = self._parameter_port_ref(
+                node_id, parameter
+            ).value_tag
             value = dpg_get_value(parameter_value_tag)
             value = self._cast_parameter_value(parameter, value)
             value = self._clamp_parameter_value(parameter, value)
@@ -471,19 +548,11 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
     def _add_parameter_ui(self, node_id, parameter, width, callback):
         tag_node_name = self._node_name(node_id)
-        attribute_type = parameter.get('attribute_type', dpg.mvNode_Attr_Input)
-        if attribute_type == dpg.mvNode_Attr_Output:
-            port_ref = self.output_port(
-                node_id,
-                parameter['type'],
-                parameter['port'],
-            )
-        else:
-            port_ref = self.parameter_port(
-                node_id,
-                parameter['type'],
-                parameter['port'],
-            )
+        attribute_type = parameter.get(
+            'attribute_type',
+            getattr(dpg, 'mvNode_Attr_Input', None),
+        )
+        port_ref = self._parameter_port_ref(node_id, parameter, attribute_type)
         port_tag = port_ref.dpg_tag
         value_tag = port_ref.value_tag
         callback_payload = {

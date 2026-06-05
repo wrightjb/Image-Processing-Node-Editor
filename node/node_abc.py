@@ -181,6 +181,7 @@ class DpgNodeBase(DpgNodeABC):
             spec.direction,
             index=spec.index,
             control_tag=spec.control_tag,
+            default_control_tag=spec.default_control_tag,
             spec_key=spec.key,
         )
 

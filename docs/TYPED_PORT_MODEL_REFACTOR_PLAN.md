@@ -36,13 +36,15 @@ Implemented so far:
 - `DpgNodeBase.create_port()` can now create one data-driven or dynamic
   `PortSpec` at runtime and store it either as a named handle or in a per-node
   handle collection, reusing the same declaration/registration path as static
-  `create_ports()`.
+  `create_ports()`. `PortSpec` also supports parameter-style default control
+  tags for value widgets through `ParameterPort`.
 - Compact port tag construction/parsing has started moving into the
   `node.port_serialization` boundary module.
-- `DeclarativeImageProcessNodeBase` uses typed `PortRef` declarations for its
-  standard image input/output, elapsed-time output, and declared parameter ports;
-  cache/result toggles still use value tags because they are toolbar controls,
-  not graph ports.
+- `DeclarativeImageProcessNodeBase` now creates its standard image
+  input/output, optional elapsed-time output, and data-driven parameter graph
+  ports through `create_port()` handles. Parameter handles are stored under a
+  `ports(node_id).parameters` collection, while cache/result toggles still use
+  value tags because they are toolbar controls, not graph ports.
 - Direct non-declarative node `add_node()` implementations now declare their DPG
   input/output graph attributes through `input_port()` / `output_port()` while
   preserving existing compact tag strings.
@@ -129,15 +131,16 @@ for static graph ports and uses generated handles for those ports in normal
 lifecycle code. Remaining work is narrower and should be treated as cleanup and
 boundary-hardening rather than another broad node pass:
 
-1. **Dynamic ports:** first-class dynamic `PortSpec` creation now exists through
-   `DpgNodeBase.create_port()`, and the active dynamic-slot nodes (`ImageConcat`
-   and `FPS`) use it for runtime-added graph inputs. Continue validating the
-   collection-handle shape before narrowing the legacy declaration adapters.
-2. **Declarative process base:** `DeclarativeImageProcessNodeBase` still declares
-   its standard image/elapsed ports and parameter ports through the lower-level
-   declaration helpers because its parameters are data-driven. Either keep that
-   as the dynamic/data-driven declaration path or add a `PortSpec` builder for
-   declarative parameter metadata.
+1. **Dynamic/data-driven ports:** first-class dynamic `PortSpec` creation now
+   exists through `DpgNodeBase.create_port()`. Active dynamic-slot nodes
+   (`ImageConcat` and `FPS`) use it for runtime-added graph inputs, and
+   `DeclarativeImageProcessNodeBase` uses the same path for standard graph ports
+   plus data-driven parameter ports. Continue validating collection-handle shape
+   before narrowing the legacy declaration adapters.
+2. **Declarative parameter ergonomics:** parameters still originate from legacy
+   dictionaries (`type`, `port`, `widget`, etc.). The graph identity now flows
+   through `ParameterPort`/`create_port()`, but a later cleanup can introduce a
+   typed parameter metadata object if the dictionaries remain hard to maintain.
 3. **Static/control UI tags:** many non-graph controls still use compact tags
    (`Input02` model selectors, `Provider`, `Button`, `ColorEdit`, cache/result
    toggles, etc.). These are DearPyGui UI/control aliases rather than graph
@@ -309,9 +312,10 @@ Near-term target:
    paths, tests, and dynamic UI boundaries should build or parse compact strings.
 
 All active direct `DpgNodeBase` node classes now serve as the validation set for
-this style. Active dynamic-slot nodes now declare runtime graph ports through
-`create_port()`. New dynamic/data-driven graph ports should use `create_port()`,
-and static graph ports should be authored through `PortSpecs` going forward.
+this style. Active dynamic-slot nodes and the declarative process-node base now
+declare runtime/data-driven graph ports through `create_port()`. New
+dynamic/data-driven graph ports should use `create_port()`, and static graph
+ports should be authored through `PortSpecs` going forward.
 
 Family-specific abstractions can still be added later if repeated UI/state
 patterns emerge, but they should build on the same typed spec/handle layer rather
@@ -431,10 +435,12 @@ plus a readable compact boundary string.
   `node.port_serialization` boundary module have been introduced; all active
   direct `DpgNodeBase` node classes now use generated handles for static graph
   ports.
-- Done initially: add `DpgNodeBase.create_port()` for one-off dynamic and
-  data-driven `PortSpec` declarations.
-- Done initially: migrate active dynamic-slot graph inputs (`ImageConcat` and
-  `FPS`) to `create_port(..., collection=...)`.
-- Remaining: migrate the declarative parameter-port path to `create_port()`, then
-  review compact static/control tags before removing or narrowing the legacy
-  declaration adapters.
+- Done: add `DpgNodeBase.create_port()` for one-off dynamic and data-driven
+  `PortSpec` declarations.
+- Done: migrate active dynamic-slot graph inputs (`ImageConcat` and `FPS`) to
+  `create_port(..., collection=...)`.
+- Done: migrate `DeclarativeImageProcessNodeBase` standard graph ports and
+  parameter graph ports to `create_port()` handles, including parameter
+  collection handles.
+- Remaining: review compact static/control tags and compatibility helper usage
+  before removing or narrowing the legacy declaration adapters.

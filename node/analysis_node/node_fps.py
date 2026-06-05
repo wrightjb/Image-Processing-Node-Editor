@@ -230,17 +230,22 @@ class Node(DpgNodeBase):
         if self._max_slot_number > self._slot_id[tag_node_name]:
             self._slot_id[tag_node_name] += 1
 
+            node_id = self._extract_node_id(tag_node_name)
+            slot_number = self._slot_id[tag_node_name]
+
             # Generate insertion destination tag name
             before_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
+            before_tag += str(slot_number - 1).zfill(2)
 
             # Generate added slot tag
-            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
-
-            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            tag_node_inputXX_value_name += str(
-                self._slot_id[tag_node_name]).zfill(2) + 'Value'
+            input_port = self.create_port(
+                node_id,
+                slot_number,
+                InputPort(PortDataType.TIME_MS, index=slot_number),
+                collection='elapsed_inputs',
+            )
+            tag_node_inputXX_name = input_port.dpg_tag
+            tag_node_inputXX_value_name = input_port.value_tag
 
             # Add slot
             with dpg.node_attribute(

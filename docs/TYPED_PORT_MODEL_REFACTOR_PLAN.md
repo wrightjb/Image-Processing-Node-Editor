@@ -130,11 +130,9 @@ lifecycle code. Remaining work is narrower and should be treated as cleanup and
 boundary-hardening rather than another broad node pass:
 
 1. **Dynamic ports:** first-class dynamic `PortSpec` creation now exists through
-   `DpgNodeBase.create_port()`, but dynamic-slot nodes still need to adopt it.
-   `ImageConcat` still calls `input_port()` when users add extra image slots at
-   runtime, and `FPS` still builds some dynamic slot aliases directly. Convert
-   these to `create_port(..., collection=...)` before narrowing the legacy
-   declaration adapters.
+   `DpgNodeBase.create_port()`, and the active dynamic-slot nodes (`ImageConcat`
+   and `FPS`) use it for runtime-added graph inputs. Continue validating the
+   collection-handle shape before narrowing the legacy declaration adapters.
 2. **Declarative process base:** `DeclarativeImageProcessNodeBase` still declares
    its standard image/elapsed ports and parameter ports through the lower-level
    declaration helpers because its parameters are data-driven. Either keep that
@@ -311,10 +309,9 @@ Near-term target:
    paths, tests, and dynamic UI boundaries should build or parse compact strings.
 
 All active direct `DpgNodeBase` node classes now serve as the validation set for
-this style. Dynamic-slot nodes may still declare additional ports at runtime
-through compatibility declaration adapters, but new dynamic/data-driven graph
-ports should use `create_port()` and static graph ports should be authored
-through `PortSpecs` going forward.
+this style. Active dynamic-slot nodes now declare runtime graph ports through
+`create_port()`. New dynamic/data-driven graph ports should use `create_port()`,
+and static graph ports should be authored through `PortSpecs` going forward.
 
 Family-specific abstractions can still be added later if repeated UI/state
 patterns emerge, but they should build on the same typed spec/handle layer rather
@@ -436,6 +433,8 @@ plus a readable compact boundary string.
   ports.
 - Done initially: add `DpgNodeBase.create_port()` for one-off dynamic and
   data-driven `PortSpec` declarations.
-- Remaining: migrate dynamic-slot behavior and the declarative parameter-port
-  path to `create_port()`, then review compact static/control tags before
-  removing or narrowing the legacy declaration adapters.
+- Done initially: migrate active dynamic-slot graph inputs (`ImageConcat` and
+  `FPS`) to `create_port(..., collection=...)`.
+- Remaining: migrate the declarative parameter-port path to `create_port()`, then
+  review compact static/control tags before removing or narrowing the legacy
+  declaration adapters.

@@ -193,6 +193,42 @@ def test_create_port_adds_dynamic_handle_and_collection_entries():
     ]
 
 
+def test_dynamic_slot_nodes_create_collection_port_handles(monkeypatch):
+    class NullContext:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    for node_class, collection_name, data_type in (
+        (ImageConcatNode, 'image_inputs', PortDataType.IMAGE),
+        (FpsNode, 'elapsed_inputs', PortDataType.TIME_MS),
+    ):
+        node = node_class()
+        node_id = 22
+        tag_node_name = node._node_name(node_id)
+        node.create_ports(node_id)
+        node._slot_id[tag_node_name] = 1
+
+        module_dpg = __import__(node_class.__module__, fromlist=['dpg']).dpg
+        monkeypatch.setattr(
+            module_dpg,
+            'node_attribute',
+            lambda *args, **kwargs: NullContext(),
+        )
+        monkeypatch.setattr(module_dpg, 'add_text', lambda *args, **kwargs: None)
+
+        node._add_slot(None, None, tag_node_name)
+
+        dynamic_port = getattr(node.ports(node_id), collection_name)[2]
+        assert dynamic_port.direction is PortDirection.INPUT
+        assert dynamic_port.data_type is data_type
+        assert dynamic_port.index == 2
+        assert dynamic_port.port_name == 'Input02'
+        assert dynamic_port.spec_key == '2'
+
+
 def test_port_serialization_parses_legacy_tag_to_typed_ref():
     port = port_ref_from_tag('21:IntValue:Float:Input03')
 

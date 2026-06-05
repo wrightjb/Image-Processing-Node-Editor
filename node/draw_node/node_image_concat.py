@@ -347,7 +347,13 @@ class Node(DpgNodeBase):
             )
 
             # Generate added slot tag
-            input_port = self.input_port(node_id, self.TYPE_IMAGE, port_name)
+            slot_number = self._slot_id[tag_node_name]
+            input_port = self.create_port(
+                node_id,
+                slot_number,
+                InputPort(PortDataType.IMAGE, index=slot_number),
+                collection='image_inputs',
+            )
             tag_node_inputXX_name = input_port.dpg_tag
             tag_node_inputXX_value_name = input_port.value_tag
 

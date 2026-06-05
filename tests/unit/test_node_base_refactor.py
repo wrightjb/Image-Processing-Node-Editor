@@ -49,6 +49,23 @@ def test_concrete_base_node_tag_helpers_compose_port_and_value_tags():
     )
 
 
+
+def test_concrete_base_control_tag_helpers_mark_non_graph_alias_boundary():
+    node = IntValueNode()
+
+    assert node._control_tag('3:IntValue', node.TYPE_TEXT, 'Toggle') == (
+        '3:IntValue:Text:Toggle'
+    )
+    assert node._control_value_tag('3:IntValue', node.TYPE_TEXT, 'Toggle') == (
+        '3:IntValue:Text:ToggleValue'
+    )
+    assert node._node_control_tag(3, node.TYPE_TEXT, 'Toggle') == (
+        '3:IntValue:Text:Toggle'
+    )
+    assert node._node_control_value_tag(3, node.TYPE_TEXT, 'Toggle') == (
+        '3:IntValue:Text:ToggleValue'
+    )
+
 def test_concrete_base_preserves_connection_iteration_guards():
     node = IntValueNode()
 

@@ -54,10 +54,12 @@ class Node(DpgNodeBase):
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_value_name = tag_node_output01_name_port.value_tag
 
-        tag_switch_select_name = self._port_tag(tag_node_name, self.TYPE_TEXT,
-                                             'Switch')
-        tag_switch_select_value_name = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Switch'))
+        tag_switch_select_name = self._control_tag(
+            tag_node_name, self.TYPE_TEXT, 'Switch'
+        )
+        tag_switch_select_value_name = self._control_value_tag(
+            tag_node_name, self.TYPE_TEXT, 'Switch'
+        )
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -128,8 +130,9 @@ class Node(DpgNodeBase):
         tag_node_name = self._node_name(node_id)
         output_value01_tag = self.ports(node_id).image.value_tag
 
-        tag_switch_select_value_name = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Switch'))
+        tag_switch_select_value_name = self._control_value_tag(
+            tag_node_name, self.TYPE_TEXT, 'Switch'
+        )
 
         small_window_w = int(self._opencv_setting_dict['process_width'] / 2)
         small_window_h = int(self._opencv_setting_dict['process_height'] / 2)

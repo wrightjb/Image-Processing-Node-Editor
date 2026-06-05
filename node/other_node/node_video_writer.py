@@ -51,8 +51,12 @@ class Node(DpgNodeBase):
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_value_name = tag_node_input01_name_port.value_tag
 
-        tag_node_button_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button')
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        tag_node_button_name = self._control_tag(
+            tag_node_name, self.TYPE_TEXT, 'Button'
+        )
+        tag_node_button_value_name = self._control_value_tag(
+            tag_node_name, self.TYPE_TEXT, 'Button'
+        )
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -114,7 +118,9 @@ class Node(DpgNodeBase):
     ):
         tag_node_name = self._node_name(node_id)
         input_value01_tag = self.ports(node_id).image.value_tag
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        tag_node_button_value_name = self._control_value_tag(
+            tag_node_name, self.TYPE_TEXT, 'Button'
+        )
 
         # Get source node name for image (with ID)
         connection_info_src = ''
@@ -204,7 +210,9 @@ class Node(DpgNodeBase):
 
     def _recording_button(self, sender, data, user_data):
         tag_node_name = user_data
-        tag_node_button_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Button'))
+        tag_node_button_value_name = self._control_value_tag(
+            tag_node_name, self.TYPE_TEXT, 'Button'
+        )
 
         label = dpg.get_item_label(tag_node_button_value_name)
 

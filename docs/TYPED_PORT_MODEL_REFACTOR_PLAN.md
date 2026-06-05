@@ -22,7 +22,10 @@ Implemented so far:
 - Direct node/base subclasses under `node/` now inherit from `DpgNodeBase`
   instead of `DpgNodeABC`, while preserving existing behavior and tag strings.
 - Existing concrete helper methods for tag construction, legacy connection/tag
-  parsing, and the standard editor toolbar now live on `DpgNodeBase`.
+  parsing, and the standard editor toolbar now live on `DpgNodeBase`; non-graph
+  UI control aliases now have explicit `_control_tag()` / `_control_value_tag()`
+  helpers so graph-port tags and toolbar/control tags are separated in code even
+  while they share the compact DearPyGui alias format.
 - `DpgNodeBase` now has composed node/port/value tag helpers that accept a
   `node_id` directly, reducing repeated nested tag construction in node code.
 - `node.port_model` defines the first reusable passive `NodeRef` / `PortRef`
@@ -131,13 +134,18 @@ for static graph ports and uses generated handles for those ports in normal
 lifecycle code. Remaining work is narrower and should be treated as cleanup and
 boundary-hardening rather than another broad node pass:
 
-1. **Dynamic/data-driven ports:** first-class dynamic `PortSpec` creation now
+1. **Control aliases:** compact aliases for non-graph UI controls now have
+   explicit helpers and the declarative process toolbar controls plus initial
+   direct control nodes (`VideoWriter`, `OnOffSwitch`) use them. Continue
+   migrating remaining static/control UI aliases to those helpers so `_port_tag()`
+   is reserved for compatibility and graph-port boundary code.
+2. **Dynamic/data-driven ports:** first-class dynamic `PortSpec` creation now
    exists through `DpgNodeBase.create_port()`. Active dynamic-slot nodes
    (`ImageConcat` and `FPS`) use it for runtime-added graph inputs, and
    `DeclarativeImageProcessNodeBase` uses the same path for standard graph ports
    plus data-driven parameter ports. Continue validating collection-handle shape
    before narrowing the legacy declaration adapters.
-2. **Declarative parameter ergonomics:** parameters still originate from legacy
+3. **Declarative parameter ergonomics:** parameters still originate from legacy
    dictionaries (`type`, `port`, `widget`, etc.). The graph identity now flows
    through `ParameterPort`/`create_port()`, but a later cleanup can introduce a
    typed parameter metadata object if the dictionaries remain hard to maintain.
@@ -442,5 +450,8 @@ plus a readable compact boundary string.
 - Done: migrate `DeclarativeImageProcessNodeBase` standard graph ports and
   parameter graph ports to `create_port()` handles, including parameter
   collection handles.
-- Remaining: review compact static/control tags and compatibility helper usage
-  before removing or narrowing the legacy declaration adapters.
+- In progress: migrate non-graph static/control aliases to `_control_tag()` /
+  `_control_value_tag()` helpers; declarative process toolbar controls and the
+  `VideoWriter`/`OnOffSwitch` control widgets are now on that explicit boundary.
+- Remaining: finish reviewing compact static/control tags and compatibility
+  helper usage before removing or narrowing the legacy declaration adapters.

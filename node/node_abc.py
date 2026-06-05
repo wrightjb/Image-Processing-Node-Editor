@@ -109,6 +109,25 @@ class DpgNodeBase(DpgNodeABC):
     def _node_value_tag(self, node_id, value_type, port_name):
         return self._value_tag(self._node_port_tag(node_id, value_type, port_name))
 
+    def _control_tag(self, node_name, value_type, control_name):
+        """Return a compact DearPyGui alias for a non-graph UI control."""
+        return self._port_tag(node_name, value_type, control_name)
+
+    def _control_value_tag(self, node_name, value_type, control_name):
+        return self._value_tag(
+            self._control_tag(node_name, value_type, control_name)
+        )
+
+    def _node_control_tag(self, node_id, value_type, control_name):
+        return self._control_tag(
+            self._node_name(node_id), value_type, control_name
+        )
+
+    def _node_control_value_tag(self, node_id, value_type, control_name):
+        return self._value_tag(
+            self._node_control_tag(node_id, value_type, control_name)
+        )
+
     def node_ref(self, node_id):
         return NodeRef(str(node_id), self.node_tag)
 

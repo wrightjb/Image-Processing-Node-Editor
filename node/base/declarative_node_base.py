@@ -51,13 +51,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         input_image_port = ports.image_input
         output_image_port = ports.image
         elapsed_port = getattr(ports, 'elapsed', None)
-        cache_toggle_value_tag = self._node_value_tag(
+        cache_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'Cache'
         )
-        result_image_toggle_value_tag = self._node_value_tag(
+        result_image_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'ResultImage'
         )
-        result_large_image_toggle_value_tag = self._node_value_tag(
+        result_large_image_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'ResultImageLarge'
         )
 
@@ -352,13 +352,13 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
         self.set_custom_setting_dict(tag_node_name, node_id, setting_dict)
 
-        cache_toggle_value_tag = self._node_value_tag(
+        cache_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'Cache'
         )
-        result_image_toggle_value_tag = self._node_value_tag(
+        result_image_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'ResultImage'
         )
-        result_large_image_toggle_value_tag = self._node_value_tag(
+        result_large_image_toggle_value_tag = self._node_control_value_tag(
             node_id, self.TYPE_TEXT, 'ResultImageLarge'
         )
         cache_enabled = bool(setting_dict.get(self._cache_toggle_setting_key, True))
@@ -410,7 +410,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 'parameter_changed',
                 {
                     'node_id_name': node_id_name,
-                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'Cache'),
+                    'port_tag': self._control_tag(
+                        node_id_name, self.TYPE_TEXT, 'Cache'
+                    ),
                     'value_tag': sender,
                     'before_value': bool(before_value),
                     'after_value': bool(app_data),
@@ -428,7 +430,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 'parameter_changed',
                 {
                     'node_id_name': node_id_name,
-                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImage'),
+                    'port_tag': self._control_tag(
+                        node_id_name, self.TYPE_TEXT, 'ResultImage'
+                    ),
                     'value_tag': sender,
                     'before_value': bool(before_value),
                     'after_value': enabled,
@@ -447,7 +451,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 'parameter_changed',
                 {
                     'node_id_name': node_id_name,
-                    'port_tag': self._port_tag(node_id_name, self.TYPE_TEXT, 'ResultImageLarge'),
+                    'port_tag': self._control_tag(
+                        node_id_name, self.TYPE_TEXT, 'ResultImageLarge'
+                    ),
                     'value_tag': sender,
                     'before_value': bool(before_value),
                     'after_value': enabled,

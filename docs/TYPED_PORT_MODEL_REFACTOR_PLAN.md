@@ -128,45 +128,43 @@ attributes (`ports.value`).
 
 ## What is left
 
-The broad static graph-port migration is done for active `DpgNodeBase` node
-classes: every active direct node now has a class-level `port_specs` declaration
-for static graph ports and uses generated handles for those ports in normal
-lifecycle code. Remaining work is narrower and should be treated as cleanup and
-boundary-hardening rather than another broad node pass:
+The graph-port part of the refactor is effectively complete for active nodes.
+Static graph ports use `PortSpecs`/`PortHandles`, dynamic graph slots and
+declarative process parameters use `create_port()`, editor graph internals use
+typed `LinkRef` storage, and import/export writes typed `link_refs`. It is
+reasonable to stop the broad migration here if the remaining compact strings are
+kept at explicit boundaries.
 
-1. **Control aliases:** compact aliases for non-graph UI controls now have
-   explicit helpers and the declarative process toolbar controls plus initial
-   direct control nodes (`VideoWriter`, `OnOffSwitch`) use them. Continue
-   migrating remaining static/control UI aliases to those helpers so `_port_tag()`
-   is reserved for compatibility and graph-port boundary code.
-2. **Dynamic/data-driven ports:** first-class dynamic `PortSpec` creation now
-   exists through `DpgNodeBase.create_port()`. Active dynamic-slot nodes
-   (`ImageConcat` and `FPS`) use it for runtime-added graph inputs, and
-   `DeclarativeImageProcessNodeBase` uses the same path for standard graph ports
-   plus data-driven parameter ports. Continue validating collection-handle shape
-   before narrowing the legacy declaration adapters.
-3. **Declarative parameter ergonomics:** parameters still originate from legacy
-   dictionaries (`type`, `port`, `widget`, etc.). The graph identity now flows
-   through `ParameterPort`/`create_port()`, but a later cleanup can introduce a
-   typed parameter metadata object if the dictionaries remain hard to maintain.
-3. **Static/control UI tags:** many non-graph controls still use compact tags
-   (`Input02` model selectors, `Provider`, `Button`, `ColorEdit`, cache/result
-   toggles, etc.). These are DearPyGui UI/control aliases rather than graph
-   endpoint identity. Do not convert them mechanically unless a separate typed
-   control/widget model is introduced.
-4. **Legacy helper containment:** keep pushing compact tag construction/parsing
-   into `node.port_serialization` or narrowly named boundary helpers. The target
-   is not zero compact strings; it is compact strings only at DearPyGui,
-   import/export, history compatibility, tests for malformed data, and dynamic UI
-   boundary points.
-5. **Compatibility aliases:** keep `TYPE_*`, `input_port()`, `output_port()`, and
-   `parameter_port()` as compatibility/declaration adapters while dynamic-slot
-   and declarative-parameter call sites are migrated onto `create_port()`. Static
-   node-authored graph ports should use `PortSpecs` going forward.
-6. **Disabled/legacy nodes:** `*.py.disable` files such as the disabled QR-code
-   node are not part of the active migration. If they are re-enabled, migrate
-   their static graph ports to `PortSpecs` before adding them back to the active
-   node set.
+The remaining work is cleanup and boundary-hardening, not another mechanical
+node-by-node graph-port migration:
+
+1. **Finish non-graph control alias cleanup.** Many remaining compact tags are
+   UI controls rather than graph endpoints: model selectors, provider selectors,
+   buttons, color editors, cache/result toggles, and similar DearPyGui widgets.
+   Continue moving those call sites from generic `_port_tag()` / `_value_tag()`
+   calls to `_control_tag()` / `_control_value_tag()` so control aliases are
+   explicit. Do not convert them to `PortSpec` unless they become graph ports.
+2. **Keep legacy graph declaration adapters, but stop expanding their use.**
+   `input_port()`, `output_port()`, and `parameter_port()` can remain as
+   compatibility/declaration adapters for old tests, disabled nodes, or unusual
+   boundary paths. New static graph ports should use `PortSpecs`; new dynamic or
+   data-driven graph ports should use `create_port()`.
+3. **Optionally improve declarative parameter metadata.** Declarative process
+   graph identity now flows through `ParameterPort`/`create_port()`, but the
+   parameter definitions are still dictionaries (`type`, `port`, `widget`,
+   `default`, etc.). If those dictionaries remain annoying, introduce a typed
+   `ParameterSpec`/widget metadata object; otherwise leave them alone.
+4. **Reduce test coupling to `_node_link_list`.** `_link_refs` is canonical, but
+   many tests still assert the legacy compact-pair adapter. Convert tests to
+   assert typed `LinkRef` state where they are not explicitly testing backward
+   compatibility.
+5. **Audit disabled/legacy nodes when re-enabling them.** `*.py.disable` files
+   such as the disabled QR-code node are outside the active migration. If one is
+   re-enabled, migrate its graph ports to `PortSpecs` first.
+
+Suggested next implementation step: continue item 1 by migrating direct node UI
+controls such as model/provider selectors and color editors to the explicit
+control-tag helpers.
 
 ## Step 1: Split the abstract interface from concrete node behavior
 

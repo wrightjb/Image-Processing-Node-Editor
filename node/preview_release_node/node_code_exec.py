@@ -10,6 +10,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -65,6 +66,12 @@ class Node(DpgNodeBase):
 
     _opencv_setting_dict = None
 
+    port_specs = PortSpecs(
+        image_input=InputPort(PortDataType.IMAGE),
+        image=OutputPort(PortDataType.IMAGE),
+        elapsed=OutputPort(PortDataType.TIME_MS),
+    )
+
     def __init__(self):
         pass
 
@@ -78,17 +85,18 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        ports = self.create_ports(node_id)
+        tag_node_input01_name_port = ports.image_input
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
-        tag_node_input01_value_name = self._value_tag(tag_node_input01_name)
+        tag_node_input01_value_name = tag_node_input01_name_port.value_tag
         tag_node_input02_value_name = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name_port = ports.image
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
-        tag_node_output01_value_name = self._value_tag(tag_node_output01_name)
-        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output01_value_name = tag_node_output01_name_port.value_tag
+        tag_node_output02_name_port = ports.elapsed
         tag_node_output02_name = tag_node_output02_name_port.dpg_tag
-        tag_node_output02_value_name = self._value_tag(tag_node_output02_name)
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -168,12 +176,11 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
+        ports = self.ports(node_id)
         input_value02_tag = self._value_tag(
             self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        output_value01_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        output_value02_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        output_value01_tag = ports.image.value_tag
+        output_value02_tag = ports.elapsed.value_tag
 
         small_window_w = int(self._opencv_setting_dict['process_width'] * 2.5)
         small_window_h = int(self._opencv_setting_dict['process_height'] * 2.5)

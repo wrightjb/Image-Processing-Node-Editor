@@ -10,6 +10,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import OutputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -51,6 +52,11 @@ class Node(DpgNodeBase):
     _request = {}
     _process = {}
 
+    port_specs = PortSpecs(
+        image=OutputPort(PortDataType.IMAGE),
+        elapsed=OutputPort(PortDataType.TIME_MS),
+    )
+
     def __init__(self):
         self._display_size_dict = {}
         self._current_texture_tag_dict = {}
@@ -76,12 +82,15 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
+        ports = self.create_ports(node_id)
         tag_node_input01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
-        tag_node_input01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
-        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_input01_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
+        )
+        tag_node_output01_name_port = ports.image
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_image_name = tag_node_output01_name_port.value_tag
-        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output02_name_port = ports.elapsed
         tag_node_output02_name = tag_node_output02_name_port.dpg_tag
         tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
@@ -176,9 +185,12 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        input_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01'))
-        output_image_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
-        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        ports = self.ports(node_id)
+        input_value01_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input01')
+        )
+        output_image_tag = ports.image.value_tag
+        output_value02_tag = ports.elapsed.value_tag
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']

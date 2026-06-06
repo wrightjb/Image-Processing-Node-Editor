@@ -7,6 +7,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 from node.draw_node.draw_util.draw_util import draw_info
 
@@ -20,6 +21,10 @@ class Node(DpgNodeBase):
     _ratio = 2
 
     _opencv_setting_dict = None
+
+    port_specs = PortSpecs(
+        image=InputPort(PortDataType.IMAGE),
+    )
 
     def __init__(self):
         self._display_size_dict = {}
@@ -53,9 +58,10 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        ports = self.create_ports(node_id)
+        tag_node_input01_name_port = ports.image
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
-        tag_node_input01_image_name = self._value_tag(tag_node_input01_name)
+        tag_node_input01_image_name = tag_node_input01_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -113,9 +119,7 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         # Tag names
-        tag_node_name = self._node_name(node_id)
-        input_image_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Input01'))
+        input_image_tag = self.ports(node_id).image.value_tag
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         # OpenCV settings

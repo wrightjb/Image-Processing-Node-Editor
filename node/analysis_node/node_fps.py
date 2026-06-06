@@ -8,6 +8,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 
 
 class Node(DpgNodeBase):
@@ -24,6 +25,11 @@ class Node(DpgNodeBase):
     _max_slot_number = 10
     _slot_id = {}
 
+    port_specs = PortSpecs(
+        elapsed_input=InputPort(PortDataType.TIME_MS),
+        elapsed=OutputPort(PortDataType.TIME_MS, index=2),
+    )
+
     def __init__(self):
         pass
 
@@ -39,13 +45,16 @@ class Node(DpgNodeBase):
 
         # Tag names
         tag_node_name = self._node_name(node_id)
+        ports = self.create_ports(node_id)
         tag_node_input00_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input00')
-        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_TIME_MS, 'Input01')
+        tag_node_input01_name_port = ports.elapsed_input
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_value_name = tag_node_input01_name_port.value_tag
         tag_node_output01_name = self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01')
-        tag_node_output01_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
-        tag_node_output02_name_port = self.output_port(node_id, self.TYPE_TIME_MS, 'Output02')
+        tag_node_output01_value_name = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01')
+        )
+        tag_node_output02_name_port = ports.elapsed
         tag_node_output02_name = tag_node_output02_name_port.dpg_tag
         tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
@@ -113,8 +122,10 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01'))
-        output_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Output02'))
+        output_value01_tag = self._value_tag(
+            self._port_tag(tag_node_name, self.TYPE_TEXT, 'Output01')
+        )
+        output_value02_tag = self.ports(node_id).elapsed.value_tag
 
         total_elapsed_time = 0
 
@@ -219,17 +230,22 @@ class Node(DpgNodeBase):
         if self._max_slot_number > self._slot_id[tag_node_name]:
             self._slot_id[tag_node_name] += 1
 
+            node_id = self._extract_node_id(tag_node_name)
+            slot_number = self._slot_id[tag_node_name]
+
             # Generate insertion destination tag name
             before_tag = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            before_tag += str(self._slot_id[tag_node_name] - 1).zfill(2)
+            before_tag += str(slot_number - 1).zfill(2)
 
             # Generate added slot tag
-            tag_node_inputXX_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            tag_node_inputXX_name += str(self._slot_id[tag_node_name]).zfill(2)
-
-            tag_node_inputXX_value_name = self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input')
-            tag_node_inputXX_value_name += str(
-                self._slot_id[tag_node_name]).zfill(2) + 'Value'
+            input_port = self.create_port(
+                node_id,
+                slot_number,
+                InputPort(PortDataType.TIME_MS, index=slot_number),
+                collection='elapsed_inputs',
+            )
+            tag_node_inputXX_name = input_port.dpg_tag
+            tag_node_inputXX_value_name = input_port.value_tag
 
             # Add slot
             with dpg.node_attribute(

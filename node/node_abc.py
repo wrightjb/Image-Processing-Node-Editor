@@ -2,7 +2,20 @@ from abc import ABCMeta, abstractmethod
 
 import dearpygui.dearpygui as dpg
 
-from node.port_model import NodeRef, PortRef
+from node.port_model import (
+    NodeRef,
+    PortDataType,
+    PortDirection,
+    PortHandles,
+    PortRef,
+    normalize_port_data_type,
+    normalize_port_direction,
+)
+from node.port_serialization import (
+    legacy_port_name,
+    make_port_tag,
+    make_port_value_tag,
+)
 
 
 class _PortTagString(str):
@@ -18,11 +31,11 @@ class DpgNodeABC(metaclass=ABCMeta):
     node_label = ''
     node_tag = ''
 
-    TYPE_INT = 'Int'
-    TYPE_FLOAT = 'Float'
-    TYPE_IMAGE = 'Image'
-    TYPE_TIME_MS = 'TimeMS'
-    TYPE_TEXT = 'Text'
+    TYPE_INT = PortDataType.INT.value
+    TYPE_FLOAT = PortDataType.FLOAT.value
+    TYPE_IMAGE = PortDataType.IMAGE.value
+    TYPE_TIME_MS = PortDataType.TIME_MS.value
+    TYPE_TEXT = PortDataType.TEXT.value
 
     @abstractmethod
     def add_node(
@@ -79,13 +92,13 @@ class DpgNodeBase(DpgNodeABC):
         return f'{node_id}:{self.node_tag}'
 
     def _port_tag(self, node_name, value_type, port_name):
-        return f'{node_name}:{value_type}:{port_name}'
+        return make_port_tag(node_name, value_type, port_name)
 
     def _value_tag(self, port_tag):
         port_ref = getattr(port_tag, 'port_ref', None)
         if port_ref is not None and port_ref.value_tag:
             return port_ref.value_tag
-        return f'{port_tag}Value'
+        return make_port_value_tag(port_tag)
 
     def _node_port_tag(self, node_id, value_type, port_name):
         return self._port_tag(self._node_name(node_id), value_type, port_name)
@@ -95,6 +108,25 @@ class DpgNodeBase(DpgNodeABC):
 
     def _node_value_tag(self, node_id, value_type, port_name):
         return self._value_tag(self._node_port_tag(node_id, value_type, port_name))
+
+    def _control_tag(self, node_name, value_type, control_name):
+        """Return a compact DearPyGui alias for a non-graph UI control."""
+        return self._port_tag(node_name, value_type, control_name)
+
+    def _control_value_tag(self, node_name, value_type, control_name):
+        return self._value_tag(
+            self._control_tag(node_name, value_type, control_name)
+        )
+
+    def _node_control_tag(self, node_id, value_type, control_name):
+        return self._control_tag(
+            self._node_name(node_id), value_type, control_name
+        )
+
+    def _node_control_value_tag(self, node_id, value_type, control_name):
+        return self._value_tag(
+            self._node_control_tag(node_id, value_type, control_name)
+        )
 
     def node_ref(self, node_id):
         return NodeRef(str(node_id), self.node_tag)
@@ -113,20 +145,63 @@ class DpgNodeBase(DpgNodeABC):
         node_ports = self._declared_port_refs.get(self._node_name(node_id), {})
         return list(node_ports.values())
 
-    def input_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(node_id, data_type, 'Input', port_name)
+    def create_ports(self, node_id):
+        self._ensure_port_declaration_state()
+        node_key = self._node_name(node_id)
+        handle_dict = {}
+        for spec in self._iter_port_specs():
+            port_ref = self._declare_port_from_spec(node_id, spec)
+            handle_dict[spec.key] = port_ref
+        handles = PortHandles(**handle_dict)
+        self._port_handles[node_key] = handles
+        return handles
 
-    def output_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(node_id, data_type, 'Output', port_name)
+    def create_port(self, node_id, key, spec, collection=None):
+        self._ensure_port_declaration_state()
+        handle_key = key if key is not None else spec.key
+        if handle_key is None:
+            raise ValueError('Dynamic port declarations require a handle key')
 
-    def parameter_port(self, node_id, data_type, port_name=None, control_tag=None):
+        node_key = self._node_name(node_id)
+        handles = self._port_handles.setdefault(node_key, PortHandles())
+        port_ref = self._declare_port_from_spec(
+            node_id,
+            spec.with_key(str(handle_key)),
+        )
+
+        if collection is None:
+            setattr(handles, str(handle_key), port_ref)
+        else:
+            collection_name = str(collection)
+            port_collection = getattr(handles, collection_name, None)
+            if port_collection is None:
+                port_collection = {}
+                setattr(handles, collection_name, port_collection)
+            port_collection[handle_key] = port_ref
+        return port_ref
+
+    def ports(self, node_id):
+        self._ensure_port_declaration_state()
+        node_key = self._node_name(node_id)
+        if node_key not in self._port_handles:
+            raise KeyError(f'Ports have not been created for {node_key}')
+        return self._port_handles[node_key]
+
+    def _iter_port_specs(self):
+        port_specs = getattr(self, 'port_specs', ())
+        if port_specs is None:
+            return iter(())
+        return iter(port_specs)
+
+    def _declare_port_from_spec(self, node_id, spec):
         return self._declare_port(
             node_id,
-            data_type,
-            'Input',
-            port_name,
-            control_tag=control_tag,
-            default_control_tag=True,
+            spec.data_type,
+            spec.direction,
+            index=spec.index,
+            control_tag=spec.control_tag,
+            default_control_tag=spec.default_control_tag,
+            spec_key=spec.key,
         )
 
     def _declare_port(
@@ -135,12 +210,18 @@ class DpgNodeBase(DpgNodeABC):
         data_type,
         direction,
         port_name=None,
+        index=None,
         control_tag=None,
         default_control_tag=False,
+        spec_key=None,
     ):
         self._ensure_port_declaration_state()
         node_ref = self.node_ref(node_id)
-        port_name, index = self._resolve_port_name(node_ref, direction, port_name)
+        direction = normalize_port_direction(direction)
+        data_type = normalize_port_data_type(data_type)
+        port_name, index = self._resolve_port_name(
+            node_ref, direction, port_name, index=index
+        )
         dpg_tag = self._port_tag(node_ref.node_id_name, data_type, port_name)
         value_tag = self._value_tag(dpg_tag)
         if control_tag is None and default_control_tag:
@@ -154,16 +235,28 @@ class DpgNodeBase(DpgNodeABC):
             dpg_tag=dpg_tag,
             value_tag=value_tag,
             control_tag=control_tag,
+            spec_key=spec_key,
         )
         self._remember_port_ref(port_ref)
         return port_ref
 
-    def _resolve_port_name(self, node_ref, direction, port_name):
-        counter_key = (node_ref.node_id_name, direction)
+    def _resolve_port_name(self, node_ref, direction, port_name, index=None):
+        direction_value = direction.value
+        counter_key = (node_ref.node_id_name, direction_value)
+        if index is not None:
+            index = int(index)
+            self._port_index_counters[counter_key] = max(
+                self._port_index_counters.get(counter_key, 0),
+                index,
+            )
+            if port_name is None:
+                port_name = legacy_port_name(direction, index)
+            return port_name, index
+
         if port_name is None:
             index = self._port_index_counters.get(counter_key, 0) + 1
             self._port_index_counters[counter_key] = index
-            return f'{direction}{index:02d}', index
+            return legacy_port_name(direction, index), index
 
         index = self._port_index(port_name, direction)
         self._port_index_counters[counter_key] = max(
@@ -173,16 +266,22 @@ class DpgNodeBase(DpgNodeABC):
         return port_name, index
 
     def _port_index(self, port_name, direction):
-        if not isinstance(port_name, str) or not port_name.startswith(direction):
+        direction_value = direction.value
+        if (
+            not isinstance(port_name, str)
+            or not port_name.startswith(direction_value)
+        ):
             raise ValueError(
-                f'{direction} port names must start with {direction}: {port_name}'
+                f'{direction_value} port names must start with '
+                f'{direction_value}: {port_name}'
             )
-        index_text = port_name[len(direction):]
+        index_text = port_name[len(direction_value):]
         try:
             return int(index_text)
         except ValueError as exc:
             raise ValueError(
-                f'{direction} port names must end with a numeric index: {port_name}'
+                f'{direction_value} port names must end with a numeric '
+                f'index: {port_name}'
             ) from exc
 
     def _remember_port_ref(self, port_ref):
@@ -202,6 +301,8 @@ class DpgNodeBase(DpgNodeABC):
             self._port_index_counters = {}
         if not hasattr(self, '_port_registration_callback'):
             self._port_registration_callback = None
+        if not hasattr(self, '_port_handles'):
+            self._port_handles = {}
 
     def _extract_source_node_key(self, source_tag):
         port_ref = getattr(source_tag, 'port_ref', None)

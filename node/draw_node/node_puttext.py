@@ -7,6 +7,7 @@ import dearpygui.dearpygui as dpg
 from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
+from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import convert_cv_to_dpg
 from node.draw_node.draw_util.draw_util import draw_info
 
@@ -57,6 +58,13 @@ class Node(DpgNodeBase):
 
     _opencv_setting_dict = None
 
+    port_specs = PortSpecs(
+        image_input=InputPort(PortDataType.IMAGE),
+        text=InputPort(PortDataType.TEXT),
+        elapsed_input=InputPort(PortDataType.TIME_MS),
+        image=OutputPort(PortDataType.IMAGE),
+    )
+
     def __init__(self):
         pass
 
@@ -70,16 +78,17 @@ class Node(DpgNodeBase):
     ):
         # Tag names
         tag_node_name = self._node_name(node_id)
-        tag_node_input01_name_port = self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
+        ports = self.create_ports(node_id)
+        tag_node_input01_name_port = ports.image_input
         tag_node_input01_name = tag_node_input01_name_port.dpg_tag
         tag_node_input01_value_name = tag_node_input01_name_port.value_tag
-        tag_node_input02_name_port = self.input_port(node_id, self.TYPE_TEXT, 'Input02')
+        tag_node_input02_name_port = ports.text
         tag_node_input02_name = tag_node_input02_name_port.dpg_tag
         tag_node_input02_value_name = tag_node_input02_name_port.value_tag
-        tag_node_input03_name_port = self.input_port(node_id, self.TYPE_TIME_MS, 'Input03')
+        tag_node_input03_name_port = ports.elapsed_input
         tag_node_input03_name = tag_node_input03_name_port.dpg_tag
         tag_node_input03_value_name = tag_node_input03_name_port.value_tag
-        tag_node_output01_name_port = self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
+        tag_node_output01_name_port = ports.image
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_value_name = tag_node_output01_name_port.value_tag
 
@@ -167,9 +176,10 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         tag_node_name = self._node_name(node_id)
-        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
-        input_value03_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TIME_MS, 'Input03'))
-        output_value01_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_IMAGE, 'Output01'))
+        ports = self.ports(node_id)
+        input_value02_tag = ports.text.value_tag
+        input_value03_tag = ports.elapsed_input.value_tag
+        output_value01_tag = ports.image.value_tag
 
         tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
@@ -245,7 +255,7 @@ class Node(DpgNodeBase):
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
-        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        input_value02_tag = self.ports(node_id).text.value_tag
         tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         text = dpg_get_value(input_value02_tag)
@@ -263,7 +273,7 @@ class Node(DpgNodeBase):
 
     def set_setting_dict(self, node_id, setting_dict):
         tag_node_name = self._node_name(node_id)
-        input_value02_tag = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input02'))
+        input_value02_tag = self.ports(node_id).text.value_tag
         tag_color_edit_value_name = self._value_tag(self._port_tag(tag_node_name, self.TYPE_TEXT, 'ColorEdit'))
 
         text = setting_dict[input_value02_tag]

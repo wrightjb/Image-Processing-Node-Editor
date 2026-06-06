@@ -119,6 +119,11 @@ def _typed_link_pairs(editor):
     return [link_ref.legacy_pair for link_ref in editor._link_refs]
 
 
+def _add_link_pairs(editor, link_pairs):
+    for source_tag, dest_tag in link_pairs:
+        assert editor._mdl_add_link(source_tag, dest_tag) is True
+
+
 @pytest.fixture
 def editor_and_dpg():
     with patch('node_editor.node_editor.dpg') as dpg, \
@@ -235,44 +240,8 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
         '1:TestNode:Image:Output01',
         '2:TestNode:Image:Input01',
     ]]
-    assert editor._legacy_node_link_list == []
     assert editor._link_refs == [link_ref]
     assert list(editor._mdl_iter_link_refs()) == [link_ref]
-
-
-def test_legacy_link_pairs_normalize_to_typed_link_refs(editor_and_dpg):
-    editor, _ = editor_and_dpg
-    editor._node_link_list = [[
-        '1:TestNode:Image:Output01',
-        '2:TestNode:Image:Input01',
-    ]]
-
-    link_refs = list(editor._mdl_iter_link_refs())
-
-    assert len(link_refs) == 1
-    assert link_refs[0].source == PortRef(
-        node_ref=NodeRef('1', 'TestNode'),
-        direction='Output',
-        data_type='Image',
-        index=1,
-        port_name='Output01',
-        dpg_tag='1:TestNode:Image:Output01',
-        value_tag='1:TestNode:Image:Output01Value',
-    )
-    assert link_refs[0].destination == PortRef(
-        node_ref=NodeRef('2', 'TestNode'),
-        direction='Input',
-        data_type='Image',
-        index=1,
-        port_name='Input01',
-        dpg_tag='2:TestNode:Image:Input01',
-        value_tag='2:TestNode:Image:Input01Value',
-    )
-    assert editor._link_refs == link_refs
-    assert editor._link_registry[(
-        '1:TestNode:Image:Output01',
-        '2:TestNode:Image:Input01',
-    )] == link_refs[0]
 
 
 def test_delete_link_accepts_typed_link_refs(editor_and_dpg):
@@ -1415,7 +1384,7 @@ def test_insert_node_into_selected_link_rejects_incompatible_node(editor_and_dpg
 
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
-    editor._node_link_list = [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    _add_link_pairs(editor, [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']])
 
     editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
 
@@ -1437,12 +1406,12 @@ def test_close_window(editor_and_dpg):
 def test_sort_node_graph(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_list = ['1:TestNode', '2:TestNode', '3:TestNode', '4:TestNode']
-    editor._node_link_list = [
+    _add_link_pairs(editor, [
         ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
         ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
         ['2:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
-        ['3:TestNode:Int:Output01', '4:TestNode:Int:Input01'],
-    ]
+        ['3:TestNode:Int:Output01', '4:TestNode:Int:Input02'],
+    ])
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()
     assert list(result.keys()) == ['1:TestNode', '2:TestNode', '3:TestNode', '4:TestNode']
@@ -1451,7 +1420,6 @@ def test_sort_node_graph(editor_and_dpg):
 def test_sort_node_graph_unconnected(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_list = ['1:TestNode', '2:TestNode']
-    editor._node_link_list = []
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()
     assert result == OrderedDict()
@@ -1461,7 +1429,6 @@ def test_sort_node_graph_empty_list(editor_and_dpg):
     editor, _ = editor_and_dpg
     # Empty node list should yield empty result
     editor._node_list = []
-    editor._node_link_list = []
     editor._mdl_sort_node_graph()
     result = editor.get_sorted_node_connection()
     assert result == OrderedDict()
@@ -1489,14 +1456,20 @@ def test_delete_node(editor_and_dpg):
 def test_mv_key_del_no_selection(editor_and_dpg):
     editor, dpg = editor_and_dpg
     # initial state
-    editor._node_list = ['1:TestNode']
-    editor._node_link_list = [['1:TestNode:Output01', '1:TestNode:Input01']]
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    _add_link_pairs(editor, [[
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]])
     # no nodes or links selected
     dpg.get_selected_nodes.return_value = []
     dpg.get_selected_links.return_value = []
     editor._cntrl_delete_selected(None, None)
-    assert editor._node_list == ['1:TestNode']
-    assert editor._node_link_list == [['1:TestNode:Output01', '1:TestNode:Input01']]
+    assert editor._node_list == ['1:TestNode', '2:TestNode']
+    assert _typed_link_pairs(editor) == [[
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    ]]
 
 
 def test_set_get_terminate_flag(editor_and_dpg):

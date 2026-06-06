@@ -55,6 +55,11 @@ def _typed_link_pairs_from_editor(editor):
     return [link_ref.legacy_pair for link_ref in editor._link_refs]
 
 
+def _add_link_pairs(editor, link_pairs):
+    for source_tag, dest_tag in link_pairs:
+        assert editor._mdl_add_link(source_tag, dest_tag) is True
+
+
 def _history_link_pairs(links):
     pairs = []
     for link in links:
@@ -143,10 +148,10 @@ class TestDpgNodeEditorImportExport:
     ):
         """Test exporting with nodes in the editor"""
         node_editor._node_list = ['1:test_node', '2:test_node']
-        node_editor._node_link_list = [[
+        _add_link_pairs(node_editor, [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01'
-        ]]
+        ]])
 
         temp_path = tmp_path / "with_nodes.json"
         sender = 'file_export'
@@ -837,10 +842,10 @@ class TestDpgNodeEditorImportExport:
 
         # Arrange: seed editor with two nodes and a link between them
         node_editor._node_list = ['1:test_node', '2:test_node']
-        node_editor._node_link_list = [[
+        _add_link_pairs(node_editor, [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
-        ]]
+        ]])
 
         # Act: export the original state to JSON
         orig = tmp_path / 'orig.json'
@@ -887,7 +892,7 @@ class TestDpgNodeEditorImportExport:
             ['3:test_node:Image:Output01', '4:test_node:Image:Input02'],
         ]
         node_editor._node_list = original_nodes.copy()
-        node_editor._node_link_list = original_links.copy()
+        _add_link_pairs(node_editor, original_links)
         # Provide distinct settings
         mock_node_instance.get_setting_dict.side_effect = lambda nid: {
             'ver': '1.0.0',
@@ -938,10 +943,10 @@ class TestDpgNodeEditorImportExport:
            existing IDs."""
         # Arrange: editor already has nodes 1 and 2
         node_editor._node_list = ['1:test_node', '2:test_node']
-        node_editor._node_link_list = [[
+        _add_link_pairs(node_editor, [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
-        ]]
+        ]])
         node_editor._node_id = 2
 
         # import JSON with the same IDs (1 & 2), so they must be remapped

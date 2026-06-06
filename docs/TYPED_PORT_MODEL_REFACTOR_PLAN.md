@@ -157,9 +157,10 @@ node-by-node graph-port migration:
    `default`, etc.). If those dictionaries remain annoying, introduce a typed
    `ParameterSpec`/widget metadata object; otherwise leave them alone.
 4. **Reduce test coupling to `_node_link_list`.** `_link_refs` is canonical, and
-   `_node_link_list` is only a computed compatibility view. Many tests still
-   assert that view; convert tests to assert typed `LinkRef` state where they are
-   not explicitly testing backward compatibility.
+   `_node_link_list` is only a computed compatibility view. Core editor tests now
+   assert typed link pairs for normal graph operations; continue converting
+   import/export tests where they are not explicitly testing backward
+   compatibility.
 5. **Audit disabled/legacy nodes when re-enabling them.** `*.py.disable` files
    such as the disabled QR-code node are outside the active migration. If one is
    re-enabled, migrate its graph ports to `PortSpecs` first.
@@ -433,7 +434,8 @@ plus a readable compact boundary string.
   normal paths.
 - Done: add canonical typed `LinkRef` storage in `_link_refs` while keeping
   `_node_link_list` as a computed compatibility view over typed links and seeded
-  legacy compact pairs.
+  legacy compact pairs. Normal editor-core link assertions now prefer typed link
+  pairs.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
 - Done: move graph sorting, cycle detection, delete-through-node reconnection, and

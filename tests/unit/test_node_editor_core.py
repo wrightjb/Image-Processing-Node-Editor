@@ -115,6 +115,10 @@ class PortDeclaringDummyNode(DpgNodeBase):
         pass
 
 
+def _typed_link_pairs(editor):
+    return [link_ref.legacy_pair for link_ref in editor._link_refs]
+
+
 @pytest.fixture
 def editor_and_dpg():
     with patch('node_editor.node_editor.dpg') as dpg, \
@@ -181,7 +185,7 @@ def test_link_callback_basic(editor_and_dpg):
     editor._cntrl_add_node(None, None, 'TestNode')
     link_ids = [101, 102]
     editor._cntrl_link('NodeEditor', link_ids)
-    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     link_ref = editor._link_registry[(
         '1:TestNode:Int:Output01',
         '2:TestNode:Int:Input01',
@@ -227,7 +231,7 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
 
     link_ref = editor._mdl_get_link_ref_by_destination(dest_port)
     assert link_ref == LinkRef(source_port, dest_port)
-    assert editor._node_link_list == [[
+    assert _typed_link_pairs(editor) == [[
         '1:TestNode:Image:Output01',
         '2:TestNode:Image:Input01',
     ]]
@@ -295,7 +299,7 @@ def test_delete_link_accepts_typed_link_refs(editor_and_dpg):
     editor._mdl_delete_link(link_ref)
 
     assert editor._link_refs == []
-    assert editor._node_link_list == []
+    assert _typed_link_pairs(editor) == []
     assert editor._link_registry == {}
     assert editor._link_by_dest_port == {}
     assert editor._link_by_dest_port_ref == {}
@@ -324,7 +328,7 @@ def test_history_import_command_accepts_typed_link_refs(editor_and_dpg):
 
     ImportGraphCommand(nodes=[], links=[link_ref]).redo(editor)
 
-    assert editor._node_link_list == [link_ref.legacy_pair]
+    assert _typed_link_pairs(editor) == [link_ref.legacy_pair]
     registered_link = editor._mdl_get_link_ref_by_destination(dest_port)
     assert registered_link.source_tag == link_ref.source_tag
     assert registered_link.destination_tag == link_ref.destination_tag
@@ -458,7 +462,7 @@ def test_link_prevents_duplicate_dest(editor_and_dpg):
     link_ids = [101, 102]
     editor._cntrl_link('NodeEditor', link_ids)
     editor._cntrl_link('NodeEditor', link_ids)
-    assert len(editor._node_link_list) == 1
+    assert len(editor._link_refs) == 1
 
 
 def test_link_replaces_existing_dest(editor_and_dpg):
@@ -478,7 +482,7 @@ def test_link_replaces_existing_dest(editor_and_dpg):
     editor._cntrl_link('NodeEditor', [101, 102])
     editor._cntrl_link('NodeEditor', [103, 102])
 
-    assert editor._node_link_list == [['3:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['3:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     assert editor._link_view_id_map == {
         ('3:TestNode:Int:Output01', '2:TestNode:Int:Input01'): 'link-2'
     }
@@ -510,7 +514,7 @@ def test_link_mismatched_type_ignored(editor_and_dpg):
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_add_node(None, None, 'TestNode')
     editor._cntrl_link('NodeEditor', [101, 102])
-    assert editor._node_link_list == []
+    assert _typed_link_pairs(editor) == []
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
         'Link rejected: Int output cannot connect to Float input.',
@@ -534,7 +538,7 @@ def test_link_duplicate_same_source_sets_feedback(editor_and_dpg):
     editor._cntrl_link('NodeEditor', [101, 102])
     editor._cntrl_link('NodeEditor', [101, 102])
 
-    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
         'Link rejected: input is already connected to that source.',
@@ -550,7 +554,7 @@ def test_link_invalid_payload_sets_feedback(editor_and_dpg):
 
     editor._cntrl_link('NodeEditor', [101])
 
-    assert editor._node_link_list == []
+    assert _typed_link_pairs(editor) == []
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
         'Link rejected: invalid link data from DearPyGui.',
@@ -577,11 +581,11 @@ def test_link_cycle_is_rejected(editor_and_dpg):
     editor._cntrl_add_node(None, None, 'TestNode')
 
     editor._cntrl_link('NodeEditor', [101, 102])
-    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
 
     editor._cntrl_link('NodeEditor', [103, 104])
 
-    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     dpg.set_value.assert_any_call(
         'NodeEditorLinkFeedback',
         'Link rejected: this connection would create a cycle.',
@@ -630,7 +634,7 @@ def test_insert_node_into_selected_link(editor_and_dpg):
     editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
 
     assert editor._node_list == ['1:TestNode', '2:TestNode', '3:TestNode']
-    assert editor._node_link_list == [
+    assert _typed_link_pairs(editor) == [
         ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
         ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
     ]
@@ -674,12 +678,21 @@ def test_add_node_to_occupied_input_is_single_composite_undo(editor_and_dpg):
     editor._pending_add_to_input_tag = '2:TestNode:Int:Input01'
     editor._cntrl_add_node_to_input_port(None, None, 'TestNode')
 
-    assert ['4:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
-    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] not in editor._node_link_list
+    assert (
+        ['4:TestNode:Int:Output01', '2:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
+    assert (
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']
+        not in _typed_link_pairs(editor)
+    )
 
     editor._cntrl_undo(None, None)
 
-    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert (
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
     assert '4:TestNode' not in editor._node_list
 
 
@@ -733,12 +746,21 @@ def test_insert_then_move_undo_redo_sequence(editor_and_dpg):
 
     editor._cntrl_undo(None, None)  # undo insert
     assert '3:TestNode' not in editor._node_list
-    assert ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert (
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
 
     editor._cntrl_redo(None, None)  # redo insert
     assert '3:TestNode' in editor._node_list
-    assert ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01'] in editor._node_link_list
-    assert ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01'] in editor._node_link_list
+    assert (
+        ['1:TestNode:Int:Output01', '3:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
+    assert (
+        ['3:TestNode:Int:Output01', '2:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
 
     editor._cntrl_redo(None, None)  # redo move
     assert pos_map['3:TestNode'] == [200, 150]
@@ -1268,7 +1290,7 @@ def test_add_node_from_hovered_output_creates_connected_node(editor_and_dpg):
 
     assert editor._pending_add_from_output_tag is None
     assert editor._node_list == ['1:TestNode', '2:TestNode']
-    assert editor._node_link_list == [[source_tag, input_tag]]
+    assert _typed_link_pairs(editor) == [[source_tag, input_tag]]
     assert editor._link_view_id_map[(source_tag, input_tag)] == 'link-new'
     dpg.add_node_link.assert_called_once_with(
         source_tag,
@@ -1301,7 +1323,7 @@ def test_add_node_to_hovered_input_creates_connected_node(editor_and_dpg):
 
     assert editor._pending_add_to_input_tag is None
     assert editor._node_list == ['1:TestNode', '2:TestNode']
-    assert editor._node_link_list == [[output_tag, dest_tag]]
+    assert _typed_link_pairs(editor) == [[output_tag, dest_tag]]
     assert editor._link_view_id_map[(output_tag, dest_tag)] == 'link-new'
     dpg.add_node_link.assert_called_once_with(
         output_tag,
@@ -1398,7 +1420,7 @@ def test_insert_node_into_selected_link_rejects_incompatible_node(editor_and_dpg
     editor._cntrl_insert_node_into_selected_link(None, None, 'TestNode')
 
     assert editor._node_list == ['1:TestNode', '2:TestNode']
-    assert editor._node_link_list == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
+    assert _typed_link_pairs(editor) == [['1:TestNode:Int:Output01', '2:TestNode:Int:Input01']]
     dpg.delete_item.assert_called_once_with('3:TestNode')
     dpg.set_value.assert_called_with(
         'NodeEditorLinkFeedback',
@@ -1461,7 +1483,7 @@ def test_delete_node(editor_and_dpg):
     dpg.get_selected_nodes.return_value = ['1:TestNode']
     editor._cntrl_delete_selected(None, None)
     assert '1:TestNode' not in editor._node_list
-    assert editor._node_link_list == []
+    assert _typed_link_pairs(editor) == []
 
 
 def test_mv_key_del_no_selection(editor_and_dpg):
@@ -1503,7 +1525,10 @@ def test_delete_multiple_nodes_heals_external_path(editor_and_dpg):
 
     assert '2:TestNode' not in editor._node_list
     assert '3:TestNode' not in editor._node_list
-    assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list
+    assert (
+        ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
 
 
 def test_delete_multiple_nodes_heals_two_independent_paths(editor_and_dpg):
@@ -1526,8 +1551,14 @@ def test_delete_multiple_nodes_heals_two_independent_paths(editor_and_dpg):
     dpg.get_selected_links.return_value = []
     editor._cntrl_delete_selected(None, None)
 
-    assert ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01'] in editor._node_link_list
-    assert ['5:TestNode:Int:Output01', '8:TestNode:Int:Input01'] in editor._node_link_list
+    assert (
+        ['1:TestNode:Int:Output01', '4:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
+    assert (
+        ['5:TestNode:Int:Output01', '8:TestNode:Int:Input01']
+        in _typed_link_pairs(editor)
+    )
 
 
 def test_delete_selected_ignores_stale_selected_link_ids(editor_and_dpg):
@@ -1538,4 +1569,4 @@ def test_delete_selected_ignores_stale_selected_link_ids(editor_and_dpg):
 
     editor._cntrl_delete_selected(None, None)
 
-    assert editor._node_link_list == []
+    assert _typed_link_pairs(editor) == []

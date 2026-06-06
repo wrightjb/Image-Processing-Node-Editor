@@ -127,6 +127,14 @@ class DpgNodeEditor(object):
 
     @_node_link_list.setter
     def _node_link_list(self, link_list):
+        # Treat legacy assignments as replacing the graph link model, matching
+        # the pre-typed-port list semantics.  Keep the assigned compact pairs in
+        # the compatibility bucket until they can be normalized to LinkRef
+        # instances by _mdl_iter_link_refs().
+        self._link_refs = []
+        self._link_registry = {}
+        self._link_by_dest_port = {}
+        self._link_by_dest_port_ref = {}
         self._legacy_node_link_list = [list(link) for link in link_list]
 
     def _mdl_add_node(self, node_tag):

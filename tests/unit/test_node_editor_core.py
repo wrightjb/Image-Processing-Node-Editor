@@ -240,6 +240,34 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
     assert list(editor._mdl_iter_link_refs()) == [link_ref]
 
 
+def test_legacy_link_assignment_replaces_typed_link_model(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._mdl_add_link(
+        '1:TestNode:Int:Output01',
+        '2:TestNode:Int:Input01',
+    )
+
+    editor._node_link_list = [[
+        '2:TestNode:Int:Output01',
+        '3:TestNode:Int:Input01',
+    ]]
+
+    assert _typed_link_pairs(editor) == []
+    assert editor._link_registry == {}
+    assert editor._link_by_dest_port == {}
+    assert editor._link_by_dest_port_ref == {}
+
+    link_refs = list(editor._mdl_iter_link_refs())
+    assert _typed_link_pairs(editor) == [[
+        '2:TestNode:Int:Output01',
+        '3:TestNode:Int:Input01',
+    ]]
+    assert link_refs[0].legacy_pair == [
+        '2:TestNode:Int:Output01',
+        '3:TestNode:Int:Input01',
+    ]
+
+
 def test_legacy_link_pairs_normalize_to_typed_link_refs(editor_and_dpg):
     editor, _ = editor_and_dpg
     editor._node_link_list = [[

@@ -95,8 +95,7 @@ class DpgNodeEditor(object):
         self._node_registry = {}
         self._port_registry = {}
         self._link_registry = {}
-        self._link_by_dest_port = {}
-        self._link_by_dest_port_ref = {}
+        self._link_ref_by_destination = {}
         self._use_debug_print = use_debug_print
         self._terminate_flag = False
         self._opencv_setting_dict = opencv_setting_dict
@@ -206,28 +205,24 @@ class DpgNodeEditor(object):
             return False
         source_tag = link_ref.source_tag
         dest_tag = link_ref.destination_tag
-        if dest_tag in self._link_by_dest_port_ref:
+        if dest_tag in self._link_ref_by_destination:
             return False
         self._link_refs.append(link_ref)
         self._link_registry[(source_tag, dest_tag)] = link_ref
-        self._link_by_dest_port[dest_tag] = source_tag
-        self._link_by_dest_port_ref[dest_tag] = link_ref
+        self._link_ref_by_destination[dest_tag] = link_ref
         return True
 
     def _mdl_get_link_ref_by_destination(self, destination):
         dest_port = self._mdl_resolve_port_ref(destination)
         if dest_port is None:
             return None
-        return self._link_by_dest_port_ref.get(dest_port.dpg_tag)
+        return self._link_ref_by_destination.get(dest_port.dpg_tag)
 
     def _mdl_get_link_by_destination(self, dest_tag):
         link_ref = self._mdl_get_link_ref_by_destination(dest_tag)
-        if link_ref is not None:
-            return link_ref.legacy_pair
-        source_tag = self._link_by_dest_port.get(dest_tag)
-        if source_tag is not None:
-            return [source_tag, dest_tag]
-        return None
+        if link_ref is None:
+            return None
+        return link_ref.legacy_pair
 
     def _mdl_serialize_port_ref(self, port_ref):
         return {
@@ -294,8 +289,7 @@ class DpgNodeEditor(object):
     def _mdl_delete_link(self, link):
         source_tag, dest_tag = self._mdl_link_key(link)
         self._link_registry.pop((source_tag, dest_tag), None)
-        self._link_by_dest_port.pop(dest_tag, None)
-        self._link_by_dest_port_ref.pop(dest_tag, None)
+        self._link_ref_by_destination.pop(dest_tag, None)
         self._link_refs = [
             link_ref for link_ref in self._link_refs
             if (

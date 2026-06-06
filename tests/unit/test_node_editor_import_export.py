@@ -436,7 +436,6 @@ class TestDpgNodeEditorImportExport:
 
         assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
-        assert node_editor._link_by_dest_port == {}
         assert node_editor._undo_stack[-1].links == []
         mock_dpg.add_node_link.assert_not_called()
 
@@ -559,7 +558,6 @@ class TestDpgNodeEditorImportExport:
 
         assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
-        assert node_editor._link_by_dest_port == {}
         assert node_editor._link_view_id_map == {}
         assert node_editor._undo_stack[-1].links == []
         mock_dpg.add_node_link.assert_not_called()
@@ -604,7 +602,6 @@ class TestDpgNodeEditorImportExport:
 
         assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
-        assert node_editor._link_by_dest_port == {}
         assert node_editor._undo_stack[-1].links == []
         mock_dpg.add_node_link.assert_not_called()
 

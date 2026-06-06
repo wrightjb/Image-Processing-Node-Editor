@@ -202,7 +202,6 @@ def test_link_callback_basic(editor_and_dpg):
         '1:TestNode:Int:Output01',
         '2:TestNode:Int:Input01',
     ]
-    assert editor._link_by_dest_port['2:TestNode:Int:Input01'] == '1:TestNode:Int:Output01'
     assert editor._mdl_get_link_ref_by_destination(
         '2:TestNode:Int:Input01'
     ) == link_ref
@@ -270,8 +269,6 @@ def test_delete_link_accepts_typed_link_refs(editor_and_dpg):
     assert editor._link_refs == []
     assert _typed_link_pairs(editor) == []
     assert editor._link_registry == {}
-    assert editor._link_by_dest_port == {}
-    assert editor._link_by_dest_port_ref == {}
 
 
 def test_history_import_command_accepts_typed_link_refs(editor_and_dpg):
@@ -420,7 +417,6 @@ def test_delete_link_updates_typed_registries(editor_and_dpg):
 
     assert editor._mdl_get_link_by_destination(dest_tag) is None
     assert (source_tag, dest_tag) not in editor._link_registry
-    assert dest_tag not in editor._link_by_dest_port
 
 
 def test_link_prevents_duplicate_dest(editor_and_dpg):

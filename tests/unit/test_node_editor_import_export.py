@@ -51,6 +51,10 @@ def _link_ref_pairs(link_refs):
     ]
 
 
+def _typed_link_pairs_from_editor(editor):
+    return [link_ref.legacy_pair for link_ref in editor._link_refs]
+
+
 def _history_link_pairs(links):
     pairs = []
     for link in links:
@@ -246,7 +250,7 @@ class TestDpgNodeEditorImportExport:
         node_editor._cntrl_file_import(sender, data)
 
         assert node_editor._node_list == ['1:test_node', '2:test_node']
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01'
         ]]
@@ -309,7 +313,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
         ]]
@@ -360,7 +364,7 @@ class TestDpgNodeEditorImportExport:
         )
 
         assert node_editor._node_list == ['1:test_node', '2:test_node']
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
         ]]
@@ -370,13 +374,13 @@ class TestDpgNodeEditorImportExport:
         node_editor._cntrl_undo(None, None)
 
         assert node_editor._node_list == []
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
         assert len(node_editor._redo_stack) == 1
 
         node_editor._cntrl_redo(None, None)
 
         assert node_editor._node_list == ['1:test_node', '2:test_node']
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '2:test_node:Image:Input01',
         ]]
@@ -425,7 +429,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
         assert node_editor._link_by_dest_port == {}
         assert node_editor._undo_stack[-1].links == []
@@ -491,7 +495,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
@@ -501,10 +505,10 @@ class TestDpgNodeEditorImportExport:
         )]
 
         node_editor._cntrl_undo(None, None)
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
 
         node_editor._cntrl_redo(None, None)
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '1:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
@@ -548,7 +552,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
         assert node_editor._link_by_dest_port == {}
         assert node_editor._link_view_id_map == {}
@@ -593,7 +597,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}
         assert node_editor._link_by_dest_port == {}
         assert node_editor._undo_stack[-1].links == []
@@ -637,7 +641,7 @@ class TestDpgNodeEditorImportExport:
             {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
         )
 
-        assert node_editor._node_link_list == [[
+        assert _typed_link_pairs_from_editor(node_editor) == [[
             '2:test_node:Image:Output01',
             '3:test_node:Image:Input01',
         ]]
@@ -920,7 +924,7 @@ class TestDpgNodeEditorImportExport:
 
         # Assert import reconstructed the same graph
         assert set(imported_editor._node_list) == set(original_nodes)
-        assert (set(tuple(l) for l in imported_editor._node_link_list)
+        assert (set(tuple(l) for l in _typed_link_pairs_from_editor(imported_editor))
                 == set(tuple(l) for l in original_links))
 
     def test_import_after_existing_nodes_non_conflicting(
@@ -986,7 +990,7 @@ class TestDpgNodeEditorImportExport:
 
         # grab all links that connect two imported IDs
         imported_links = [
-            link for link in node_editor._node_link_list
+            link for link in _typed_link_pairs_from_editor(node_editor)
             if int(link[0].split(':')[0]) in new_ids
             and int(link[1].split(':')[0]) in new_ids
         ]
@@ -1032,5 +1036,5 @@ class TestDpgNodeEditorImportExport:
         node_editor._cntrl_delete_selected(None, None)
 
         assert '1:test_node' not in node_editor._node_list
-        assert node_editor._node_link_list == []
+        assert _typed_link_pairs_from_editor(node_editor) == []
         assert node_editor._link_registry == {}

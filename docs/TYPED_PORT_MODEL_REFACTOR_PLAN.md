@@ -156,11 +156,11 @@ node-by-node graph-port migration:
    parameter definitions are still dictionaries (`type`, `port`, `widget`,
    `default`, etc.). If those dictionaries remain annoying, introduce a typed
    `ParameterSpec`/widget metadata object; otherwise leave them alone.
-4. **Reduce test coupling to `_node_link_list`.** `_link_refs` is canonical, and
-   `_node_link_list` is only a computed compatibility view. Core editor tests now
-   assert typed link pairs for normal graph operations; continue converting
-   import/export tests where they are not explicitly testing backward
-   compatibility.
+4. **Keep tests focused on typed links.** `_link_refs` is canonical, and
+   `_node_link_list` is only a computed compatibility view. Core editor and
+   import/export tests now assert typed link pairs for normal graph operations;
+   direct `_node_link_list` usage should stay limited to explicit legacy seeding
+   or compatibility-view tests.
 5. **Audit disabled/legacy nodes when re-enabling them.** `*.py.disable` files
    such as the disabled QR-code node are outside the active migration. If one is
    re-enabled, migrate its graph ports to `PortSpecs` first.
@@ -434,8 +434,8 @@ plus a readable compact boundary string.
   normal paths.
 - Done: add canonical typed `LinkRef` storage in `_link_refs` while keeping
   `_node_link_list` as a computed compatibility view over typed links and seeded
-  legacy compact pairs. Normal editor-core link assertions now prefer typed link
-  pairs.
+  legacy compact pairs. Normal editor-core and import/export link assertions now
+  prefer typed link pairs.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
 - Done: move graph sorting, cycle detection, delete-through-node reconnection, and
@@ -460,5 +460,8 @@ plus a readable compact boundary string.
 - Done: remove the public graph declaration adapters (`input_port()`,
   `output_port()`, `parameter_port()`) after active nodes and tests moved to
   `PortSpecs`/`create_port()`.
+- Done: reduce normal import/export test coupling to `_node_link_list`; the
+  remaining direct assignments seed legacy compatibility state before export or
+  import-collision scenarios.
 - Remaining: finish reviewing compact static/control tags and compatibility
   helper usage.

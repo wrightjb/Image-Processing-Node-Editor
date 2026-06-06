@@ -204,26 +204,6 @@ class DpgNodeBase(DpgNodeABC):
             spec_key=spec.key,
         )
 
-    def input_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(
-            node_id, data_type, PortDirection.INPUT, port_name
-        )
-
-    def output_port(self, node_id, data_type, port_name=None):
-        return self._declare_port(
-            node_id, data_type, PortDirection.OUTPUT, port_name
-        )
-
-    def parameter_port(self, node_id, data_type, port_name=None, control_tag=None):
-        return self._declare_port(
-            node_id,
-            data_type,
-            PortDirection.INPUT,
-            port_name,
-            control_tag=control_tag,
-            default_control_tag=True,
-        )
-
     def _declare_port(
         self,
         node_id,

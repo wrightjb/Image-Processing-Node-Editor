@@ -50,56 +50,74 @@ from node.port_model import (
 )
 
 
-def test_explicit_port_declaration_preserves_compact_tag_shape():
-    node = IntValueNode()
+def test_port_specs_preserve_compact_tag_shape():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.INT),
+        )
 
-    port = node.output_port(7, node.TYPE_INT, 'Output01')
+    port = SpecNode().create_ports(7).value
 
     assert port == PortRef(
         node_ref=NodeRef('7', 'IntValue'),
         direction=PortDirection.OUTPUT,
-        data_type='Int',
+        data_type=PortDataType.INT,
         index=1,
         port_name='Output01',
         dpg_tag='7:IntValue:Int:Output01',
         value_tag='7:IntValue:Int:Output01Value',
         control_tag=None,
+        spec_key='value',
     )
 
 
-def test_auto_numbered_ports_increment_by_node_and_direction():
-    node = IntValueNode()
+def test_port_specs_auto_number_by_node_and_direction():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            image_in=InputPort(PortDataType.IMAGE),
+            int_param=ParameterPort(PortDataType.INT),
+            image_out=OutputPort(PortDataType.IMAGE),
+            text_in=InputPort(PortDataType.TEXT),
+        )
 
-    image_in = node.input_port(3, node.TYPE_IMAGE)
-    int_in = node.parameter_port(3, node.TYPE_INT)
-    image_out = node.output_port(3, node.TYPE_IMAGE)
-    next_node_input = node.input_port(4, node.TYPE_TEXT)
+    node = SpecNode()
+    ports = node.create_ports(3)
+    next_node_ports = node.create_ports(4)
 
-    assert image_in.port_name == 'Input01'
-    assert image_in.dpg_tag == '3:IntValue:Image:Input01'
-    assert image_in.control_tag is None
-    assert int_in.port_name == 'Input02'
-    assert int_in.dpg_tag == '3:IntValue:Int:Input02'
-    assert int_in.control_tag == '3:IntValue:Int:Input02Value'
-    assert image_out.port_name == 'Output01'
-    assert next_node_input.port_name == 'Input01'
+    assert ports.image_in.port_name == 'Input01'
+    assert ports.image_in.dpg_tag == '3:IntValue:Image:Input01'
+    assert ports.image_in.control_tag is None
+    assert ports.int_param.port_name == 'Input02'
+    assert ports.int_param.dpg_tag == '3:IntValue:Int:Input02'
+    assert ports.int_param.control_tag == '3:IntValue:Int:Input02Value'
+    assert ports.image_out.port_name == 'Output01'
+    assert ports.text_in.port_name == 'Input03'
+    assert next_node_ports.image_in.port_name == 'Input01'
 
 
-def test_explicit_port_declaration_advances_auto_numbering():
-    node = IntValueNode()
+def test_explicit_port_spec_index_advances_auto_numbering():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            explicit=InputPort(PortDataType.INT, index=3),
+            auto=InputPort(PortDataType.TEXT),
+        )
 
-    explicit_port = node.input_port(2, node.TYPE_INT, 'Input03')
-    auto_port = node.input_port(2, node.TYPE_TEXT)
+    ports = SpecNode().create_ports(2)
 
-    assert explicit_port.index == 3
-    assert auto_port.port_name == 'Input04'
+    assert ports.explicit.index == 3
+    assert ports.explicit.port_name == 'Input03'
+    assert ports.auto.port_name == 'Input04'
 
 
 def test_declared_port_refs_are_stored_by_node():
-    node = IntValueNode()
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.INT),
+        )
 
-    first = node.output_port(1, node.TYPE_INT, 'Output01')
-    second = node.output_port(2, node.TYPE_INT, 'Output01')
+    node = SpecNode()
+    first = node.create_ports(1).value
+    second = node.create_ports(2).value
 
     assert node.get_declared_port_refs(1) == [first]
     assert node.get_declared_port_refs(2) == [second]
@@ -107,18 +125,21 @@ def test_declared_port_refs_are_stored_by_node():
 
 
 def test_declared_ports_use_direction_enum_values():
-    node = IntValueNode()
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.INT),
+            value_input=InputPort(PortDataType.FLOAT),
+        )
 
-    output_port = node.output_port(10, node.TYPE_INT)
-    input_port = node.input_port(10, node.TYPE_FLOAT)
+    ports = SpecNode().create_ports(10)
 
-    assert output_port.direction is PortDirection.OUTPUT
-    assert output_port.direction == 'Output'
-    assert output_port.port_name == 'Output01'
-    assert output_port.value_tag == '10:IntValue:Int:Output01Value'
-    assert input_port.direction is PortDirection.INPUT
-    assert input_port.direction == 'Input'
-    assert input_port.port_name == 'Input01'
+    assert ports.value.direction is PortDirection.OUTPUT
+    assert ports.value.direction == 'Output'
+    assert ports.value.port_name == 'Output01'
+    assert ports.value.value_tag == '10:IntValue:Int:Output01Value'
+    assert ports.value_input.direction is PortDirection.INPUT
+    assert ports.value_input.direction == 'Input'
+    assert ports.value_input.port_name == 'Input01'
 
 
 def test_port_specs_create_base_owned_attribute_handles():
@@ -529,39 +550,42 @@ def test_expanded_migrated_nodes_expose_expected_port_handles():
             assert port.value_tag == f'{port.dpg_tag}Value'
 
 
-def test_port_declaration_invokes_registration_callback():
-    node = IntValueNode()
+def test_port_spec_declaration_invokes_registration_callback():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            elapsed=OutputPort(PortDataType.TIME_MS, index=2),
+        )
+
+    node = SpecNode()
     registered_ports = []
     node.set_port_registration_callback(registered_ports.append)
 
-    declared = node.output_port(4, node.TYPE_TIME_MS, 'Output02')
+    declared = node.create_ports(4).elapsed
 
     assert registered_ports == [declared]
 
 
 def test_parameter_port_accepts_custom_control_tag():
-    node = IntValueNode()
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            combo=ParameterPort(
+                PortDataType.TEXT,
+                index=2,
+                control_tag='5:IntValue:Text:ComboControl',
+            ),
+        )
 
-    port = node.parameter_port(
-        5,
-        node.TYPE_TEXT,
-        'Input02',
-        control_tag='5:IntValue:Text:ComboControl',
-    )
+    port = SpecNode().create_ports(5).combo
 
     assert port.control_tag == '5:IntValue:Text:ComboControl'
     assert port.value_tag == '5:IntValue:Text:Input02Value'
 
 
-def test_port_declaration_rejects_mismatched_direction_prefix():
-    node = IntValueNode()
+def test_port_spec_rejects_non_numeric_index():
+    class SpecNode(IntValueNode):
+        port_specs = PortSpecs(
+            image=InputPort(PortDataType.IMAGE, index='Main'),
+        )
 
-    with pytest.raises(ValueError, match='must start with Output'):
-        node.output_port(1, node.TYPE_IMAGE, 'Input01')
-
-
-def test_port_declaration_rejects_non_numeric_index():
-    node = IntValueNode()
-
-    with pytest.raises(ValueError, match='must end with a numeric index'):
-        node.input_port(1, node.TYPE_IMAGE, 'InputMain')
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        SpecNode().create_ports(1)

@@ -30,12 +30,13 @@ Implemented so far:
   `node_id` directly, reducing repeated nested tag construction in node code.
 - `node.port_model` defines the first reusable passive `NodeRef` / `PortRef`
   records for node-side declarations.
-- `DpgNodeBase` also has typed port declaration APIs (`input_port`,
-  `output_port`, `parameter_port`) that create passive `PortRef` metadata using
-  `PortDirection` and `PortDataType` enum values while preserving the compact DPG
-  tag format.
-- `node.port_model` now includes `PortSpec`, `InputPort` / `OutputPort`,
-  `PortSpecs`, and `PortHandles` for the Option A typed handle layer.
+- `DpgNodeBase` creates typed `PortRef` metadata through `PortSpecs` /
+  `create_ports()` and dynamic/data-driven `create_port()` calls using
+  `PortDirection` and `PortDataType` enum values while preserving compact DPG
+  aliases at the boundary.
+- `node.port_model` now includes `PortSpec`, `InputPort` / `OutputPort` /
+  `ParameterPort`, `PortSpecs`, and `PortHandles` for the Option A typed handle
+  layer.
 - `DpgNodeBase.create_port()` can now create one data-driven or dynamic
   `PortSpec` at runtime and store it either as a named handle or in a per-node
   handle collection, reusing the same declaration/registration path as static
@@ -48,15 +49,15 @@ Implemented so far:
   ports through `create_port()` handles. Parameter handles are stored under a
   `ports(node_id).parameters` collection, while cache/result toggles still use
   value tags because they are toolbar controls, not graph ports.
-- Direct non-declarative node `add_node()` implementations now declare their DPG
-  input/output graph attributes through `input_port()` / `output_port()` while
-  preserving existing compact tag strings.
+- Direct non-declarative node `add_node()` implementations now declare graph
+  attributes through class-level `PortSpecs` and `create_ports()` handles while
+  preserving existing compact DearPyGui aliases at the UI boundary.
 - Direct non-declarative node `update()` implementations now iterate typed
   connection info records through `_iter_connection_infos()` instead of the legacy
   `_iter_connections()` adapter. All active direct `DpgNodeBase` node classes now
   declare their static graph ports with base-owned `PortSpecs` / `PortHandles`
-  and read value tags from generated handles in setting/update paths; only
-  dynamic slot creation still calls declaration adapters at runtime.
+  and read value tags from generated handles in setting/update paths; dynamic
+  slot creation and data-driven declarative parameters use `create_port()`.
 - `DpgNodeABC` is back to the abstract lifecycle contract, shared metadata, shared
   type constants, and the optional editor hook.
 - The editor imports the shared `node.port_model` records, registers node-owned
@@ -144,11 +145,11 @@ node-by-node graph-port migration:
    Continue moving those call sites from generic `_port_tag()` / `_value_tag()`
    calls to `_control_tag()` / `_control_value_tag()` so control aliases are
    explicit. Do not convert them to `PortSpec` unless they become graph ports.
-2. **Keep legacy graph declaration adapters, but stop expanding their use.**
-   `input_port()`, `output_port()`, and `parameter_port()` can remain as
-   compatibility/declaration adapters for old tests, disabled nodes, or unusual
-   boundary paths. New static graph ports should use `PortSpecs`; new dynamic or
-   data-driven graph ports should use `create_port()`.
+2. **Keep graph declaration adapter APIs removed.** Active nodes no longer use
+   `input_port()`, `output_port()`, or `parameter_port()`, so those public
+   adapters have been removed from `DpgNodeBase`. New static graph ports should
+   use `PortSpecs`; new dynamic or data-driven graph ports should use
+   `create_port()`. Disabled nodes must migrate before being re-enabled.
 3. **Optionally improve declarative parameter metadata.** Declarative process
    graph identity now flows through `ParameterPort`/`create_port()`, but the
    parameter definitions are still dictionaries (`type`, `port`, `widget`,
@@ -451,5 +452,8 @@ plus a readable compact boundary string.
 - In progress: migrate non-graph static/control aliases to `_control_tag()` /
   `_control_value_tag()` helpers; declarative process toolbar controls and the
   `VideoWriter`/`OnOffSwitch` control widgets are now on that explicit boundary.
+- Done: remove the public graph declaration adapters (`input_port()`,
+  `output_port()`, `parameter_port()`) after active nodes and tests moved to
+  `PortSpecs`/`create_port()`.
 - Remaining: finish reviewing compact static/control tags and compatibility
-  helper usage before removing or narrowing the legacy declaration adapters.
+  helper usage.

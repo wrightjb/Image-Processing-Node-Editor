@@ -8,7 +8,15 @@ import pytest
 
 # Local application imports
 from node.node_abc import DpgNodeBase
-from node.port_model import LinkRef, NodeRef, PortRef
+from node.port_model import (
+    InputPort,
+    LinkRef,
+    NodeRef,
+    OutputPort,
+    PortDataType,
+    PortRef,
+    PortSpecs,
+)
 from node_editor.node_editor import (
     AddLinkCommand,
     AddNodeCommand,
@@ -75,6 +83,13 @@ class PortDeclaringDummyNode(DpgNodeBase):
     node_tag = 'TestNode'
     node_label = 'Test Node'
 
+    port_specs = PortSpecs(
+        image_input=InputPort(PortDataType.IMAGE),
+        image=OutputPort(PortDataType.IMAGE),
+        int_input=InputPort(PortDataType.INT, index=1),
+        int_output=OutputPort(PortDataType.INT, index=1),
+    )
+
     def add_node(
         self,
         parent,
@@ -84,10 +99,7 @@ class PortDeclaringDummyNode(DpgNodeBase):
         callback=None,
     ):
         del parent, pos, opencv_setting_dict, callback
-        self.input_port(node_id, self.TYPE_IMAGE, 'Input01')
-        self.output_port(node_id, self.TYPE_IMAGE, 'Output01')
-        self.input_port(node_id, self.TYPE_INT, 'Input01')
-        self.output_port(node_id, self.TYPE_INT, 'Output01')
+        self.create_ports(node_id)
         return f"{node_id}:{self.node_tag}"
 
     def update(self, node_id, connection_list, img_dict, res_dict):
@@ -342,7 +354,11 @@ def test_add_node_keeps_dynamic_port_registration_callback(editor_and_dpg):
     editor._node_instance_list['TestNode'] = node
 
     editor._cntrl_add_node(None, None, 'TestNode')
-    node.input_port(1, node.TYPE_TEXT, 'Input02')
+    node.create_port(
+        1,
+        'dynamic_text',
+        InputPort(PortDataType.TEXT, index=2),
+    )
 
     assert '1:TestNode:Text:Input02' in editor._port_registry
 

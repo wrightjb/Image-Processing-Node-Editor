@@ -53,7 +53,7 @@ class DpgNodeEditor(object):
     _node_id = 0
     _node_instance_list = {}
     _node_list = []
-    _node_link_list = []
+    _legacy_node_link_list = []
     _link_refs = []
     _link_view_id_map = {}
 
@@ -85,7 +85,7 @@ class DpgNodeEditor(object):
         self._node_id = 0
         self._node_instance_list = {}
         self._node_list = []
-        self._node_link_list = []
+        self._legacy_node_link_list = []
         self._link_refs = []
         self._link_view_id_map = {}
         self._node_connection_dict = OrderedDict([])
@@ -111,6 +111,23 @@ class DpgNodeEditor(object):
         self._parameter_drag_stream_active = set()
         self._suspend_parameter_history = False
         self._history_node_id_remap = {}
+
+    @property
+    def _node_link_list(self):
+        """Legacy compact-pair view over canonical typed links."""
+        link_pairs = [link_ref.legacy_pair for link_ref in self._link_refs]
+        seen = {tuple(link_pair) for link_pair in link_pairs}
+        for link_pair in getattr(self, '_legacy_node_link_list', []):
+            key = tuple(link_pair)
+            if key in seen:
+                continue
+            link_pairs.append(list(link_pair))
+            seen.add(key)
+        return link_pairs
+
+    @_node_link_list.setter
+    def _node_link_list(self, link_list):
+        self._legacy_node_link_list = [list(link) for link in link_list]
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -211,7 +228,6 @@ class DpgNodeEditor(object):
         if dest_tag in self._link_by_dest_port_ref:
             return False
         self._link_refs.append(link_ref)
-        self._node_link_list.append(link_ref.legacy_pair)
         self._link_registry[(source_tag, dest_tag)] = link_ref
         self._link_by_dest_port[dest_tag] = source_tag
         self._link_by_dest_port_ref[dest_tag] = link_ref
@@ -261,7 +277,7 @@ class DpgNodeEditor(object):
         # Compatibility boundary: some tests and old integrations still seed
         # ``_node_link_list`` directly. Normalize those compact pairs once, but
         # keep typed ``_link_refs`` as the normal graph model.
-        for source_tag, dest_tag in list(self._node_link_list):
+        for source_tag, dest_tag in list(self._legacy_node_link_list):
             key = (source_tag, dest_tag)
             if key in yielded:
                 continue
@@ -326,8 +342,8 @@ class DpgNodeEditor(object):
             ) != (source_tag, dest_tag)
         ]
         legacy_pair = [source_tag, dest_tag]
-        if legacy_pair in self._node_link_list:
-            self._node_link_list.remove(legacy_pair)
+        if legacy_pair in self._legacy_node_link_list:
+            self._legacy_node_link_list.remove(legacy_pair)
         self._mdl_sort_node_graph()
 
     def _mdl_sort_node_graph(self):

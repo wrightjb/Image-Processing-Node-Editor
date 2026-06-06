@@ -72,8 +72,9 @@ Current implementation note:
   cycle detection, delete-through-node reconnection, the runtime scheduler,
   undo/redo link history, and the node `update()` connection boundary all consume
   or preserve typed `LinkRef` data. The editor stores canonical links in
-  `_link_refs`; `_node_link_list` remains only as a legacy compact-pair adapter
-  for compatibility with older tests/integrations and DearPyGui boundary code. The
+  `_link_refs`; `_node_link_list` is now a computed legacy compact-pair view over
+  typed links plus directly seeded legacy pairs for older tests/integrations and
+  DearPyGui boundary code. The
   declarative image process base and direct non-declarative nodes read typed
   connection-info records, while `_iter_connections()` remains only as a legacy
   compatibility adapter for external callers and tests that explicitly cover that
@@ -155,10 +156,10 @@ node-by-node graph-port migration:
    parameter definitions are still dictionaries (`type`, `port`, `widget`,
    `default`, etc.). If those dictionaries remain annoying, introduce a typed
    `ParameterSpec`/widget metadata object; otherwise leave them alone.
-4. **Reduce test coupling to `_node_link_list`.** `_link_refs` is canonical, but
-   many tests still assert the legacy compact-pair adapter. Convert tests to
-   assert typed `LinkRef` state where they are not explicitly testing backward
-   compatibility.
+4. **Reduce test coupling to `_node_link_list`.** `_link_refs` is canonical, and
+   `_node_link_list` is only a computed compatibility view. Many tests still
+   assert that view; convert tests to assert typed `LinkRef` state where they are
+   not explicitly testing backward compatibility.
 5. **Audit disabled/legacy nodes when re-enabling them.** `*.py.disable` files
    such as the disabled QR-code node are outside the active migration. If one is
    re-enabled, migrate its graph ports to `PortSpecs` first.
@@ -268,8 +269,9 @@ shifting editor internals from string pairs toward typed objects.
 Implemented model:
 
 - `_link_refs` is the canonical in-memory list of typed `LinkRef` records,
-- `_node_link_list` remains only as a legacy compact-pair adapter for older tests,
-  integrations, and DearPyGui boundary code,
+- `_node_link_list` is a computed legacy compact-pair view over typed links plus
+  directly seeded legacy pairs for older tests, integrations, and DearPyGui
+  boundary code,
 - `_mdl_add_link()` accepts string aliases or `PortRef` endpoints and normalizes
   successful links to `LinkRef`,
 - graph sorting, cycle detection, delete/reconnect, runtime scheduling, history
@@ -429,8 +431,9 @@ plus a readable compact boundary string.
 - Done: replace hovered-port discovery and node-port lookup with registered
   `PortRef` iteration; legacy compact-tag scanning has been removed from these
   normal paths.
-- Done: add canonical typed `LinkRef` storage in `_link_refs` while preserving
-  legacy `_node_link_list` compact pairs as a compatibility adapter.
+- Done: add canonical typed `LinkRef` storage in `_link_refs` while keeping
+  `_node_link_list` as a computed compatibility view over typed links and seeded
+  legacy compact pairs.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
 - Done: move graph sorting, cycle detection, delete-through-node reconnection, and

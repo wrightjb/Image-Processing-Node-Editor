@@ -231,6 +231,7 @@ def test_mdl_add_link_accepts_port_refs(editor_and_dpg):
         '1:TestNode:Image:Output01',
         '2:TestNode:Image:Input01',
     ]]
+    assert editor._legacy_node_link_list == []
     assert editor._link_refs == [link_ref]
     assert list(editor._mdl_iter_link_refs()) == [link_ref]
 

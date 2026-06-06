@@ -72,9 +72,9 @@ Current implementation note:
   cycle detection, delete-through-node reconnection, the runtime scheduler,
   undo/redo link history, and the node `update()` connection boundary all consume
   or preserve typed `LinkRef` data. The editor stores canonical links in
-  `_link_refs`; `_node_link_list` is now a computed legacy compact-pair view over
-  typed links plus directly seeded legacy pairs for older tests/integrations and
-  DearPyGui boundary code. The
+  `_link_refs`; old compact-pair link lists are no longer stored or seeded in
+  the editor model. DearPyGui callback aliases are parsed only at explicit
+  boundary points. The
   declarative image process base and direct non-declarative nodes read typed
   connection-info records, while `_iter_connections()` remains only as a legacy
   compatibility adapter for external callers and tests that explicitly cover that
@@ -156,11 +156,9 @@ node-by-node graph-port migration:
    parameter definitions are still dictionaries (`type`, `port`, `widget`,
    `default`, etc.). If those dictionaries remain annoying, introduce a typed
    `ParameterSpec`/widget metadata object; otherwise leave them alone.
-4. **Keep tests focused on typed links.** `_link_refs` is canonical, and
-   `_node_link_list` is only a computed compatibility view. Core editor and
-   import/export tests now assert typed link pairs for normal graph operations;
-   direct `_node_link_list` usage should stay limited to explicit legacy seeding
-   or compatibility-view tests.
+4. **Keep tests focused on typed links.** `_link_refs` is canonical. Core
+   editor and import/export tests should seed links through `_mdl_add_link()` or
+   typed import payloads, then assert typed link pairs for graph operations.
 5. **Audit disabled/legacy nodes when re-enabling them.** `*.py.disable` files
    such as the disabled QR-code node are outside the active migration. If one is
    re-enabled, migrate its graph ports to `PortSpecs` first.
@@ -270,9 +268,6 @@ shifting editor internals from string pairs toward typed objects.
 Implemented model:
 
 - `_link_refs` is the canonical in-memory list of typed `LinkRef` records,
-- `_node_link_list` is a computed legacy compact-pair view over typed links plus
-  directly seeded legacy pairs for older tests, integrations, and DearPyGui
-  boundary code,
 - `_mdl_add_link()` accepts string aliases or `PortRef` endpoints and normalizes
   successful links to `LinkRef`,
 - graph sorting, cycle detection, delete/reconnect, runtime scheduling, history
@@ -432,10 +427,8 @@ plus a readable compact boundary string.
 - Done: replace hovered-port discovery and node-port lookup with registered
   `PortRef` iteration; legacy compact-tag scanning has been removed from these
   normal paths.
-- Done: add canonical typed `LinkRef` storage in `_link_refs` while keeping
-  `_node_link_list` as a computed compatibility view over typed links and seeded
-  legacy compact pairs. Normal editor-core and import/export link assertions now
-  prefer typed link pairs.
+- Done: add canonical typed `LinkRef` storage in `_link_refs`. Normal
+  editor-core and import/export link assertions now prefer typed link pairs.
 - Done: add typed `link_refs` import/export schema and remove normal-path legacy
   `link_list` import/export fallback after fixture conversion.
 - Done: move graph sorting, cycle detection, delete-through-node reconnection, and
@@ -460,8 +453,8 @@ plus a readable compact boundary string.
 - Done: remove the public graph declaration adapters (`input_port()`,
   `output_port()`, `parameter_port()`) after active nodes and tests moved to
   `PortSpecs`/`create_port()`.
-- Done: reduce normal import/export test coupling to `_node_link_list`; the
-  remaining direct assignments seed legacy compatibility state before export or
-  import-collision scenarios.
+- Done: remove normal import/export test coupling to old compact link-list
+  storage; tests now seed links through `_mdl_add_link()` or typed import
+  payloads.
 - Remaining: finish reviewing compact static/control tags and compatibility
   helper usage.

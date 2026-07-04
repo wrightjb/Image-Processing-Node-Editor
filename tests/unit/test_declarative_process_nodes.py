@@ -530,6 +530,8 @@ def test_curves_node_settings_include_points(monkeypatch):
     node = CurvesNode()
 
     monkeypatch.setattr(base_module, 'dpg', DpgStub())
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: None)
+    monkeypatch.setattr(curves_module, 'dpg_set_value', lambda tag, value: None)
     monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [64, 80], [255, 255]])
 
     setting = node.get_setting_dict(92)
@@ -1139,3 +1141,63 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
         '6:Blur:Int:Input02',
         '6:Blur:TimeMS:Output02',
     ]
+
+
+def test_curves_node_uses_linked_points_parameter(monkeypatch):
+    node = CurvesNode()
+    _prepare_node(node)
+
+    values = {
+        '101:CurvesPoints:Text:Output01Value': '[[0, 0], [96, 180], [255, 255]]',
+        '102:Curves:Text:Input02Value': '[[0, 0], [255, 255]]',
+    }
+    written = {}
+
+    def _record_write(tag, value):
+        written[tag] = value
+        values[tag] = value
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        _record_write,
+    )
+    monkeypatch.setattr(
+        curves_module,
+        'dpg_get_value',
+        lambda tag: values.get(tag),
+    )
+    monkeypatch.setattr(
+        curves_module,
+        'dpg_set_value',
+        _record_write,
+    )
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [255, 255]])
+    monkeypatch.setattr(curves_module.Node, '_reset_points_from_setting', lambda self, node_id, points: None)
+
+    captured = {}
+
+    def _lut_stub(image, points):
+        captured['points'] = points
+        return image
+
+    monkeypatch.setattr(curves_module, 'image_process', _lut_stub)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    out_frame, result = node.update(
+        102,
+        [
+            ['3:ImageSource:Image:Output01', '102:Curves:Image:Input01'],
+            ['101:CurvesPoints:Text:Output01', '102:Curves:Text:Input02'],
+        ],
+        {'3:ImageSource': frame},
+        {},
+    )
+
+    assert result is None
+    assert out_frame.shape == frame.shape
+    assert written['102:Curves:Text:Input02Value'] == '[[0, 0], [96, 180], [255, 255]]'
+    assert captured['points'] == [[0, 0], [96, 180], [255, 255]]

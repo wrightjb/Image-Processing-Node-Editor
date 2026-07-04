@@ -2,12 +2,15 @@
 # -*- coding: utf-8 -*-
 """Curves adjustment node for Image Processing Node Editor."""
 
+import ast
+import json
+
 import cv2
 import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
-from node_editor.util import dpg_get_value, dpg_get_item_children
+from node_editor.util import dpg_get_value, dpg_set_value, dpg_get_item_children
 
 
 def image_process(image, points):
@@ -22,7 +25,18 @@ def image_process(image, points):
 class Node(DeclarativeImageProcessNodeBase):
     """Curves adjustment node."""
 
-    _ver = '0.0.2'
+    _ver = '0.0.3'
+
+    parameters = [
+        {
+            'name': 'points',
+            'type': 'Text',
+            'port': 'Input02',
+            'label': 'Points',
+            'widget': 'input_text',
+            'default': '[[0, 0], [255, 255]]',
+        },
+    ]
 
     node_label = 'Curves'
     node_tag = 'Curves'
@@ -64,6 +78,46 @@ class Node(DeclarativeImageProcessNodeBase):
             [self._min_val, self._min_val],
             [self._max_val, self._max_val],
         ]
+
+    def _serialize_points(self, points):
+        return json.dumps(points)
+
+    def _parse_points(self, value):
+        if value is None or value == '':
+            return self._default_points()
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                try:
+                    value = ast.literal_eval(value)
+                except (SyntaxError, ValueError):
+                    return self._default_points()
+        if not isinstance(value, (list, tuple)):
+            return self._default_points()
+
+        points = []
+        for point in value:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                continue
+            try:
+                x = int(point[0])
+                y = int(point[1])
+            except (TypeError, ValueError):
+                continue
+            x = max(self._min_val, min(self._max_val, x))
+            y = max(self._min_val, min(self._max_val, y))
+            points.append([x, y])
+
+        if len(points) < 2:
+            return self._default_points()
+
+        points = sorted(points)
+        if points[0][0] != self._min_val:
+            points.insert(0, [self._min_val, points[0][1]])
+        if points[-1][0] != self._max_val:
+            points.append([self._max_val, points[-1][1]])
+        return points
 
     def _callback_add_point(self, sender, app_data, user_data):
         del sender, app_data
@@ -187,6 +241,21 @@ class Node(DeclarativeImageProcessNodeBase):
             )
 
         self._redraw_line(node_id)
+        self._set_points_parameter_value(node_id, self._get_drag_points(node_id))
+
+    def _set_points_parameter_value(self, node_id, points):
+        try:
+            value_tag = self._parameter_port_ref(
+                node_id, self.parameters[0]
+            ).value_tag
+        except (KeyError, IndexError):
+            return
+        serialized_points = self._serialize_points(points)
+        try:
+            dpg_set_value(value_tag, serialized_points)
+        except Exception:
+            return
+        self._last_parameter_values[value_tag] = serialized_points
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         if self._ui_callback is None:
@@ -194,12 +263,12 @@ class Node(DeclarativeImageProcessNodeBase):
         if before_points == after_points:
             return
         node_id_name = self._node_name(node_id)
-        value_tag = f'{node_id_name}:Text:CurvesPointsValue'
+        value_tag = self._parameter_port_ref(node_id, self.parameters[0]).value_tag
         self._ui_callback(
             'parameter_changed',
             {
                 'node_id_name': node_id_name,
-                'port_tag': f'{node_id_name}:Text:CurvesPoints',
+                'port_tag': self._parameter_port_ref(node_id, self.parameters[0]).dpg_tag,
                 'value_tag': value_tag,
                 'before_value': before_points,
                 'after_value': after_points,
@@ -210,7 +279,10 @@ class Node(DeclarativeImageProcessNodeBase):
     def apply_history_value(self, value_tag, value):
         if not isinstance(value_tag, str):
             return False
-        if not value_tag.endswith(':CurvesPointsValue'):
+        if not (
+            value_tag.endswith(':CurvesPointsValue')
+            or value_tag.endswith(':Input02Value')
+        ):
             return False
         node_id_text = value_tag.split(':', maxsplit=1)[0]
         try:
@@ -219,7 +291,7 @@ class Node(DeclarativeImageProcessNodeBase):
             return False
         if not isinstance(value, list):
             return False
-        self._reset_points_from_setting(node_id, value)
+        self._reset_points_from_setting(node_id, self._parse_points(value))
         return True
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
@@ -258,7 +330,20 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
-        parameter_values['points'] = self._get_drag_points(node_id)
+        raw_points = parameter_values.get('points')
+        current_points = self._get_drag_points(node_id)
+        default_points = self._default_points()
+        if raw_points is None:
+            parameter_values['points'] = current_points
+            return parameter_values
+
+        linked_points = self._parse_points(raw_points)
+        if linked_points == default_points and current_points != default_points:
+            parameter_values['points'] = current_points
+            return parameter_values
+        if linked_points != current_points:
+            self._reset_points_from_setting(node_id, linked_points)
+        parameter_values['points'] = linked_points
         return parameter_values
 
     def process(self, frame, **parameter_values):
@@ -267,8 +352,12 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def get_custom_setting_dict(self, tag_node_name, node_id):
         del tag_node_name
-        return {'points': self._get_drag_points(node_id)}
+        points = self._get_drag_points(node_id)
+        self._set_points_parameter_value(node_id, points)
+        return {'points': points}
 
     def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
         del tag_node_name
-        self._reset_points_from_setting(node_id, setting_dict.get('points', []))
+        points = self._parse_points(setting_dict.get('points', []))
+        self._reset_points_from_setting(node_id, points)
+        self._set_points_parameter_value(node_id, points)

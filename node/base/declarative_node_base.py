@@ -605,15 +605,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     callback=self._on_parameter_widget_changed,
                     user_data=callback_payload,
                 )
-            elif parameter['widget'] == 'input_text':
-                dpg.add_input_text(
-                    tag=value_tag,
-                    label=parameter['label'],
-                    width=width - 64,
-                    default_value=parameter.get('default', ''),
-                    callback=self._on_parameter_widget_changed,
-                    user_data=callback_payload,
-                )
+            elif parameter['widget'] == 'custom':
+                pass
             elif parameter['widget'] == 'checkbox':
                 dpg.add_checkbox(
                     tag=value_tag,

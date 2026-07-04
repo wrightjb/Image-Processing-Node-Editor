@@ -498,7 +498,13 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
     _prepare_node(node)
 
     monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [128, 200], [255, 255]])
-    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: None)
+    monkeypatch.setattr(
+        base_module,
+        'dpg_get_value',
+        lambda tag: '[[0, 0], [128, 200], [255, 255]]'
+        if tag == '91:Curves:Text:Input02Value'
+        else None,
+    )
     monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
     monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
 

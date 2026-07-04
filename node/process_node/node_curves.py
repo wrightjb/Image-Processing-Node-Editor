@@ -33,7 +33,7 @@ class Node(DeclarativeImageProcessNodeBase):
             'type': 'Text',
             'port': 'Input02',
             'label': 'Points',
-            'widget': 'input_text',
+            'widget': 'custom',
             'default': '[[0, 0], [255, 255]]',
         },
     ]
@@ -297,7 +297,16 @@ class Node(DeclarativeImageProcessNodeBase):
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback
 
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
+        points_port = self._parameter_port_ref(node_id, self.parameters[0])
+        with dpg.node_attribute(
+            tag=points_port.dpg_tag,
+            attribute_type=dpg.mvNode_Attr_Input,
+        ):
+            dpg.add_input_text(
+                tag=points_port.value_tag,
+                default_value=self._serialize_points(self._default_points()),
+                show=False,
+            )
             plot_tag = self._get_tag_plot_name(node_id)
             series_tag = self._get_tag_plot_series_name(node_id)
             with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
@@ -332,15 +341,11 @@ class Node(DeclarativeImageProcessNodeBase):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
         raw_points = parameter_values.get('points')
         current_points = self._get_drag_points(node_id)
-        default_points = self._default_points()
         if raw_points is None:
             parameter_values['points'] = current_points
             return parameter_values
 
         linked_points = self._parse_points(raw_points)
-        if linked_points == default_points and current_points != default_points:
-            parameter_values['points'] = current_points
-            return parameter_values
         if linked_points != current_points:
             self._reset_points_from_setting(node_id, linked_points)
         parameter_values['points'] = linked_points

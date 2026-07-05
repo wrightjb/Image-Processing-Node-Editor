@@ -1149,6 +1149,20 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
     ]
 
 
+def test_custom_parameter_ui_defers_attribute_to_node(monkeypatch):
+    node = CurvesNode()
+    dpg_recorder = DpgContextRecorder()
+
+    monkeypatch.setattr(base_module, 'dpg', dpg_recorder)
+    monkeypatch.setattr(node_abc_module, 'dpg', dpg_recorder)
+
+    node._add_parameter_ui(7, node.parameters[0], 240, callback=None)
+
+    assert dpg_recorder.node_attributes == []
+    assert dpg_recorder.widgets == []
+    assert node.ports(7).parameters['points'].dpg_tag == '7:Curves:Text:Input02'
+
+
 def test_curves_node_uses_linked_points_parameter(monkeypatch):
     node = CurvesNode()
     _prepare_node(node)

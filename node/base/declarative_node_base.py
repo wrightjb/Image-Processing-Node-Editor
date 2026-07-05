@@ -569,6 +569,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             'callback': parameter.get('callback', callback),
         }
         self._last_parameter_values[value_tag] = parameter.get('default', None)
+        if parameter['widget'] == 'custom':
+            return
 
         with dpg.node_attribute(
             tag=port_tag,
@@ -605,8 +607,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     callback=self._on_parameter_widget_changed,
                     user_data=callback_payload,
                 )
-            elif parameter['widget'] == 'custom':
-                pass
             elif parameter['widget'] == 'checkbox':
                 dpg.add_checkbox(
                     tag=value_tag,

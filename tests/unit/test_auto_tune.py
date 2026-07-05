@@ -229,3 +229,30 @@ def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
         {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
     ) is True
     assert node._source_allows_parameter_sync('1:IntValue:Int:Output01', {}) is True
+
+
+def test_tune_gaussian_blur_refines_downscaled_kernel_to_original_scale(monkeypatch):
+    source = np.zeros((600, 600, 1), dtype=np.uint8)
+    target = np.full((600, 600, 1), 117, dtype=np.uint8)
+
+    def _gaussian_stub(image, kernel, sigma):
+        del sigma
+        original_scale = source.shape[0] / image.shape[0]
+        value = int(round(kernel[0] * original_scale))
+        return np.full_like(image, min(value, 255))
+
+    monkeypatch.setattr(
+        gaussian_blur_module.cv2,
+        'GaussianBlur',
+        _gaussian_stub,
+        raising=False,
+    )
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={'auto_sigma': True},
+    )
+
+    assert result.best_parameters['kernel_size'] == 117
+    assert result.best_image.shape == source.shape

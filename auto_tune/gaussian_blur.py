@@ -137,6 +137,10 @@ def _tune_gaussian_blur_pass(
     sigma_max,
     sigma_step,
     max_dimension,
+    pass_index,
+    pass_count,
+    total_evaluated_before,
+    progress_callback=None,
 ):
     source_for_score, downscale_step = _downscale_for_tuning(
         source_image,
@@ -180,7 +184,22 @@ def _tune_gaussian_blur_pass(
         evaluation_plan=EvaluationPlan(_evaluate),
         fixed_parameters=fixed,
     )
-    result = grid_search(request)
+    def _progress(update):
+        if progress_callback is None:
+            return
+        update = dict(update)
+        update.update({
+            'pass_index': pass_index,
+            'pass_count': pass_count,
+            'downscale_step': downscale_step,
+            'max_dimension': max_dimension,
+            'total_evaluated': (
+                total_evaluated_before + update['candidate_index']
+            ),
+        })
+        progress_callback(update)
+
+    result = grid_search(request, progress_callback=_progress)
     original_kernel = _unscale_odd_kernel(
         result.best_parameters['kernel_size'],
         downscale_step,
@@ -215,6 +234,7 @@ def tune_gaussian_blur(
     sigma_max=DEFAULT_SIGMA_MAX,
     sigma_step=DEFAULT_SIGMA_STEP,
     max_dimension=DEFAULT_MAX_DIMENSION,
+    progress_callback=None,
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
@@ -233,7 +253,8 @@ def tune_gaussian_blur(
     current_kernel_max = kernel_max
     total_evaluated_count = 0
     result = None
-    for refinement_dimension in refinement_dimensions:
+    pass_count = len(refinement_dimensions)
+    for pass_offset, refinement_dimension in enumerate(refinement_dimensions):
         result, downscale_step = _tune_gaussian_blur_pass(
             source_image,
             target_image,
@@ -244,6 +265,10 @@ def tune_gaussian_blur(
             sigma_max,
             sigma_step,
             refinement_dimension,
+            pass_offset + 1,
+            pass_count,
+            total_evaluated_count,
+            progress_callback,
         )
         total_evaluated_count += result.evaluated_count
         current_kernel_min, current_kernel_max = _refined_kernel_bounds(

@@ -76,7 +76,7 @@ def _candidate_dicts(parameter_specs: Iterable[ParameterSpec]):
         yield dict(zip(names, values))
 
 
-def grid_search(request, metric=mean_squared_error):
+def grid_search(request, metric=mean_squared_error, progress_callback=None):
     """Evaluate every candidate and return the lowest-scoring result."""
     if not isinstance(request, TuneRequest):
         raise TypeError('request must be a TuneRequest')
@@ -87,7 +87,10 @@ def grid_search(request, metric=mean_squared_error):
     best_image = None
     evaluated_count = 0
 
-    for candidate in _candidate_dicts(request.parameter_specs):
+    candidates = list(_candidate_dicts(request.parameter_specs))
+    total_count = len(candidates)
+
+    for candidate in candidates:
         parameters = dict(request.fixed_parameters)
         parameters.update(candidate)
         image = request.evaluation_plan.evaluate(parameters)
@@ -97,6 +100,15 @@ def grid_search(request, metric=mean_squared_error):
             best_score = score
             best_parameters = dict(parameters)
             best_image = image
+        if progress_callback is not None:
+            progress_callback({
+                'candidate_index': evaluated_count,
+                'candidate_count': total_count,
+                'parameters': dict(parameters),
+                'score': float(score),
+                'best_score': float(best_score),
+                'best_parameters': dict(best_parameters),
+            })
 
     if evaluated_count == 0:
         raise ValueError('at least one candidate must be evaluated')

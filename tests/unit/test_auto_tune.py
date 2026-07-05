@@ -38,6 +38,28 @@ def test_grid_search_returns_lowest_scoring_candidate():
     assert result.evaluated_count == 3
 
 
+def test_grid_search_reports_progress_for_each_candidate():
+    target = np.full((1, 1, 1), 2, dtype=np.uint8)
+    updates = []
+
+    def _evaluate(parameters):
+        return np.full((1, 1, 1), parameters['value'], dtype=np.uint8)
+
+    grid_search(
+        TuneRequest(
+            source_image=np.zeros((1, 1, 1), dtype=np.uint8),
+            target_image=target,
+            parameter_specs=[ParameterSpec('value', [1, 2, 3])],
+            evaluation_plan=EvaluationPlan(_evaluate),
+        ),
+        progress_callback=updates.append,
+    )
+
+    assert [update['candidate_index'] for update in updates] == [1, 2, 3]
+    assert all(update['candidate_count'] == 3 for update in updates)
+    assert updates[-1]['best_parameters'] == {'value': 2}
+
+
 def test_metric_rejects_shape_mismatch():
     candidate = np.zeros((2, 2, 3), dtype=np.uint8)
     target = np.zeros((3, 2, 3), dtype=np.uint8)
@@ -164,10 +186,26 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
 
     _TuneResult.best_image = best_image
 
-    def _tune_stub(source_image, target_image, current_parameters):
+    def _tune_stub(
+        source_image,
+        target_image,
+        current_parameters,
+        progress_callback=None,
+    ):
         assert source_image is source
         assert target_image is target
         assert current_parameters == {'auto_sigma': True}
+        if progress_callback is not None:
+            progress_callback({
+                'pass_index': 1,
+                'pass_count': 1,
+                'candidate_index': 1,
+                'candidate_count': 1,
+                'total_evaluated': 1,
+                'parameters': {'kernel_size': 3},
+                'score': 2.5,
+                'best_score': 2.5,
+            })
         return _TuneResult()
 
     monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
@@ -194,11 +232,23 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     assert image is best_image
     assert result['__auto_tune_ready__'] is True
     assert result['tune_result'].best_score == 2.5
-    assert set_values == [
+    parameter_values = [
+        (tag, value)
+        for tag, value in set_values
+        if not tag.endswith(':Text:StatusValue')
+    ]
+    status_values = [
+        value
+        for tag, value in set_values
+        if tag.endswith(':Text:StatusValue')
+    ]
+    assert parameter_values == [
         (ports.kernel_size.value_tag, 3),
         (ports.sigma.value_tag, 0.0),
         (ports.best_score.value_tag, 2.5),
     ]
+    assert status_values[-1] == 'done: 4 candidates'
+    assert any('candidate 1/1' in value for value in status_values)
     assert node.update(6, [], {}, {}) == (None, {'__auto_tune_ready__': False})
 
 

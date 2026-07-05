@@ -46,6 +46,7 @@ class Node(DpgNodeBase):
         kernel_size = kernel_size_port.dpg_tag
         sigma = sigma_port.dpg_tag
         best_score = best_score_port.dpg_tag
+        status_value_tag = self._status_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         with dpg.node(
@@ -64,6 +65,14 @@ class Node(DpgNodeBase):
                     user_data=node_id,
                 ),
             )
+            with dpg.node_attribute(
+                tag=self._status_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_text(
+                    'idle',
+                    tag=status_value_tag,
+                )
             with dpg.node_attribute(
                 tag=source_image,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -110,6 +119,15 @@ class Node(DpgNodeBase):
 
         return tag_node_name
 
+    def _status_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
+
+    def _status_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'Status')
+
+    def _set_status(self, node_id, message):
+        dpg_set_value(self._status_value_tag(node_id), message)
+
     def _on_run_button(self, sender, app_data, user_data):
         del sender, app_data
         print(
@@ -117,6 +135,7 @@ class Node(DpgNodeBase):
             f'node {user_data}; queued for the next graph update tick.'
         )
         self._run_requested_node_ids.add(str(user_data))
+        self._set_status(user_data, 'queued')
 
     def _linked_image(self, port_ref, connection_list, node_image_dict):
         for (
@@ -163,6 +182,7 @@ class Node(DpgNodeBase):
                 'AutoTuneGaussianBlur: Run Tune skipped; source and target '
                 'images must both be connected and available.'
             )
+            self._set_status(node_id, 'missing source/target')
             return None, {'__auto_tune_ready__': False}
 
         plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
@@ -174,10 +194,27 @@ class Node(DpgNodeBase):
             f'downscale step={plan["downscale_step"]}, '
             'auto sigma fixed to 0.0.'
         )
+
+        def _progress(update):
+            parameters = update['parameters']
+            message = (
+                f"pass {update['pass_index']}/{update['pass_count']} "
+                f"candidate {update['candidate_index']}/"
+                f"{update['candidate_count']} "
+                f"total {update['total_evaluated']} "
+                f"kernel={parameters['kernel_size']} "
+                f"score={update['score']:.6g} "
+                f"best={update['best_score']:.6g}"
+            )
+            print(f'AutoTuneGaussianBlur: {message}')
+            self._set_status(node_id, message)
+
+        self._set_status(node_id, 'running')
         result = tune_gaussian_blur(
             source,
             target,
             current_parameters={'auto_sigma': True},
+            progress_callback=_progress,
         )
         dpg_set_value(
             ports.kernel_size.value_tag,
@@ -188,6 +225,10 @@ class Node(DpgNodeBase):
             float(result.best_parameters['sigma']),
         )
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
+        self._set_status(
+            node_id,
+            f'done: {result.evaluated_count} candidates',
+        )
         print(
             'AutoTuneGaussianBlur: tuning finished; '
             f'evaluated {result.evaluated_count} candidates, '

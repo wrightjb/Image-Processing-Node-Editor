@@ -1563,3 +1563,22 @@ def test_curve_points_parameter_capability_uses_enum_value(editor_and_dpg, tmp_p
     )
 
     assert 'CurvePoints' in caps['input_types']
+
+
+def test_curve_points_output_capability_uses_port_specs(editor_and_dpg, tmp_path):
+    editor, _ = editor_and_dpg
+
+    class CurveProducer(DummyNode):
+        port_specs = PortSpecs(
+            value=OutputPort(PortDataType.CURVE_POINTS),
+        )
+
+    source_path = tmp_path / 'node_curve_producer.py'
+    source_path.write_text('', encoding='utf-8')
+
+    caps = editor._cntrl_extract_node_port_capabilities(
+        CurveProducer(),
+        source_path,
+    )
+
+    assert 'CurvePoints' in caps['output_types']

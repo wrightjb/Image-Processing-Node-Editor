@@ -111,7 +111,8 @@ class Node(DpgNodeBase):
 
     def _on_run_button(self, sender, app_data, user_data):
         del sender, app_data
-        self._run_requested_node_ids.add(user_data)
+        print(f'AutoTuneGaussianBlur: Run Tune requested for node {user_data}')
+        self._run_requested_node_ids.add(str(user_data))
 
     def _linked_image(self, port_ref, connection_list, node_image_dict):
         for (
@@ -137,9 +138,10 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         del node_result_dict
-        if node_id not in self._run_requested_node_ids:
-            return None, None
-        self._run_requested_node_ids.discard(node_id)
+        node_id_key = str(node_id)
+        if node_id_key not in self._run_requested_node_ids:
+            return None, {'__auto_tune_ready__': False}
+        self._run_requested_node_ids.discard(node_id_key)
 
         ports = self.ports(node_id)
         source = self._linked_image(
@@ -153,8 +155,13 @@ class Node(DpgNodeBase):
             node_image_dict,
         )
         if source is None or target is None:
-            return None, None
+            print(
+                'AutoTuneGaussianBlur: Run Tune skipped; source and target '
+                'images must both be connected and available.'
+            )
+            return None, {'__auto_tune_ready__': False}
 
+        print('AutoTuneGaussianBlur: tuning started')
         result = tune_gaussian_blur(
             source,
             target,
@@ -169,7 +176,17 @@ class Node(DpgNodeBase):
             float(result.best_parameters['sigma']),
         )
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
-        return result.best_image, result
+        print(
+            'AutoTuneGaussianBlur: tuning finished; '
+            f'evaluated {result.evaluated_count} candidates, '
+            f'kernel={result.best_parameters["kernel_size"]}, '
+            f'sigma={result.best_parameters["sigma"]}, '
+            f'score={result.best_score}'
+        )
+        return result.best_image, {
+            '__auto_tune_ready__': True,
+            'tune_result': result,
+        }
 
     def close(self, node_id):
         del node_id
@@ -183,6 +200,7 @@ class Node(DpgNodeBase):
             ports.kernel_size.value_tag: dpg_get_value(ports.kernel_size.value_tag),
             ports.sigma.value_tag: dpg_get_value(ports.sigma.value_tag),
             ports.best_score.value_tag: dpg_get_value(ports.best_score.value_tag),
+            '__cache_enabled__': False,
         }
         return setting_dict
 

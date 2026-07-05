@@ -113,7 +113,7 @@ def test_auto_tune_node_waits_for_run_button(monkeypatch):
 
     monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
 
-    assert node.update(6, [], {}, {}) == (None, None)
+    assert node.update(6, [], {}, {}) == (None, {'__auto_tune_ready__': False})
     assert called is False
 
 
@@ -130,6 +130,7 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     class _TuneResult:
         best_parameters = {'kernel_size': 3, 'sigma': 0.0}
         best_score = 2.5
+        evaluated_count = 4
 
     _TuneResult.best_image = best_image
 
@@ -161,10 +162,40 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     )
 
     assert image is best_image
-    assert result.best_score == 2.5
+    assert result['__auto_tune_ready__'] is True
+    assert result['tune_result'].best_score == 2.5
     assert set_values == [
         (ports.kernel_size.value_tag, 3),
         (ports.sigma.value_tag, 0.0),
         (ports.best_score.value_tag, 2.5),
     ]
-    assert node.update(6, [], {}, {}) == (None, None)
+    assert node.update(6, [], {}, {}) == (None, {'__auto_tune_ready__': False})
+
+
+def test_auto_tune_node_marks_settings_uncacheable(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    node.create_ports(6)
+    monkeypatch.setattr(auto_tune_node_module.dpg, 'get_item_pos', lambda tag: [0, 0])
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', lambda tag: 0)
+
+    assert node.get_setting_dict(6)['__cache_enabled__'] is False
+
+
+def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
+    from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
+
+    node = GaussianBlurNode()
+    auto_tune_source = '6:AutoTuneGaussianBlur:Int:Output01'
+
+    assert node._source_allows_parameter_sync(auto_tune_source, {}) is False
+    assert node._source_allows_parameter_sync(
+        auto_tune_source,
+        {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': False}},
+    ) is False
+    assert node._source_allows_parameter_sync(
+        auto_tune_source,
+        {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
+    ) is True
+    assert node._source_allows_parameter_sync('1:IntValue:Int:Output01', {}) is True

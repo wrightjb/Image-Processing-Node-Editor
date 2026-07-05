@@ -3,7 +3,7 @@
 import dearpygui.dearpygui as dpg
 
 from auto_tune.gaussian_blur import DEFAULT_KERNEL_MAX, DEFAULT_KERNEL_MIN
-from auto_tune.gaussian_blur import odd_kernel_values, tune_gaussian_blur
+from auto_tune.gaussian_blur import tuning_plan, tune_gaussian_blur
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import dpg_get_value, dpg_set_value
@@ -165,15 +165,14 @@ class Node(DpgNodeBase):
             )
             return None, {'__auto_tune_ready__': False}
 
-        kernel_candidates = odd_kernel_values(
-            DEFAULT_KERNEL_MIN,
-            DEFAULT_KERNEL_MAX,
-        )
+        plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
         print(
             'AutoTuneGaussianBlur: tuning started; '
-            f'evaluating {len(kernel_candidates)} candidates '
-            f'(odd kernels {DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}, '
-            'auto sigma fixed to 0.0).'
+            f'evaluating {plan["scaled_candidates"]} scaled candidates '
+            f'from {plan["original_candidates"]} original odd kernels '
+            f'({DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}), '
+            f'downscale step={plan["downscale_step"]}, '
+            'auto sigma fixed to 0.0.'
         )
         result = tune_gaussian_blur(
             source,

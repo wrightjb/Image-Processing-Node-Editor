@@ -2,12 +2,36 @@
 # -*- coding: utf-8 -*-
 """Gaussian Blur-specific auto-tuning helpers."""
 
-from auto_tune.service import EvaluationPlan, ParameterSpec, TuneRequest, grid_search
+from dataclasses import replace
+import math
+
+from auto_tune.service import (
+    EvaluationPlan,
+    ParameterSpec,
+    TuneRequest,
+    grid_search,
+)
+from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
 from node.process_node.node_gaussian_blur import image_process
 
 
-DEFAULT_KERNEL_MIN = 1
-DEFAULT_KERNEL_MAX = 501
+def _gaussian_parameter(name):
+    for parameter in GaussianBlurNode.parameters:
+        if parameter.get('name') == name:
+            return parameter
+    return {}
+
+
+def _parameter_bound(name, bound_name, fallback):
+    return _gaussian_parameter(name).get(bound_name, fallback)
+
+
+DEFAULT_KERNEL_MIN = int(_parameter_bound('kernel_size', 'min', 1))
+DEFAULT_KERNEL_MAX = int(_parameter_bound('kernel_size', 'max', 501))
+DEFAULT_SIGMA_MIN = float(_parameter_bound('sigma', 'min', 0.1))
+DEFAULT_SIGMA_MAX = float(_parameter_bound('sigma', 'max', 100.0))
+DEFAULT_SIGMA_STEP = 0.1
+DEFAULT_MAX_DIMENSION = 512
 
 
 def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX):
@@ -18,7 +42,11 @@ def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX
     return tuple(range(min_value, max_value + 1, 2))
 
 
-def sigma_values(min_value=0.1, max_value=10.0, step=0.1):
+def sigma_values(
+    min_value=DEFAULT_SIGMA_MIN,
+    max_value=DEFAULT_SIGMA_MAX,
+    step=DEFAULT_SIGMA_STEP,
+):
     min_value = float(min_value)
     max_value = float(max_value)
     step = float(step)
@@ -32,15 +60,67 @@ def sigma_values(min_value=0.1, max_value=10.0, step=0.1):
     return tuple(values)
 
 
+def _downscale_for_tuning(image, max_dimension=DEFAULT_MAX_DIMENSION):
+    height, width = image.shape[:2]
+    largest_dimension = max(height, width)
+    if max_dimension is None or largest_dimension <= max_dimension:
+        return image, 1
+
+    step = max(1, int(math.ceil(largest_dimension / float(max_dimension))))
+    return image[::step, ::step].copy(), step
+
+
+def _scale_odd_kernel(kernel_size, downscale_step):
+    scaled = max(1, int(round(int(kernel_size) / float(downscale_step))))
+    if scaled % 2 == 0:
+        scaled += 1
+    return scaled
+
+
+def _unscale_odd_kernel(scaled_kernel, downscale_step, kernel_min, kernel_max):
+    original = int(round(int(scaled_kernel) * float(downscale_step)))
+    original = max(int(kernel_min), min(int(kernel_max), original))
+    if original % 2 == 0:
+        if original < int(kernel_max):
+            original += 1
+        else:
+            original -= 1
+    return max(1, original)
+
+
+def tuning_plan(
+    source_image,
+    kernel_min=DEFAULT_KERNEL_MIN,
+    kernel_max=DEFAULT_KERNEL_MAX,
+    max_dimension=DEFAULT_MAX_DIMENSION,
+):
+    _scaled_source, downscale_step = _downscale_for_tuning(
+        source_image,
+        max_dimension,
+    )
+    original_kernels = odd_kernel_values(kernel_min, kernel_max)
+    scaled_kernels = {
+        _scale_odd_kernel(kernel, downscale_step)
+        for kernel in original_kernels
+    }
+    return {
+        'original_candidates': len(original_kernels),
+        'scaled_candidates': len(scaled_kernels),
+        'downscale_step': downscale_step,
+        'max_dimension': max_dimension,
+    }
+
+
 def tune_gaussian_blur(
     source_image,
     target_image,
     current_parameters=None,
     kernel_min=DEFAULT_KERNEL_MIN,
     kernel_max=DEFAULT_KERNEL_MAX,
-    sigma_min=0.1,
-    sigma_max=10.0,
-    sigma_step=0.1,
+    sigma_min=DEFAULT_SIGMA_MIN,
+    sigma_max=DEFAULT_SIGMA_MAX,
+    sigma_step=DEFAULT_SIGMA_STEP,
+    max_dimension=DEFAULT_MAX_DIMENSION,
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
@@ -49,27 +129,63 @@ def tune_gaussian_blur(
     """
     current_parameters = dict(current_parameters or {})
     auto_sigma = bool(current_parameters.get('auto_sigma', True))
+    source_for_score, downscale_step = _downscale_for_tuning(
+        source_image,
+        max_dimension,
+    )
+    target_for_score, _ = _downscale_for_tuning(target_image, max_dimension)
+    scaled_kernels = sorted({
+        _scale_odd_kernel(original_kernel, downscale_step)
+        for original_kernel in odd_kernel_values(kernel_min, kernel_max)
+    })
+
     specs = [
-        ParameterSpec('kernel_size', odd_kernel_values(kernel_min, kernel_max)),
+        ParameterSpec(
+            'kernel_size',
+            tuple(scaled_kernels),
+        ),
     ]
     fixed = {'auto_sigma': auto_sigma}
     if auto_sigma:
         fixed['sigma'] = 0.0
     else:
-        specs.append(ParameterSpec('sigma', sigma_values(sigma_min, sigma_max, sigma_step)))
+        specs.append(
+            ParameterSpec(
+                'sigma',
+                sigma_values(sigma_min, sigma_max, sigma_step),
+            )
+        )
 
     def _evaluate(parameters):
         return image_process(
-            source_image.copy(),
+            source_for_score.copy(),
             int(parameters['kernel_size']),
             float(parameters['sigma']),
         )
 
     request = TuneRequest(
-        source_image=source_image,
-        target_image=target_image,
+        source_image=source_for_score,
+        target_image=target_for_score,
         parameter_specs=specs,
         evaluation_plan=EvaluationPlan(_evaluate),
         fixed_parameters=fixed,
     )
-    return grid_search(request)
+    result = grid_search(request)
+    original_kernel = _unscale_odd_kernel(
+        result.best_parameters['kernel_size'],
+        downscale_step,
+        kernel_min,
+        kernel_max,
+    )
+    best_parameters = dict(result.best_parameters)
+    best_parameters['kernel_size'] = original_kernel
+    best_image = image_process(
+        source_image.copy(),
+        int(best_parameters['kernel_size']),
+        float(best_parameters['sigma']),
+    )
+    return replace(
+        result,
+        best_parameters=best_parameters,
+        best_image=best_image,
+    )

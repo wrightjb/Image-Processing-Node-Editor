@@ -3,6 +3,7 @@ import numpy as np
 from auto_tune.gaussian_blur import (
     DEFAULT_KERNEL_MAX,
     DEFAULT_KERNEL_MIN,
+    tuning_plan,
     odd_kernel_values,
     sigma_values,
     tune_gaussian_blur,
@@ -49,12 +50,25 @@ def test_metric_rejects_shape_mismatch():
         raise AssertionError('shape mismatch should fail')
 
 
-def test_gaussian_blur_candidate_helpers_use_valid_domains():
-    assert DEFAULT_KERNEL_MIN == 1
-    assert DEFAULT_KERNEL_MAX == 501
+def test_gaussian_blur_candidate_helpers_use_node_metadata_domains():
+    assert DEFAULT_KERNEL_MIN == gaussian_blur_module.Node.parameters[0]['min']
+    assert DEFAULT_KERNEL_MAX == gaussian_blur_module.Node.parameters[0]['max']
     assert len(odd_kernel_values()) == 251
     assert odd_kernel_values(2, 8) == (3, 5, 7)
     assert sigma_values(0.1, 0.3, 0.1) == (0.1, 0.2, 0.3)
+
+
+def test_gaussian_blur_tuning_plan_downscales_large_images():
+    source = np.zeros((1200, 800, 1), dtype=np.uint8)
+
+    plan = tuning_plan(source, max_dimension=500)
+
+    assert plan == {
+        'original_candidates': 251,
+        'scaled_candidates': 84,
+        'downscale_step': 3,
+        'max_dimension': 500,
+    }
 
 
 def test_tune_gaussian_blur_searches_odd_kernels_and_auto_sigma(monkeypatch):
@@ -79,7 +93,14 @@ def test_tune_gaussian_blur_searches_odd_kernels_and_auto_sigma(monkeypatch):
     assert result.best_parameters['kernel_size'] == 5
     assert result.best_parameters['sigma'] == 0.0
     assert result.evaluated_count == 5
-    assert calls == [((1, 1), 0.0), ((3, 3), 0.0), ((5, 5), 0.0), ((7, 7), 0.0), ((9, 9), 0.0)]
+    assert calls[:-1] == [
+        ((1, 1), 0.0),
+        ((3, 3), 0.0),
+        ((5, 5), 0.0),
+        ((7, 7), 0.0),
+        ((9, 9), 0.0),
+    ]
+    assert calls[-1] == ((5, 5), 0.0)
 
 
 def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):

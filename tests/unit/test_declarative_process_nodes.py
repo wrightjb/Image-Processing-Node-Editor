@@ -502,7 +502,7 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
         base_module,
         'dpg_get_value',
         lambda tag: '[[0, 0], [128, 200], [255, 255]]'
-        if tag == '91:Curves:Text:Input02Value'
+        if tag == '91:Curves:CurvePoints:Input02Value'
         else None,
     )
     monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
@@ -1160,7 +1160,7 @@ def test_custom_parameter_ui_defers_attribute_to_node(monkeypatch):
 
     assert dpg_recorder.node_attributes == []
     assert dpg_recorder.widgets == []
-    assert node.ports(7).parameters['points'].dpg_tag == '7:Curves:Text:Input02'
+    assert node.ports(7).parameters['points'].dpg_tag == '7:Curves:CurvePoints:Input02'
 
 
 def test_curves_node_uses_linked_points_parameter(monkeypatch):
@@ -1168,8 +1168,8 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
     _prepare_node(node)
 
     values = {
-        '101:CurvesPoints:Text:Output01Value': '[[0, 0], [96, 180], [255, 255]]',
-        '102:Curves:Text:Input02Value': '[[0, 0], [255, 255]]',
+        '101:CurvesPoints:CurvePoints:Output01Value': '[[0, 0], [96, 180], [255, 255]]',
+        '102:Curves:CurvePoints:Input02Value': '[[0, 0], [255, 255]]',
     }
     written = {}
 
@@ -1182,11 +1182,6 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
         base_module,
         'dpg_set_value',
         _record_write,
-    )
-    monkeypatch.setattr(
-        curves_module,
-        'dpg_get_value',
-        lambda tag: values.get(tag),
     )
     monkeypatch.setattr(
         curves_module,
@@ -1211,7 +1206,7 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
         102,
         [
             ['3:ImageSource:Image:Output01', '102:Curves:Image:Input01'],
-            ['101:CurvesPoints:Text:Output01', '102:Curves:Text:Input02'],
+            ['101:CurvesPoints:CurvePoints:Output01', '102:Curves:CurvePoints:Input02'],
         ],
         {'3:ImageSource': frame},
         {},
@@ -1219,5 +1214,5 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert written['102:Curves:Text:Input02Value'] == '[[0, 0], [96, 180], [255, 255]]'
+    assert written['102:Curves:CurvePoints:Input02Value'] == '[[0, 0], [96, 180], [255, 255]]'
     assert captured['points'] == [[0, 0], [96, 180], [255, 255]]

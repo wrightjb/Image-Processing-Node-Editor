@@ -254,3 +254,13 @@ def test_direct_node_updates_use_typed_connection_info_iteration():
             failures.append(str(path.relative_to(node_root.parent)))
 
     assert failures == []
+
+
+def test_curve_points_port_data_type_round_trips():
+    from node.port_model import PortDataType
+    from node.port_serialization import port_ref_from_tag
+
+    port = port_ref_from_tag('1:CurvesPoints:CurvePoints:Output01')
+
+    assert port.data_type is PortDataType.CURVE_POINTS
+    assert port.value_tag == '1:CurvesPoints:CurvePoints:Output01Value'

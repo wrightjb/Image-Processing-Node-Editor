@@ -97,3 +97,74 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
     assert result.best_parameters['kernel_size'] == 1
     assert result.best_parameters['sigma'] == 0.2
     assert result.evaluated_count == 3
+
+
+def test_auto_tune_node_waits_for_run_button(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    node.create_ports(6)
+
+    called = False
+
+    def _tune_stub(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+
+    assert node.update(6, [], {}, {}) == (None, None)
+    assert called is False
+
+
+def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 3, dtype=np.uint8)
+    best_image = np.full((2, 2, 1), 1, dtype=np.uint8)
+    set_values = []
+
+    class _TuneResult:
+        best_parameters = {'kernel_size': 3, 'sigma': 0.0}
+        best_score = 2.5
+
+    _TuneResult.best_image = best_image
+
+    def _tune_stub(source_image, target_image, current_parameters):
+        assert source_image is source
+        assert target_image is target
+        assert current_parameters == {'auto_sigma': True}
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+    monkeypatch.setattr(
+        auto_tune_node_module,
+        'dpg_set_value',
+        lambda tag, value: set_values.append((tag, value)),
+    )
+
+    node._on_run_button(None, None, 6)
+    image, result = node.update(
+        6,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {
+            '1:Source': source,
+            '2:Target': target,
+        },
+        {},
+    )
+
+    assert image is best_image
+    assert result.best_score == 2.5
+    assert set_values == [
+        (ports.kernel_size.value_tag, 3),
+        (ports.sigma.value_tag, 0.0),
+        (ports.best_score.value_tag, 2.5),
+    ]
+    assert node.update(6, [], {}, {}) == (None, None)

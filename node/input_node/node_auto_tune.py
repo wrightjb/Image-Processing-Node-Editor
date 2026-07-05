@@ -9,7 +9,10 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.2'
+
+    def __init__(self):
+        self._run_requested_node_ids = set()
 
     node_label = 'Auto Tune (Gaussian Blur)'
     node_tag = 'AutoTuneGaussianBlur'
@@ -30,7 +33,6 @@ class Node(DpgNodeBase):
         opencv_setting_dict=None,
         callback=None,
     ):
-        del callback
         tag_node_name = self._node_name(node_id)
         ports = self.create_ports(node_id)
         source_image_port = ports.source_image
@@ -51,6 +53,16 @@ class Node(DpgNodeBase):
             label=self.node_label,
             pos=pos,
         ):
+            self.add_editor_toolbar(
+                node_id,
+                callback=callback,
+                build_extra_controls=lambda: dpg.add_button(
+                    label='Run Tune',
+                    width=80,
+                    callback=self._on_run_button,
+                    user_data=node_id,
+                ),
+            )
             with dpg.node_attribute(
                 tag=source_image,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -97,11 +109,17 @@ class Node(DpgNodeBase):
 
         return tag_node_name
 
+    def _on_run_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._run_requested_node_ids.add(user_data)
+
     def _linked_image(self, port_ref, connection_list, node_image_dict):
-        for connection_info in self._iter_connection_infos(connection_list):
-            if connection_info is None:
-                continue
-            source_tag, destination_tag = connection_info.legacy_pair
+        for (
+            connection_info,
+            source_tag,
+            destination_tag,
+            _connection_type,
+        ) in self._iter_connection_infos(connection_list):
             if destination_tag != port_ref.dpg_tag:
                 continue
             source_node_key = self._connection_source_node_key(
@@ -119,9 +137,21 @@ class Node(DpgNodeBase):
         node_result_dict,
     ):
         del node_result_dict
+        if node_id not in self._run_requested_node_ids:
+            return None, None
+        self._run_requested_node_ids.discard(node_id)
+
         ports = self.ports(node_id)
-        source = self._linked_image(ports.source_image, connection_list, node_image_dict)
-        target = self._linked_image(ports.target_image, connection_list, node_image_dict)
+        source = self._linked_image(
+            ports.source_image,
+            connection_list,
+            node_image_dict,
+        )
+        target = self._linked_image(
+            ports.target_image,
+            connection_list,
+            node_image_dict,
+        )
         if source is None or target is None:
             return None, None
 
@@ -130,8 +160,14 @@ class Node(DpgNodeBase):
             target,
             current_parameters={'auto_sigma': True},
         )
-        dpg_set_value(ports.kernel_size.value_tag, int(result.best_parameters['kernel_size']))
-        dpg_set_value(ports.sigma.value_tag, float(result.best_parameters['sigma']))
+        dpg_set_value(
+            ports.kernel_size.value_tag,
+            int(result.best_parameters['kernel_size']),
+        )
+        dpg_set_value(
+            ports.sigma.value_tag,
+            float(result.best_parameters['sigma']),
+        )
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
         return result.best_image, result
 

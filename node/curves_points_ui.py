@@ -260,19 +260,6 @@ class CurvesPointsEditorMixin:
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
     def build_curve_points_editor(self, node_id):
-        with dpg.group(horizontal=True):
-            dpg.add_button(
-                label='Import',
-                width=58,
-                callback=self._callback_show_import_dialog,
-                user_data=node_id,
-            )
-            dpg.add_button(
-                label='Export',
-                width=58,
-                callback=self._callback_show_export_dialog,
-                user_data=node_id,
-            )
         plot_tag = self._get_tag_plot_name(node_id)
         series_tag = self._get_tag_plot_series_name(node_id)
         with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
@@ -300,4 +287,17 @@ class CurvesPointsEditorMixin:
                 parent=handler,
             )
             dpg.bind_item_handler_registry(plot_tag, handler)
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Import',
+                width=58,
+                callback=self._callback_show_import_dialog,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Export',
+                width=58,
+                callback=self._callback_show_export_dialog,
+                user_data=node_id,
+            )
         self._reset_points_from_setting(node_id, self._default_points())

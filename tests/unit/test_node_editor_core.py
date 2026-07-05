@@ -1539,3 +1539,27 @@ def test_delete_selected_ignores_stale_selected_link_ids(editor_and_dpg):
     editor._cntrl_delete_selected(None, None)
 
     assert _typed_link_pairs(editor) == []
+
+
+def test_curve_points_parameter_capability_uses_enum_value(editor_and_dpg, tmp_path):
+    editor, _ = editor_and_dpg
+
+    class CurveConsumer(DummyNode):
+        parameters = [
+            {
+                'name': 'points',
+                'type': PortDataType.CURVE_POINTS,
+                'port': 'Input02',
+                'widget': 'custom',
+            },
+        ]
+
+    source_path = tmp_path / 'node_curve_consumer.py'
+    source_path.write_text('', encoding='utf-8')
+
+    caps = editor._cntrl_extract_node_port_capabilities(
+        CurveConsumer(),
+        source_path,
+    )
+
+    assert 'CurvePoints' in caps['input_types']

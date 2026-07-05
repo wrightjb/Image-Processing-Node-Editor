@@ -571,10 +571,17 @@ class DpgNodeEditor(object):
                 if not isinstance(parameter, dict):
                     continue
                 port_name = str(parameter.get('port', ''))
-                port_type = str(parameter.get('type', ''))
+                port_type = enum_value(parameter.get('type', ''))
                 if not port_name.startswith('Input'):
                     continue
-                if port_type in ('Int', 'Float', 'Image', 'Text', 'TimeMS'):
+                if port_type in (
+                    'Int',
+                    'Float',
+                    'Image',
+                    'Text',
+                    'TimeMS',
+                    'CurvePoints',
+                ):
                     capabilities['input_types'].add(port_type)
 
         try:
@@ -591,6 +598,7 @@ class DpgNodeEditor(object):
             'TYPE_IMAGE': 'Image',
             'TYPE_TIME_MS': 'TimeMS',
             'TYPE_TEXT': 'Text',
+            'TYPE_CURVE_POINTS': 'CurvePoints',
         }
         for type_token, port_name in pattern.findall(source_text):
             mapped = type_map.get(type_token)

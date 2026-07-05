@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from auto_tune.gaussian_blur import tune_gaussian_blur
+from auto_tune.gaussian_blur import DEFAULT_KERNEL_MAX, DEFAULT_KERNEL_MIN
+from auto_tune.gaussian_blur import odd_kernel_values, tune_gaussian_blur
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import dpg_get_value, dpg_set_value
@@ -111,7 +112,10 @@ class Node(DpgNodeBase):
 
     def _on_run_button(self, sender, app_data, user_data):
         del sender, app_data
-        print(f'AutoTuneGaussianBlur: Run Tune requested for node {user_data}')
+        print(
+            'AutoTuneGaussianBlur: Run Tune requested for '
+            f'node {user_data}; queued for the next graph update tick.'
+        )
         self._run_requested_node_ids.add(str(user_data))
 
     def _linked_image(self, port_ref, connection_list, node_image_dict):
@@ -161,7 +165,16 @@ class Node(DpgNodeBase):
             )
             return None, {'__auto_tune_ready__': False}
 
-        print('AutoTuneGaussianBlur: tuning started')
+        kernel_candidates = odd_kernel_values(
+            DEFAULT_KERNEL_MIN,
+            DEFAULT_KERNEL_MAX,
+        )
+        print(
+            'AutoTuneGaussianBlur: tuning started; '
+            f'evaluating {len(kernel_candidates)} candidates '
+            f'(odd kernels {DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}, '
+            'auto sigma fixed to 0.0).'
+        )
         result = tune_gaussian_blur(
             source,
             target,

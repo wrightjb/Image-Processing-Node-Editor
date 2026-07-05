@@ -1,6 +1,12 @@
 import numpy as np
 
-from auto_tune.gaussian_blur import odd_kernel_values, sigma_values, tune_gaussian_blur
+from auto_tune.gaussian_blur import (
+    DEFAULT_KERNEL_MAX,
+    DEFAULT_KERNEL_MIN,
+    odd_kernel_values,
+    sigma_values,
+    tune_gaussian_blur,
+)
 from auto_tune.service import (
     EvaluationPlan,
     ParameterSpec,
@@ -44,6 +50,9 @@ def test_metric_rejects_shape_mismatch():
 
 
 def test_gaussian_blur_candidate_helpers_use_valid_domains():
+    assert DEFAULT_KERNEL_MIN == 1
+    assert DEFAULT_KERNEL_MAX == 501
+    assert len(odd_kernel_values()) == 251
     assert odd_kernel_values(2, 8) == (3, 5, 7)
     assert sigma_values(0.1, 0.3, 0.1) == (0.1, 0.2, 0.3)
 

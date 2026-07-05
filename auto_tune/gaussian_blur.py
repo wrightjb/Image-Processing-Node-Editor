@@ -6,7 +6,11 @@ from auto_tune.service import EvaluationPlan, ParameterSpec, TuneRequest, grid_s
 from node.process_node.node_gaussian_blur import image_process
 
 
-def odd_kernel_values(min_value=1, max_value=51):
+DEFAULT_KERNEL_MIN = 1
+DEFAULT_KERNEL_MAX = 501
+
+
+def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX):
     min_value = max(1, int(min_value))
     max_value = max(min_value, int(max_value))
     if min_value % 2 == 0:
@@ -32,8 +36,8 @@ def tune_gaussian_blur(
     source_image,
     target_image,
     current_parameters=None,
-    kernel_min=1,
-    kernel_max=51,
+    kernel_min=DEFAULT_KERNEL_MIN,
+    kernel_max=DEFAULT_KERNEL_MAX,
     sigma_min=0.1,
     sigma_max=10.0,
     sigma_step=0.1,

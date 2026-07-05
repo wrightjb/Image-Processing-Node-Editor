@@ -42,6 +42,7 @@ def pytest_configure(config):
     sys.path.insert(0, str(stubs_dir))
     # Ensure import cv2 resolves to the stub even if cv2 was previously imported.
     sys.modules.pop("cv2", None)
+    sys.modules.pop("onnxruntime", None)
 
 
 def pytest_collection_modifyitems(config, items):

@@ -586,14 +586,17 @@ class DpgNodeEditor(object):
 
         port_specs = getattr(node, 'port_specs', None)
         if port_specs is not None:
-            for spec in port_specs:
+            try:
+                port_specs_iter = iter(port_specs)
+            except TypeError:
+                port_specs_iter = ()
+            for spec in port_specs_iter:
                 port_type = enum_value(getattr(spec, 'data_type', ''))
                 direction = getattr(spec, 'direction', None)
                 if direction == PortDirection.INPUT:
                     capabilities['input_types'].add(port_type)
                 elif direction == PortDirection.OUTPUT:
                     capabilities['output_types'].add(port_type)
-
 
         try:
             source_text = Path(node_source_path).read_text(encoding='utf-8')

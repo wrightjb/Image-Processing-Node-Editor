@@ -10,7 +10,7 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.2'
+    _ver = '0.0.3'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -47,6 +47,7 @@ class Node(DpgNodeBase):
         sigma = sigma_port.dpg_tag
         best_score = best_score_port.dpg_tag
         status_value_tag = self._status_value_tag(node_id)
+        auto_sigma_value_tag = self._auto_sigma_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         with dpg.node(
@@ -72,6 +73,15 @@ class Node(DpgNodeBase):
                 dpg.add_text(
                     'idle',
                     tag=status_value_tag,
+                )
+            with dpg.node_attribute(
+                tag=self._auto_sigma_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Auto Sigma',
+                    tag=auto_sigma_value_tag,
+                    default_value=True,
                 )
             with dpg.node_attribute(
                 tag=source_image,
@@ -118,6 +128,12 @@ class Node(DpgNodeBase):
                 )
 
         return tag_node_name
+
+    def _auto_sigma_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_INT, 'AutoSigma')
+
+    def _auto_sigma_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_INT, 'AutoSigma')
 
     def _status_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
@@ -185,6 +201,8 @@ class Node(DpgNodeBase):
             self._set_status(node_id, 'missing source/target')
             return None, {'__auto_tune_ready__': False}
 
+        auto_sigma_value = dpg_get_value(self._auto_sigma_value_tag(node_id))
+        auto_sigma = True if auto_sigma_value is None else bool(auto_sigma_value)
         plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
         print(
             'AutoTuneGaussianBlur: tuning started; '
@@ -192,7 +210,7 @@ class Node(DpgNodeBase):
             f'from {plan["original_candidates"]} original odd kernels '
             f'({DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}), '
             f'downscale step={plan["downscale_step"]}, '
-            'auto sigma fixed to 0.0.'
+            f'auto_sigma={auto_sigma}.'
         )
 
         def _progress(update):
@@ -203,6 +221,7 @@ class Node(DpgNodeBase):
                 f"{update['candidate_count']} "
                 f"total {update['total_evaluated']}\n"
                 f"kernel={parameters['kernel_size']} "
+                f"sigma={parameters.get('sigma', 0.0)} \n"
                 f"score={update['score']:.6g} "
                 f"best={update['best_score']:.6g}"
             )
@@ -213,7 +232,7 @@ class Node(DpgNodeBase):
         result = tune_gaussian_blur(
             source,
             target,
-            current_parameters={'auto_sigma': True},
+            current_parameters={'auto_sigma': auto_sigma},
             progress_callback=_progress,
         )
         dpg_set_value(
@@ -253,6 +272,9 @@ class Node(DpgNodeBase):
             ports.kernel_size.value_tag: dpg_get_value(ports.kernel_size.value_tag),
             ports.sigma.value_tag: dpg_get_value(ports.sigma.value_tag),
             ports.best_score.value_tag: dpg_get_value(ports.best_score.value_tag),
+            self._auto_sigma_value_tag(node_id): dpg_get_value(
+                self._auto_sigma_value_tag(node_id),
+            ),
             '__cache_enabled__': False,
         }
         return setting_dict
@@ -263,6 +285,7 @@ class Node(DpgNodeBase):
             ports.kernel_size.value_tag,
             ports.sigma.value_tag,
             ports.best_score.value_tag,
+            self._auto_sigma_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

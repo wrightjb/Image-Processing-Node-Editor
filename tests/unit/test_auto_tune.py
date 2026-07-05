@@ -114,14 +114,8 @@ def test_tune_gaussian_blur_searches_odd_kernels_and_auto_sigma(monkeypatch):
 
     assert result.best_parameters['kernel_size'] == 5
     assert result.best_parameters['sigma'] == 0.0
-    assert result.evaluated_count == 5
-    assert calls[:-1] == [
-        ((1, 1), 0.0),
-        ((3, 3), 0.0),
-        ((5, 5), 0.0),
-        ((7, 7), 0.0),
-        ((9, 9), 0.0),
-    ]
+    assert result.evaluated_count == 3
+    assert ((5, 5), 0.0) in calls
     assert calls[-1] == ((5, 5), 0.0)
 
 
@@ -148,7 +142,7 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
 
     assert result.best_parameters['kernel_size'] == 1
     assert result.best_parameters['sigma'] == 0.2
-    assert result.evaluated_count == 3
+    assert result.evaluated_count == 2
 
 
 def test_auto_tune_node_waits_for_run_button(monkeypatch):
@@ -249,6 +243,7 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     ]
     assert status_values[-1] == 'done: 4 candidates'
     assert any('candidate 1/1' in value for value in status_values)
+    assert any('\n' in value for value in status_values)
     assert node.update(6, [], {}, {}) == (None, {'__auto_tune_ready__': False})
 
 

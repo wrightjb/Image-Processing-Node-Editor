@@ -198,10 +198,10 @@ class Node(DpgNodeBase):
         def _progress(update):
             parameters = update['parameters']
             message = (
-                f"pass {update['pass_index']}/{update['pass_count']} "
+                f"pass {update['pass_index']}/{update['pass_count']} \n"
                 f"candidate {update['candidate_index']}/"
                 f"{update['candidate_count']} "
-                f"total {update['total_evaluated']} "
+                f"total {update['total_evaluated']}\n"
                 f"kernel={parameters['kernel_size']} "
                 f"score={update['score']:.6g} "
                 f"best={update['best_score']:.6g}"

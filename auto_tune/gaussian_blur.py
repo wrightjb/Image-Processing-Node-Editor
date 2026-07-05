@@ -9,7 +9,9 @@ from auto_tune.service import (
     EvaluationPlan,
     ParameterSpec,
     TuneRequest,
+    TuneResult,
     grid_search,
+    mean_squared_error,
 )
 from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
 from node.process_node.node_gaussian_blur import image_process
@@ -127,6 +129,85 @@ def tuning_plan(
     }
 
 
+def _ternary_kernel_search(
+    source_for_score,
+    target_for_score,
+    scaled_kernels,
+    fixed_parameters,
+    progress_callback=None,
+):
+    target = target_for_score
+    score_cache = {}
+    best_score = None
+    best_parameters = None
+    best_image = None
+    evaluated_count = 0
+    total_count = len(scaled_kernels)
+
+    def _evaluate_index(index):
+        nonlocal best_score, best_parameters, best_image, evaluated_count
+        kernel_size = scaled_kernels[index]
+        if kernel_size in score_cache:
+            return score_cache[kernel_size][0]
+
+        parameters = dict(fixed_parameters)
+        parameters['kernel_size'] = kernel_size
+        image = image_process(
+            source_for_score.copy(),
+            int(parameters['kernel_size']),
+            float(parameters['sigma']),
+        )
+        score = mean_squared_error(image, target)
+        evaluated_count += 1
+        if best_score is None or score < best_score:
+            best_score = score
+            best_parameters = dict(parameters)
+            best_image = image
+        score_cache[kernel_size] = (score, image, dict(parameters))
+        if progress_callback is not None:
+            progress_callback({
+                'candidate_index': evaluated_count,
+                'candidate_count': total_count,
+                'parameters': dict(parameters),
+                'score': float(score),
+                'best_score': float(best_score),
+                'best_parameters': dict(best_parameters),
+            })
+        return score
+
+    left = 0
+    right = len(scaled_kernels) - 1
+    while right - left > 6:
+        first_mid = left + (right - left) // 3
+        second_mid = right - (right - left) // 3
+        first_score = _evaluate_index(first_mid)
+        if first_score <= 0.0:
+            break
+        second_score = _evaluate_index(second_mid)
+        if second_score <= 0.0:
+            break
+        if first_score < second_score:
+            right = second_mid - 1
+        else:
+            left = first_mid + 1
+
+    if best_score is None or best_score > 0.0:
+        for index in range(left, right + 1):
+            score = _evaluate_index(index)
+            if score <= 0.0:
+                break
+
+    if evaluated_count == 0:
+        raise ValueError('at least one candidate must be evaluated')
+
+    return TuneResult(
+        best_parameters=best_parameters,
+        best_score=float(best_score),
+        best_image=best_image,
+        evaluated_count=evaluated_count,
+    )
+
+
 def _tune_gaussian_blur_pass(
     source_image,
     target_image,
@@ -153,37 +234,10 @@ def _tune_gaussian_blur_pass(
         downscale_step,
     )
 
-    specs = [
-        ParameterSpec(
-            'kernel_size',
-            tuple(scaled_kernels),
-        ),
-    ]
     fixed = {'auto_sigma': auto_sigma}
     if auto_sigma:
         fixed['sigma'] = 0.0
-    else:
-        specs.append(
-            ParameterSpec(
-                'sigma',
-                sigma_values(sigma_min, sigma_max, sigma_step),
-            )
-        )
 
-    def _evaluate(parameters):
-        return image_process(
-            source_for_score.copy(),
-            int(parameters['kernel_size']),
-            float(parameters['sigma']),
-        )
-
-    request = TuneRequest(
-        source_image=source_for_score,
-        target_image=target_for_score,
-        parameter_specs=specs,
-        evaluation_plan=EvaluationPlan(_evaluate),
-        fixed_parameters=fixed,
-    )
     def _progress(update):
         if progress_callback is None:
             return
@@ -199,7 +253,45 @@ def _tune_gaussian_blur_pass(
         })
         progress_callback(update)
 
-    result = grid_search(request, progress_callback=_progress)
+    if auto_sigma:
+        result = _ternary_kernel_search(
+            source_for_score,
+            target_for_score,
+            scaled_kernels,
+            fixed,
+            progress_callback=_progress,
+        )
+    else:
+        specs = [
+            ParameterSpec(
+                'kernel_size',
+                tuple(scaled_kernels),
+            ),
+            ParameterSpec(
+                'sigma',
+                sigma_values(sigma_min, sigma_max, sigma_step),
+            ),
+        ]
+
+        def _evaluate(parameters):
+            return image_process(
+                source_for_score.copy(),
+                int(parameters['kernel_size']),
+                float(parameters['sigma']),
+            )
+
+        request = TuneRequest(
+            source_image=source_for_score,
+            target_image=target_for_score,
+            parameter_specs=specs,
+            evaluation_plan=EvaluationPlan(_evaluate),
+            fixed_parameters=fixed,
+        )
+        result = grid_search(
+            request,
+            progress_callback=_progress,
+            early_stop_score=0.0,
+        )
     original_kernel = _unscale_odd_kernel(
         result.best_parameters['kernel_size'],
         downscale_step,
@@ -238,7 +330,7 @@ def tune_gaussian_blur(
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
-    The tuner uses coarse-to-fine grid refinement over odd kernel sizes.
+    The tuner uses coarse-to-fine ternary-style refinement over odd kernel sizes.
     When ``auto_sigma`` is true, sigma is fixed to ``0.0`` to match the
     Gaussian Blur node's auto-sigma behavior.
     """

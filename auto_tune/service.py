@@ -76,7 +76,12 @@ def _candidate_dicts(parameter_specs: Iterable[ParameterSpec]):
         yield dict(zip(names, values))
 
 
-def grid_search(request, metric=mean_squared_error, progress_callback=None):
+def grid_search(
+    request,
+    metric=mean_squared_error,
+    progress_callback=None,
+    early_stop_score=None,
+):
     """Evaluate every candidate and return the lowest-scoring result."""
     if not isinstance(request, TuneRequest):
         raise TypeError('request must be a TuneRequest')
@@ -109,6 +114,8 @@ def grid_search(request, metric=mean_squared_error, progress_callback=None):
                 'best_score': float(best_score),
                 'best_parameters': dict(best_parameters),
             })
+        if early_stop_score is not None and score <= early_stop_score:
+            break
 
     if evaluated_count == 0:
         raise ValueError('at least one candidate must be evaluated')

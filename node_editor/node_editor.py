@@ -571,11 +571,32 @@ class DpgNodeEditor(object):
                 if not isinstance(parameter, dict):
                     continue
                 port_name = str(parameter.get('port', ''))
-                port_type = str(parameter.get('type', ''))
+                port_type = enum_value(parameter.get('type', ''))
                 if not port_name.startswith('Input'):
                     continue
-                if port_type in ('Int', 'Float', 'Image', 'Text', 'TimeMS'):
+                if port_type in (
+                    'Int',
+                    'Float',
+                    'Image',
+                    'Text',
+                    'TimeMS',
+                    'CurvePoints',
+                ):
                     capabilities['input_types'].add(port_type)
+
+        port_specs = getattr(node, 'port_specs', None)
+        if port_specs is not None:
+            try:
+                port_specs_iter = iter(port_specs)
+            except TypeError:
+                port_specs_iter = ()
+            for spec in port_specs_iter:
+                port_type = enum_value(getattr(spec, 'data_type', ''))
+                direction = getattr(spec, 'direction', None)
+                if direction == PortDirection.INPUT:
+                    capabilities['input_types'].add(port_type)
+                elif direction == PortDirection.OUTPUT:
+                    capabilities['output_types'].add(port_type)
 
         try:
             source_text = Path(node_source_path).read_text(encoding='utf-8')
@@ -591,6 +612,7 @@ class DpgNodeEditor(object):
             'TYPE_IMAGE': 'Image',
             'TYPE_TIME_MS': 'TimeMS',
             'TYPE_TEXT': 'Text',
+            'TYPE_CURVE_POINTS': 'CurvePoints',
         }
         for type_token, port_name in pattern.findall(source_text):
             mapped = type_map.get(type_token)

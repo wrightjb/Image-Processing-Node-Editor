@@ -7,7 +7,7 @@ import json
 
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_item_children, dpg_get_value, dpg_set_value
+from node_editor.util import dpg_get_item_children, dpg_get_value
 
 
 class CurvesPointsEditorMixin:

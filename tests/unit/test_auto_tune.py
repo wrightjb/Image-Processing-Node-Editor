@@ -188,7 +188,7 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     ):
         assert source_image is source
         assert target_image is target
-        assert current_parameters == {'auto_sigma': True}
+        assert current_parameters['auto_sigma'] is True
         if progress_callback is not None:
             progress_callback({
                 'pass_index': 1,
@@ -324,7 +324,7 @@ def test_auto_tune_node_can_disable_auto_sigma(monkeypatch):
 
     def _tune_stub(source_image, target_image, current_parameters, **kwargs):
         del source_image, target_image, kwargs
-        assert current_parameters == {'auto_sigma': False}
+        assert current_parameters['auto_sigma'] is False
         return _TuneResult()
 
     monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
@@ -431,3 +431,55 @@ def test_tune_gaussian_blur_manual_sigma_avoids_cartesian_grid(monkeypatch):
 
     assert result.best_parameters['sigma'] == 2.5
     assert result.evaluated_count < 100
+
+
+def test_auto_tune_node_reuses_previous_output_values_as_start(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 3, dtype=np.uint8)
+
+    class _TuneResult:
+        best_parameters = {'kernel_size': 87, 'sigma': 0.4}
+        best_score = 0.5
+        evaluated_count = 3
+
+    _TuneResult.best_image = source
+
+    def _get_value(tag):
+        if tag == ports.kernel_size.value_tag:
+            return 85
+        if tag == ports.sigma.value_tag:
+            return 0.3
+        return True
+
+    def _tune_stub(source_image, target_image, current_parameters, **kwargs):
+        del source_image, target_image, kwargs
+        assert current_parameters == {
+            'auto_sigma': True,
+            'kernel_size': 85,
+            'sigma': 0.3,
+        }
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', lambda tag, value: None)
+
+    node._on_run_button(None, None, 6)
+    _image, result = node.update(
+        6,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {
+            '1:Source': source,
+            '2:Target': target,
+        },
+        {},
+    )
+
+    assert result['tune_result'].best_parameters['kernel_size'] == 87

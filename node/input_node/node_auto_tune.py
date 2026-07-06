@@ -170,6 +170,17 @@ class Node(DpgNodeBase):
         return None
 
 
+
+    def _current_output_parameters(self, ports):
+        parameters = {}
+        kernel = dpg_get_value(ports.kernel_size.value_tag)
+        sigma = dpg_get_value(ports.sigma.value_tag)
+        if kernel is not None:
+            parameters['kernel_size'] = int(kernel)
+        if sigma is not None:
+            parameters['sigma'] = float(sigma)
+        return parameters
+
     def _target_gaussian_parameters(self, port_ref, connection_list):
         for (
             connection_info,
@@ -237,6 +248,7 @@ class Node(DpgNodeBase):
             self._set_status(node_id, 'missing source/target')
             return None, {'__auto_tune_ready__': False}
 
+        output_parameters = self._current_output_parameters(ports)
         target_parameters = self._target_gaussian_parameters(
             ports.target_image,
             connection_list,
@@ -246,6 +258,7 @@ class Node(DpgNodeBase):
             True if auto_sigma_value is None else bool(auto_sigma_value)
         )
         current_parameters = {'auto_sigma': fallback_auto_sigma}
+        current_parameters.update(output_parameters)
         current_parameters.update(target_parameters)
         auto_sigma = bool(current_parameters.get('auto_sigma', True))
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)

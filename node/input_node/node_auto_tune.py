@@ -169,6 +169,42 @@ class Node(DpgNodeBase):
             return node_image_dict.get(source_node_key)
         return None
 
+
+    def _target_gaussian_parameters(self, port_ref, connection_list):
+        for (
+            connection_info,
+            source_tag,
+            destination_tag,
+            _connection_type,
+        ) in self._iter_connection_infos(connection_list):
+            if destination_tag != port_ref.dpg_tag:
+                continue
+            source_node_key = self._connection_source_node_key(
+                connection_info,
+                source_tag,
+            )
+            if not source_node_key.endswith(':GaussianBlur'):
+                return {}
+
+            kernel = dpg_get_value(
+                self._port_value_tag(source_node_key, self.TYPE_INT, 'Input02')
+            )
+            sigma = dpg_get_value(
+                self._port_value_tag(source_node_key, self.TYPE_FLOAT, 'Input03')
+            )
+            auto_sigma = dpg_get_value(
+                self._port_value_tag(source_node_key, self.TYPE_INT, 'Input04')
+            )
+            parameters = {}
+            if kernel is not None:
+                parameters['kernel_size'] = int(kernel)
+            if sigma is not None:
+                parameters['sigma'] = float(sigma)
+            if auto_sigma is not None:
+                parameters['auto_sigma'] = bool(auto_sigma)
+            return parameters
+        return {}
+
     def update(
         self,
         node_id,
@@ -201,8 +237,18 @@ class Node(DpgNodeBase):
             self._set_status(node_id, 'missing source/target')
             return None, {'__auto_tune_ready__': False}
 
+        target_parameters = self._target_gaussian_parameters(
+            ports.target_image,
+            connection_list,
+        )
         auto_sigma_value = dpg_get_value(self._auto_sigma_value_tag(node_id))
-        auto_sigma = True if auto_sigma_value is None else bool(auto_sigma_value)
+        fallback_auto_sigma = (
+            True if auto_sigma_value is None else bool(auto_sigma_value)
+        )
+        current_parameters = {'auto_sigma': fallback_auto_sigma}
+        current_parameters.update(target_parameters)
+        auto_sigma = bool(current_parameters.get('auto_sigma', True))
+        dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
         plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
         print(
             'AutoTuneGaussianBlur: tuning started; '
@@ -210,7 +256,8 @@ class Node(DpgNodeBase):
             f'from {plan["original_candidates"]} original odd kernels '
             f'({DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}), '
             f'downscale step={plan["downscale_step"]}, '
-            f'auto_sigma={auto_sigma}.'
+            f'auto_sigma={auto_sigma}, '
+            f'start={current_parameters}.'
         )
 
         def _progress(update):
@@ -232,7 +279,7 @@ class Node(DpgNodeBase):
         result = tune_gaussian_blur(
             source,
             target,
-            current_parameters={'auto_sigma': auto_sigma},
+            current_parameters=current_parameters,
             progress_callback=_progress,
         )
         dpg_set_value(

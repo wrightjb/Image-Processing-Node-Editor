@@ -63,6 +63,26 @@ def sigma_values(
     return tuple(values)
 
 
+def _local_odd_bounds(center, min_value, max_value):
+    if center is None:
+        return min_value, max_value
+    center = int(center)
+    radius = max(16, abs(center) // 2)
+    local_min = max(int(min_value), center - radius)
+    local_max = min(int(max_value), center + radius)
+    return local_min, local_max
+
+
+def _local_float_bounds(center, min_value, max_value, step):
+    if center is None:
+        return min_value, max_value
+    center = float(center)
+    radius = max(float(step) * 10.0, abs(center) * 0.5, 1.0)
+    local_min = max(float(min_value), center - radius)
+    local_max = min(float(max_value), center + radius)
+    return local_min, local_max
+
+
 def _downscale_for_tuning(image, max_dimension=DEFAULT_MAX_DIMENSION):
     height, width = image.shape[:2]
     largest_dimension = max(height, width)
@@ -336,6 +356,18 @@ def tune_gaussian_blur(
     """
     current_parameters = dict(current_parameters or {})
     auto_sigma = bool(current_parameters.get('auto_sigma', True))
+    kernel_min, kernel_max = _local_odd_bounds(
+        current_parameters.get('kernel_size'),
+        kernel_min,
+        kernel_max,
+    )
+    if not auto_sigma:
+        sigma_min, sigma_max = _local_float_bounds(
+            current_parameters.get('sigma'),
+            sigma_min,
+            sigma_max,
+            sigma_step,
+        )
     refinement_dimensions = _refinement_dimensions_for_image(
         source_image,
         max_dimension,

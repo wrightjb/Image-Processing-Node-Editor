@@ -5,14 +5,7 @@
 from dataclasses import replace
 import math
 
-from auto_tune.service import (
-    EvaluationPlan,
-    ParameterSpec,
-    TuneRequest,
-    TuneResult,
-    grid_search,
-    mean_squared_error,
-)
+from auto_tune.service import TuneResult, mean_squared_error
 from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
 from node.process_node.node_gaussian_blur import image_process
 
@@ -228,6 +221,85 @@ def _ternary_kernel_search(
     )
 
 
+def _ternary_sigma_search(
+    source_for_score,
+    target_for_score,
+    sigma_candidates,
+    fixed_parameters,
+    progress_callback=None,
+):
+    target = target_for_score
+    score_cache = {}
+    best_score = None
+    best_parameters = None
+    best_image = None
+    evaluated_count = 0
+    total_count = len(sigma_candidates)
+
+    def _evaluate_index(index):
+        nonlocal best_score, best_parameters, best_image, evaluated_count
+        sigma = sigma_candidates[index]
+        if sigma in score_cache:
+            return score_cache[sigma][0]
+
+        parameters = dict(fixed_parameters)
+        parameters['sigma'] = sigma
+        image = image_process(
+            source_for_score.copy(),
+            int(parameters['kernel_size']),
+            float(parameters['sigma']),
+        )
+        score = mean_squared_error(image, target)
+        evaluated_count += 1
+        if best_score is None or score < best_score:
+            best_score = score
+            best_parameters = dict(parameters)
+            best_image = image
+        score_cache[sigma] = (score, image, dict(parameters))
+        if progress_callback is not None:
+            progress_callback({
+                'candidate_index': evaluated_count,
+                'candidate_count': total_count,
+                'parameters': dict(parameters),
+                'score': float(score),
+                'best_score': float(best_score),
+                'best_parameters': dict(best_parameters),
+            })
+        return score
+
+    left = 0
+    right = len(sigma_candidates) - 1
+    while right - left > 6:
+        first_mid = left + (right - left) // 3
+        second_mid = right - (right - left) // 3
+        first_score = _evaluate_index(first_mid)
+        if first_score <= 0.0:
+            break
+        second_score = _evaluate_index(second_mid)
+        if second_score <= 0.0:
+            break
+        if first_score < second_score:
+            right = second_mid - 1
+        else:
+            left = first_mid + 1
+
+    if best_score is None or best_score > 0.0:
+        for index in range(left, right + 1):
+            score = _evaluate_index(index)
+            if score <= 0.0:
+                break
+
+    if evaluated_count == 0:
+        raise ValueError('at least one candidate must be evaluated')
+
+    return TuneResult(
+        best_parameters=best_parameters,
+        best_score=float(best_score),
+        best_image=best_image,
+        evaluated_count=evaluated_count,
+    )
+
+
 def _tune_gaussian_blur_pass(
     source_image,
     target_image,
@@ -237,6 +309,7 @@ def _tune_gaussian_blur_pass(
     sigma_min,
     sigma_max,
     sigma_step,
+    starting_sigma,
     max_dimension,
     pass_index,
     pass_count,
@@ -282,36 +355,32 @@ def _tune_gaussian_blur_pass(
             progress_callback=_progress,
         )
     else:
-        specs = [
-            ParameterSpec(
-                'kernel_size',
-                tuple(scaled_kernels),
-            ),
-            ParameterSpec(
-                'sigma',
-                sigma_values(sigma_min, sigma_max, sigma_step),
-            ),
-        ]
-
-        def _evaluate(parameters):
-            return image_process(
-                source_for_score.copy(),
-                int(parameters['kernel_size']),
-                float(parameters['sigma']),
-            )
-
-        request = TuneRequest(
-            source_image=source_for_score,
-            target_image=target_for_score,
-            parameter_specs=specs,
-            evaluation_plan=EvaluationPlan(_evaluate),
-            fixed_parameters=fixed,
-        )
-        result = grid_search(
-            request,
+        fixed['sigma'] = starting_sigma
+        kernel_result = _ternary_kernel_search(
+            source_for_score,
+            target_for_score,
+            scaled_kernels,
+            fixed,
             progress_callback=_progress,
-            early_stop_score=0.0,
         )
+        if kernel_result.best_score <= 0.0:
+            result = kernel_result
+        else:
+            sigma_candidates = sigma_values(sigma_min, sigma_max, sigma_step)
+            sigma_fixed = dict(kernel_result.best_parameters)
+            result = _ternary_sigma_search(
+                source_for_score,
+                target_for_score,
+                sigma_candidates,
+                sigma_fixed,
+                progress_callback=_progress,
+            )
+            result = replace(
+                result,
+                evaluated_count=(
+                    kernel_result.evaluated_count + result.evaluated_count
+                ),
+            )
     original_kernel = _unscale_odd_kernel(
         result.best_parameters['kernel_size'],
         downscale_step,
@@ -377,6 +446,9 @@ def tune_gaussian_blur(
     current_kernel_max = kernel_max
     total_evaluated_count = 0
     result = None
+    current_sigma = float(
+        current_parameters.get('sigma', (sigma_min + sigma_max) / 2.0)
+    )
     pass_count = len(refinement_dimensions)
     for pass_offset, refinement_dimension in enumerate(refinement_dimensions):
         result, downscale_step = _tune_gaussian_blur_pass(
@@ -388,6 +460,7 @@ def tune_gaussian_blur(
             sigma_min,
             sigma_max,
             sigma_step,
+            current_sigma,
             refinement_dimension,
             pass_offset + 1,
             pass_count,
@@ -395,6 +468,7 @@ def tune_gaussian_blur(
             progress_callback,
         )
         total_evaluated_count += result.evaluated_count
+        current_sigma = float(result.best_parameters.get('sigma', current_sigma))
         current_kernel_min, current_kernel_max = _refined_kernel_bounds(
             result.best_parameters['kernel_size'],
             downscale_step,

@@ -142,7 +142,7 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
 
     assert result.best_parameters['kernel_size'] == 1
     assert result.best_parameters['sigma'] == 0.2
-    assert result.evaluated_count == 2
+    assert result.evaluated_count == 1
 
 
 def test_auto_tune_node_waits_for_run_button(monkeypatch):
@@ -402,3 +402,32 @@ def test_auto_tune_node_uses_target_gaussian_parameters_as_start(monkeypatch):
     )
 
     assert result['tune_result'].best_parameters['sigma'] == 2.5
+
+
+def test_tune_gaussian_blur_manual_sigma_avoids_cartesian_grid(monkeypatch):
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 25, dtype=np.uint8)
+
+    def _gaussian_stub(image, kernel, sigma):
+        del kernel
+        return np.full_like(image, int(round(sigma * 10)))
+
+    monkeypatch.setattr(
+        gaussian_blur_module.cv2,
+        'GaussianBlur',
+        _gaussian_stub,
+        raising=False,
+    )
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={
+            'auto_sigma': False,
+            'kernel_size': 117,
+            'sigma': 2.5,
+        },
+    )
+
+    assert result.best_parameters['sigma'] == 2.5
+    assert result.evaluated_count < 100

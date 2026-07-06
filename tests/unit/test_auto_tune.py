@@ -427,3 +427,32 @@ def test_auto_tune_node_reuses_previous_output_values_as_start(monkeypatch):
     )
 
     assert result['tune_result'].best_parameters['kernel_size'] == 87
+
+
+def test_tune_gaussian_blur_manual_sigma_can_recover_from_bad_prior(monkeypatch):
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 60, dtype=np.uint8)
+
+    def _gaussian_stub(image, kernel, sigma):
+        del kernel
+        return np.full_like(image, int(round(sigma)))
+
+    monkeypatch.setattr(
+        gaussian_blur_module.cv2,
+        'GaussianBlur',
+        _gaussian_stub,
+        raising=False,
+    )
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={
+            'auto_sigma': False,
+            'kernel_size': 117,
+            'sigma': 2.0,
+        },
+    )
+
+    assert abs(result.best_parameters['sigma'] - 60.0) <= 0.5
+    assert result.evaluated_count < 100

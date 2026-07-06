@@ -348,62 +348,6 @@ def test_auto_tune_node_can_disable_auto_sigma(monkeypatch):
     assert result['tune_result'].best_parameters['sigma'] == 0.2
 
 
-def test_auto_tune_node_uses_target_gaussian_parameters_as_start(monkeypatch):
-    import node.input_node.node_auto_tune as auto_tune_node_module
-
-    node = auto_tune_node_module.Node()
-    ports = node.create_ports(6)
-    source = np.zeros((2, 2, 1), dtype=np.uint8)
-    target = np.full((2, 2, 1), 3, dtype=np.uint8)
-
-    class _TuneResult:
-        best_parameters = {'kernel_size': 117, 'sigma': 2.5}
-        best_score = 0.0
-        evaluated_count = 1
-
-    _TuneResult.best_image = source
-
-    def _get_value(tag):
-        if tag == '2:GaussianBlur:Int:Input02Value':
-            return 117
-        if tag == '2:GaussianBlur:Float:Input03Value':
-            return 2.5
-        if tag == '2:GaussianBlur:Int:Input04Value':
-            return False
-        if tag.endswith(':Text:StatusValue'):
-            return None
-        return True
-
-    def _tune_stub(source_image, target_image, current_parameters, **kwargs):
-        del source_image, target_image, kwargs
-        assert current_parameters == {
-            'auto_sigma': False,
-            'kernel_size': 117,
-            'sigma': 2.5,
-        }
-        return _TuneResult()
-
-    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
-    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', _get_value)
-    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', lambda tag, value: None)
-
-    node._on_run_button(None, None, 6)
-    _image, result = node.update(
-        6,
-        [
-            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
-            ('2:GaussianBlur:Image:Output01', ports.target_image.dpg_tag),
-        ],
-        {
-            '1:Source': source,
-            '2:GaussianBlur': target,
-        },
-        {},
-    )
-
-    assert result['tune_result'].best_parameters['sigma'] == 2.5
-
-
 def test_tune_gaussian_blur_manual_sigma_avoids_cartesian_grid(monkeypatch):
     source = np.zeros((2, 2, 1), dtype=np.uint8)
     target = np.full((2, 2, 1), 25, dtype=np.uint8)

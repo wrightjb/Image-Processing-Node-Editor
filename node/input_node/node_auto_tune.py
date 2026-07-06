@@ -181,41 +181,6 @@ class Node(DpgNodeBase):
             parameters['sigma'] = float(sigma)
         return parameters
 
-    def _target_gaussian_parameters(self, port_ref, connection_list):
-        for (
-            connection_info,
-            source_tag,
-            destination_tag,
-            _connection_type,
-        ) in self._iter_connection_infos(connection_list):
-            if destination_tag != port_ref.dpg_tag:
-                continue
-            source_node_key = self._connection_source_node_key(
-                connection_info,
-                source_tag,
-            )
-            if not source_node_key.endswith(':GaussianBlur'):
-                return {}
-
-            kernel = dpg_get_value(
-                self._port_value_tag(source_node_key, self.TYPE_INT, 'Input02')
-            )
-            sigma = dpg_get_value(
-                self._port_value_tag(source_node_key, self.TYPE_FLOAT, 'Input03')
-            )
-            auto_sigma = dpg_get_value(
-                self._port_value_tag(source_node_key, self.TYPE_INT, 'Input04')
-            )
-            parameters = {}
-            if kernel is not None:
-                parameters['kernel_size'] = int(kernel)
-            if sigma is not None:
-                parameters['sigma'] = float(sigma)
-            if auto_sigma is not None:
-                parameters['auto_sigma'] = bool(auto_sigma)
-            return parameters
-        return {}
-
     def update(
         self,
         node_id,
@@ -249,17 +214,12 @@ class Node(DpgNodeBase):
             return None, {'__auto_tune_ready__': False}
 
         output_parameters = self._current_output_parameters(ports)
-        target_parameters = self._target_gaussian_parameters(
-            ports.target_image,
-            connection_list,
-        )
         auto_sigma_value = dpg_get_value(self._auto_sigma_value_tag(node_id))
         fallback_auto_sigma = (
             True if auto_sigma_value is None else bool(auto_sigma_value)
         )
         current_parameters = {'auto_sigma': fallback_auto_sigma}
         current_parameters.update(output_parameters)
-        current_parameters.update(target_parameters)
         auto_sigma = bool(current_parameters.get('auto_sigma', True))
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
         plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)

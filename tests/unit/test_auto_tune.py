@@ -3,6 +3,7 @@ import numpy as np
 from auto_tune.gaussian_blur import (
     DEFAULT_KERNEL_MAX,
     DEFAULT_KERNEL_MIN,
+    DEFAULT_REFINEMENT_ITERATIONS,
     tuning_plan,
     odd_kernel_values,
     sigma_values,
@@ -90,6 +91,8 @@ def test_gaussian_blur_tuning_plan_downscales_large_images():
         'scaled_candidates': 84,
         'downscale_step': 3,
         'max_dimension': 500,
+        'refinement_iterations': DEFAULT_REFINEMENT_ITERATIONS,
+        'planned_passes': DEFAULT_REFINEMENT_ITERATIONS,
     }
 
 
@@ -235,6 +238,7 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
         if (
             not tag.endswith(':Text:StatusValue')
             and not tag.endswith(':Int:AutoSigmaValue')
+            and not tag.endswith(':Int:RefineRoundsValue')
         )
     ]
     status_values = [
@@ -280,6 +284,33 @@ def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
         {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
     ) is True
     assert node._source_allows_parameter_sync('1:IntValue:Int:Output01', {}) is True
+
+
+def test_tune_gaussian_blur_does_not_constrain_first_run_to_prior_kernel(monkeypatch):
+    source = np.zeros((4, 4, 1), dtype=np.uint8)
+    target = np.full((4, 4, 1), 117, dtype=np.uint8)
+
+    def _gaussian_stub(image, kernel, sigma):
+        del sigma
+        return np.full_like(image, min(kernel[0], 255))
+
+    monkeypatch.setattr(
+        gaussian_blur_module.cv2,
+        'GaussianBlur',
+        _gaussian_stub,
+        raising=False,
+    )
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={'auto_sigma': True, 'kernel_size': 5},
+        kernel_min=1,
+        kernel_max=201,
+        refinement_iterations=1,
+    )
+
+    assert result.best_parameters['kernel_size'] == 117
 
 
 def test_tune_gaussian_blur_refines_downscaled_kernel_to_original_scale(monkeypatch):
@@ -492,6 +523,54 @@ def test_auto_tune_node_passes_selected_metric(monkeypatch):
     def _tune_stub(source_image, target_image, current_parameters, **kwargs):
         del source_image, target_image, current_parameters
         assert kwargs['metric_name'] == 'smoothness'
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', lambda tag, value: None)
+
+    node._on_run_button(None, None, 6)
+    _image, result = node.update(
+        6,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {
+            '1:Source': source,
+            '2:Target': target,
+        },
+        {},
+    )
+
+    assert result['tune_result'].best_score == 0.0
+
+
+def test_auto_tune_node_passes_refinement_iterations(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 3, dtype=np.uint8)
+
+    class _TuneResult:
+        best_parameters = {'kernel_size': 3, 'sigma': 0.0}
+        best_score = 0.0
+        evaluated_count = 1
+
+    _TuneResult.best_image = source
+
+    def _get_value(tag):
+        if tag.endswith(':Int:RefineRoundsValue'):
+            return 5
+        if tag.endswith(':Text:MetricValue'):
+            return 'mse'
+        return True
+
+    def _tune_stub(source_image, target_image, current_parameters, **kwargs):
+        del source_image, target_image, current_parameters
+        assert kwargs['refinement_iterations'] == 5
         return _TuneResult()
 
     monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)

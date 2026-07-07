@@ -3,6 +3,7 @@
 import dearpygui.dearpygui as dpg
 
 from auto_tune.gaussian_blur import DEFAULT_KERNEL_MAX, DEFAULT_KERNEL_MIN
+from auto_tune.gaussian_blur import DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.gaussian_blur import tuning_plan, tune_gaussian_blur
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
@@ -49,6 +50,7 @@ class Node(DpgNodeBase):
         status_value_tag = self._status_value_tag(node_id)
         auto_sigma_value_tag = self._auto_sigma_value_tag(node_id)
         metric_value_tag = self._metric_value_tag(node_id)
+        refinement_iterations_value_tag = self._refinement_iterations_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         with dpg.node(
@@ -93,6 +95,18 @@ class Node(DpgNodeBase):
                     label='Metric',
                     tag=metric_value_tag,
                     default_value='mse',
+                    width=120,
+                )
+            with dpg.node_attribute(
+                tag=self._refinement_iterations_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_input_int(
+                    tag=refinement_iterations_value_tag,
+                    label='Refine Rounds',
+                    default_value=DEFAULT_REFINEMENT_ITERATIONS,
+                    min_value=1,
+                    min_clamped=True,
                     width=120,
                 )
             with dpg.node_attribute(
@@ -147,6 +161,12 @@ class Node(DpgNodeBase):
     def _metric_value_tag(self, node_id):
         return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'Metric')
 
+    def _refinement_iterations_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_INT, 'RefineRounds')
+
+    def _refinement_iterations_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_INT, 'RefineRounds')
+
     def _auto_sigma_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_INT, 'AutoSigma')
 
@@ -187,7 +207,12 @@ class Node(DpgNodeBase):
             return node_image_dict.get(source_node_key)
         return None
 
-
+    def _refinement_iterations(self, node_id):
+        value = dpg_get_value(self._refinement_iterations_value_tag(node_id))
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            return DEFAULT_REFINEMENT_ITERATIONS
 
     def _current_output_parameters(self, ports):
         parameters = {}
@@ -241,7 +266,17 @@ class Node(DpgNodeBase):
         auto_sigma = bool(current_parameters.get('auto_sigma', True))
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
         metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'mse'
-        plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
+        refinement_iterations = self._refinement_iterations(node_id)
+        dpg_set_value(
+            self._refinement_iterations_value_tag(node_id),
+            refinement_iterations,
+        )
+        plan = tuning_plan(
+            source,
+            DEFAULT_KERNEL_MIN,
+            DEFAULT_KERNEL_MAX,
+            refinement_iterations=refinement_iterations,
+        )
         print(
             'AutoTuneGaussianBlur: tuning started; '
             f'evaluating {plan["scaled_candidates"]} scaled candidates '
@@ -250,6 +285,8 @@ class Node(DpgNodeBase):
             f'downscale step={plan["downscale_step"]}, '
             f'auto_sigma={auto_sigma}, '
             f'metric={metric_name}, '
+            f'refine_rounds={refinement_iterations}, '
+            f'planned_passes={plan["planned_passes"]}, '
             f'start={current_parameters}.'
         )
 
@@ -275,6 +312,7 @@ class Node(DpgNodeBase):
             current_parameters=current_parameters,
             progress_callback=_progress,
             metric_name=metric_name,
+            refinement_iterations=refinement_iterations,
         )
         dpg_set_value(
             ports.kernel_size.value_tag,
@@ -319,6 +357,9 @@ class Node(DpgNodeBase):
             self._metric_value_tag(node_id): dpg_get_value(
                 self._metric_value_tag(node_id),
             ),
+            self._refinement_iterations_value_tag(node_id): dpg_get_value(
+                self._refinement_iterations_value_tag(node_id),
+            ),
             '__cache_enabled__': False,
         }
         return setting_dict
@@ -331,6 +372,7 @@ class Node(DpgNodeBase):
             ports.best_score.value_tag,
             self._auto_sigma_value_tag(node_id),
             self._metric_value_tag(node_id),
+            self._refinement_iterations_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

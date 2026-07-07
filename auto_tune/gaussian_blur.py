@@ -59,6 +59,7 @@ DEFAULT_SIGMA_MAX = float(_parameter_bound('sigma', 'max', 100.0))
 DEFAULT_SIGMA_STEP = 0.1
 DEFAULT_MAX_DIMENSION = 512
 DEFAULT_REFINEMENT_DIMENSIONS = (128, 256, 512, None)
+DEFAULT_REFINEMENT_ITERATIONS = 3
 
 
 def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX):
@@ -144,6 +145,7 @@ def tuning_plan(
     kernel_min=DEFAULT_KERNEL_MIN,
     kernel_max=DEFAULT_KERNEL_MAX,
     max_dimension=DEFAULT_MAX_DIMENSION,
+    refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
 ):
     _scaled_source, downscale_step = _downscale_for_tuning(
         source_image,
@@ -155,11 +157,14 @@ def tuning_plan(
         kernel_max,
         downscale_step,
     )
+    pass_count = len(_refinement_dimensions_for_image(source_image, max_dimension))
     return {
         'original_candidates': len(original_kernels),
         'scaled_candidates': len(scaled_kernels),
         'downscale_step': downscale_step,
         'max_dimension': max_dimension,
+        'refinement_iterations': max(1, int(refinement_iterations)),
+        'planned_passes': pass_count * max(1, int(refinement_iterations)),
     }
 
 
@@ -444,6 +449,7 @@ def tune_gaussian_blur(
     max_dimension=DEFAULT_MAX_DIMENSION,
     progress_callback=None,
     metric_name='mse',
+    refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
@@ -454,50 +460,53 @@ def tune_gaussian_blur(
     metric = objective_metric(metric_name)
     current_parameters = dict(current_parameters or {})
     auto_sigma = bool(current_parameters.get('auto_sigma', True))
-    kernel_min, kernel_max = _local_odd_bounds(
-        current_parameters.get('kernel_size'),
-        kernel_min,
-        kernel_max,
-    )
     refinement_dimensions = _refinement_dimensions_for_image(
         source_image,
         max_dimension,
     )
 
-    current_kernel_min = kernel_min
-    current_kernel_max = kernel_max
+    current_kernel_min = int(kernel_min)
+    current_kernel_max = int(kernel_max)
     total_evaluated_count = 0
     result = None
     current_sigma = float(
         current_parameters.get('sigma', (sigma_min + sigma_max) / 2.0)
     )
-    pass_count = len(refinement_dimensions)
-    for pass_offset, refinement_dimension in enumerate(refinement_dimensions):
-        result, downscale_step = _tune_gaussian_blur_pass(
-            source_image,
-            target_image,
-            auto_sigma,
-            current_kernel_min,
-            current_kernel_max,
-            sigma_min,
-            sigma_max,
-            sigma_step,
-            current_sigma,
-            refinement_dimension,
-            metric,
-            pass_offset + 1,
-            pass_count,
-            total_evaluated_count,
-            progress_callback,
-        )
-        total_evaluated_count += result.evaluated_count
-        current_sigma = float(result.best_parameters.get('sigma', current_sigma))
-        current_kernel_min, current_kernel_max = _refined_kernel_bounds(
-            result.best_parameters['kernel_size'],
-            downscale_step,
-            kernel_min,
-            kernel_max,
-        )
+    refinement_iterations = max(1, int(refinement_iterations))
+    pass_count = len(refinement_dimensions) * refinement_iterations
+    pass_index = 0
+    for iteration_index in range(refinement_iterations):
+        for refinement_dimension in refinement_dimensions:
+            pass_index += 1
+            result, downscale_step = _tune_gaussian_blur_pass(
+                source_image,
+                target_image,
+                auto_sigma,
+                current_kernel_min,
+                current_kernel_max,
+                sigma_min,
+                sigma_max,
+                sigma_step,
+                current_sigma,
+                refinement_dimension,
+                metric,
+                pass_index,
+                pass_count,
+                total_evaluated_count,
+                progress_callback,
+            )
+            total_evaluated_count += result.evaluated_count
+            current_sigma = float(result.best_parameters.get('sigma', current_sigma))
+            current_kernel_min, current_kernel_max = _refined_kernel_bounds(
+                result.best_parameters['kernel_size'],
+                downscale_step,
+                kernel_min,
+                kernel_max,
+            )
+            if result.best_score <= 0.0:
+                break
+        if result is not None and result.best_score <= 0.0:
+            break
 
     best_parameters = dict(result.best_parameters)
     best_image = image_process(

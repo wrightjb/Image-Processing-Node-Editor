@@ -184,14 +184,29 @@ Reasons to keep the metric inside the tuner:
 
 A good compromise is to make `preview_image` or a paired Diff/Viewer node optional output UI: the tuner computes the best candidate internally, emits the best processed image or diff image for display, and still keeps optimization self-contained.
 
-## Objective metric
+## Objective metrics
 
-Use a simple metric first, then make it pluggable:
+Use a simple metric first, then make it pluggable. The Gaussian Blur tuner now
+ships with three metrics because different recovery workflows need different
+assumptions:
 
-- Start with downscaled RGB/BGR mean squared error or mean absolute error.
-- Add optional luminance-only scoring for blur and sharpness matching.
-- Add structural similarity (SSIM) later for perceptual structure matching.
-- Add masked scoring later so users can tune only a region of interest.
+- `mse`: direct pixel mean-squared error. This is best when the target is
+  expected to be only the blurred source image.
+- `smoothness`: compares one whole-image luminance gradient-energy value for
+  the candidate against one value for the target. This is useful for quick blur
+  strength matching, but it can be fooled when later operations such as curves
+  or solarization change global contrast.
+- `local_smoothness`: compares per-pixel neighboring-gradient-energy maps. This
+  is the default and preferred blur-recovery metric when the target may have had
+  a curve or solarizing curve applied after blur, because it ignores exact color
+  equality while still preserving where local contrast remains.
+
+Future metrics can still be added for other node families:
+
+- luminance-only or color-space-specific scoring for color adjustments,
+- structural similarity (SSIM) for perceptual structure matching,
+- masked scoring so users can tune only a region of interest,
+- node-specific metrics where a generic pixel metric is the wrong objective.
 
 Always normalize source and target before scoring:
 

@@ -1,0 +1,560 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""Gaussian Blur-specific auto-tuning helpers."""
+
+from dataclasses import replace
+import math
+
+import numpy as np
+
+from auto_tune.service import TuneResult, mean_squared_error
+from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
+from node.process_node.node_gaussian_blur import image_process
+
+
+def _luminance_float(image):
+    array = image.astype('float32')
+    if array.max(initial=0.0) > 1.0:
+        array = array / 255.0
+    if array.ndim == 3:
+        array = array.mean(axis=2)
+    return array
+
+
+def _local_gradient_energy_map(image):
+    luminance = _luminance_float(image)
+    energy = np.zeros(luminance.shape, dtype='float32')
+    if luminance.shape[1] > 1:
+        dx = luminance[:, 1:] - luminance[:, :-1]
+        energy[:, :-1] += dx * dx
+        energy[:, 1:] += dx * dx
+    if luminance.shape[0] > 1:
+        dy = luminance[1:, :] - luminance[:-1, :]
+        energy[:-1, :] += dy * dy
+        energy[1:, :] += dy * dy
+    return energy
+
+
+def _gradient_energy(image):
+    return float(_local_gradient_energy_map(image).mean())
+
+
+def blur_smoothness_error(candidate, target):
+    """Compare whole-image blur strength, not pixel equality."""
+    candidate_energy = _gradient_energy(candidate)
+    target_energy = _gradient_energy(target)
+    return abs(candidate_energy - target_energy)
+
+
+def local_blur_smoothness_error(candidate, target):
+    """Compare where neighboring-pixel contrast remains in the image."""
+    return mean_squared_error(
+        _local_gradient_energy_map(candidate),
+        _local_gradient_energy_map(target),
+    )
+
+
+def objective_metric(name):
+    if name == 'smoothness':
+        return blur_smoothness_error
+    if name == 'local_smoothness':
+        return local_blur_smoothness_error
+    return mean_squared_error
+
+
+def objective_metric_diagnostics(name):
+    if name not in ('smoothness', 'local_smoothness'):
+        return None
+
+    def _smoothness_diagnostics(candidate, target):
+        return {
+            'candidate_smoothness': _gradient_energy(candidate),
+            'target_smoothness': _gradient_energy(target),
+        }
+
+    return _smoothness_diagnostics
+
+
+def _gaussian_parameter(name):
+    for parameter in GaussianBlurNode.parameters:
+        if parameter.get('name') == name:
+            return parameter
+    return {}
+
+
+def _parameter_bound(name, bound_name, fallback):
+    return _gaussian_parameter(name).get(bound_name, fallback)
+
+
+DEFAULT_KERNEL_MIN = int(_parameter_bound('kernel_size', 'min', 1))
+DEFAULT_KERNEL_MAX = int(_parameter_bound('kernel_size', 'max', 501))
+DEFAULT_SIGMA_MIN = float(_parameter_bound('sigma', 'min', 0.1))
+DEFAULT_SIGMA_MAX = float(_parameter_bound('sigma', 'max', 100.0))
+DEFAULT_SIGMA_STEP = 0.1
+DEFAULT_MAX_DIMENSION = 512
+DEFAULT_REFINEMENT_DIMENSIONS = (128, 256, 512, None)
+DEFAULT_REFINEMENT_ITERATIONS = 1
+
+
+def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX):
+    min_value = max(1, int(min_value))
+    max_value = max(min_value, int(max_value))
+    if min_value % 2 == 0:
+        min_value += 1
+    return tuple(range(min_value, max_value + 1, 2))
+
+
+def sigma_values(
+    min_value=DEFAULT_SIGMA_MIN,
+    max_value=DEFAULT_SIGMA_MAX,
+    step=DEFAULT_SIGMA_STEP,
+):
+    min_value = float(min_value)
+    max_value = float(max_value)
+    step = float(step)
+    if step <= 0:
+        raise ValueError('sigma step must be positive')
+    values = []
+    current = min_value
+    while current <= max_value + (step / 10.0):
+        values.append(round(current, 3))
+        current += step
+    return tuple(values)
+
+
+def _downscale_for_tuning(image, max_dimension=DEFAULT_MAX_DIMENSION):
+    height, width = image.shape[:2]
+    largest_dimension = max(height, width)
+    if max_dimension is None or largest_dimension <= max_dimension:
+        return image, 1
+
+    step = max(1, int(math.ceil(largest_dimension / float(max_dimension))))
+    return image[::step, ::step].copy(), step
+
+
+def _scale_odd_kernel(kernel_size, downscale_step):
+    scaled = max(1, int(round(int(kernel_size) / float(downscale_step))))
+    if scaled % 2 == 0:
+        scaled += 1
+    return scaled
+
+
+def _unscale_odd_kernel(scaled_kernel, downscale_step, kernel_min, kernel_max):
+    original = int(round(int(scaled_kernel) * float(downscale_step)))
+    original = max(int(kernel_min), min(int(kernel_max), original))
+    if original % 2 == 0:
+        if original < int(kernel_max):
+            original += 1
+        else:
+            original -= 1
+    return max(1, original)
+
+
+def _scaled_kernel_candidates(kernel_min, kernel_max, downscale_step):
+    return sorted({
+        _scale_odd_kernel(original_kernel, downscale_step)
+        for original_kernel in odd_kernel_values(kernel_min, kernel_max)
+    })
+
+
+def _refined_kernel_bounds(best_kernel, downscale_step, kernel_min, kernel_max):
+    radius = max(8, int(downscale_step) * 6)
+    refined_min = max(int(kernel_min), int(best_kernel) - radius)
+    refined_max = min(int(kernel_max), int(best_kernel) + radius)
+    return refined_min, refined_max
+
+
+def tuning_plan(
+    source_image,
+    kernel_min=DEFAULT_KERNEL_MIN,
+    kernel_max=DEFAULT_KERNEL_MAX,
+    max_dimension=DEFAULT_MAX_DIMENSION,
+    refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
+):
+    _scaled_source, downscale_step = _downscale_for_tuning(
+        source_image,
+        max_dimension,
+    )
+    original_kernels = odd_kernel_values(kernel_min, kernel_max)
+    scaled_kernels = _scaled_kernel_candidates(
+        kernel_min,
+        kernel_max,
+        downscale_step,
+    )
+    pass_count = len(_refinement_dimensions_for_image(source_image, max_dimension))
+    return {
+        'original_candidates': len(original_kernels),
+        'scaled_candidates': len(scaled_kernels),
+        'downscale_step': downscale_step,
+        'max_dimension': max_dimension,
+        'refinement_iterations': max(1, int(refinement_iterations)),
+        'planned_passes': pass_count * max(1, int(refinement_iterations)),
+    }
+
+
+def _ternary_kernel_search(
+    source_for_score,
+    target_for_score,
+    scaled_kernels,
+    fixed_parameters,
+    progress_callback=None,
+    metric=mean_squared_error,
+    metric_diagnostics=None,
+):
+    target = target_for_score
+    score_cache = {}
+    best_score = None
+    best_parameters = None
+    best_image = None
+    evaluated_count = 0
+    total_count = len(scaled_kernels)
+
+    def _evaluate_index(index):
+        nonlocal best_score, best_parameters, best_image, evaluated_count
+        kernel_size = scaled_kernels[index]
+        if kernel_size in score_cache:
+            return score_cache[kernel_size][0]
+
+        parameters = dict(fixed_parameters)
+        parameters['kernel_size'] = kernel_size
+        image = image_process(
+            source_for_score.copy(),
+            int(parameters['kernel_size']),
+            float(parameters['sigma']),
+        )
+        score = metric(image, target)
+        evaluated_count += 1
+        if best_score is None or score < best_score:
+            best_score = score
+            best_parameters = dict(parameters)
+            best_image = image
+        score_cache[kernel_size] = (score, image, dict(parameters))
+        if progress_callback is not None:
+            update = {
+                'candidate_index': evaluated_count,
+                'candidate_count': total_count,
+                'parameters': dict(parameters),
+                'score': float(score),
+                'best_score': float(best_score),
+                'best_parameters': dict(best_parameters),
+            }
+            if metric_diagnostics is not None:
+                update.update(metric_diagnostics(image, target))
+            progress_callback(update)
+        return score
+
+    left = 0
+    right = len(scaled_kernels) - 1
+    while right - left > 6:
+        first_mid = left + (right - left) // 3
+        second_mid = right - (right - left) // 3
+        first_score = _evaluate_index(first_mid)
+        if first_score <= 0.0:
+            break
+        second_score = _evaluate_index(second_mid)
+        if second_score <= 0.0:
+            break
+        if first_score < second_score:
+            right = second_mid - 1
+        else:
+            left = first_mid + 1
+
+    if best_score is None or best_score > 0.0:
+        for index in range(left, right + 1):
+            score = _evaluate_index(index)
+            if score <= 0.0:
+                break
+
+    if evaluated_count == 0:
+        raise ValueError('at least one candidate must be evaluated')
+
+    return TuneResult(
+        best_parameters=best_parameters,
+        best_score=float(best_score),
+        best_image=best_image,
+        evaluated_count=evaluated_count,
+    )
+
+
+def _ternary_sigma_search(
+    source_for_score,
+    target_for_score,
+    sigma_candidates,
+    fixed_parameters,
+    progress_callback=None,
+    metric=mean_squared_error,
+    metric_diagnostics=None,
+):
+    target = target_for_score
+    score_cache = {}
+    best_score = None
+    best_parameters = None
+    best_image = None
+    evaluated_count = 0
+    total_count = len(sigma_candidates)
+
+    def _evaluate_index(index):
+        nonlocal best_score, best_parameters, best_image, evaluated_count
+        sigma = sigma_candidates[index]
+        if sigma in score_cache:
+            return score_cache[sigma][0]
+
+        parameters = dict(fixed_parameters)
+        parameters['sigma'] = sigma
+        image = image_process(
+            source_for_score.copy(),
+            int(parameters['kernel_size']),
+            float(parameters['sigma']),
+        )
+        score = metric(image, target)
+        evaluated_count += 1
+        if best_score is None or score < best_score:
+            best_score = score
+            best_parameters = dict(parameters)
+            best_image = image
+        score_cache[sigma] = (score, image, dict(parameters))
+        if progress_callback is not None:
+            update = {
+                'candidate_index': evaluated_count,
+                'candidate_count': total_count,
+                'parameters': dict(parameters),
+                'score': float(score),
+                'best_score': float(best_score),
+                'best_parameters': dict(best_parameters),
+            }
+            if metric_diagnostics is not None:
+                update.update(metric_diagnostics(image, target))
+            progress_callback(update)
+        return score
+
+    left = 0
+    right = len(sigma_candidates) - 1
+    while right - left > 6:
+        first_mid = left + (right - left) // 3
+        second_mid = right - (right - left) // 3
+        first_score = _evaluate_index(first_mid)
+        if first_score <= 0.0:
+            break
+        second_score = _evaluate_index(second_mid)
+        if second_score <= 0.0:
+            break
+        if first_score < second_score:
+            right = second_mid - 1
+        else:
+            left = first_mid + 1
+
+    if best_score is None or best_score > 0.0:
+        for index in range(left, right + 1):
+            score = _evaluate_index(index)
+            if score <= 0.0:
+                break
+
+    if evaluated_count == 0:
+        raise ValueError('at least one candidate must be evaluated')
+
+    return TuneResult(
+        best_parameters=best_parameters,
+        best_score=float(best_score),
+        best_image=best_image,
+        evaluated_count=evaluated_count,
+    )
+
+
+def _tune_gaussian_blur_pass(
+    source_image,
+    target_image,
+    auto_sigma,
+    kernel_min,
+    kernel_max,
+    sigma_min,
+    sigma_max,
+    sigma_step,
+    starting_sigma,
+    max_dimension,
+    metric,
+    metric_diagnostics,
+    pass_index,
+    pass_count,
+    total_evaluated_before,
+    progress_callback=None,
+):
+    source_for_score, downscale_step = _downscale_for_tuning(
+        source_image,
+        max_dimension,
+    )
+    target_for_score, _ = _downscale_for_tuning(target_image, max_dimension)
+    scaled_kernels = _scaled_kernel_candidates(
+        kernel_min,
+        kernel_max,
+        downscale_step,
+    )
+
+    fixed = {'auto_sigma': auto_sigma}
+    if auto_sigma:
+        fixed['sigma'] = 0.0
+
+    def _progress(update):
+        if progress_callback is None:
+            return
+        update = dict(update)
+        update.update({
+            'pass_index': pass_index,
+            'pass_count': pass_count,
+            'downscale_step': downscale_step,
+            'max_dimension': max_dimension,
+            'total_evaluated': (
+                total_evaluated_before + update['candidate_index']
+            ),
+        })
+        progress_callback(update)
+
+    if auto_sigma:
+        result = _ternary_kernel_search(
+            source_for_score,
+            target_for_score,
+            scaled_kernels,
+            fixed,
+            progress_callback=_progress,
+            metric=metric,
+            metric_diagnostics=metric_diagnostics,
+        )
+    else:
+        fixed['sigma'] = starting_sigma
+        kernel_result = _ternary_kernel_search(
+            source_for_score,
+            target_for_score,
+            scaled_kernels,
+            fixed,
+            progress_callback=_progress,
+            metric=metric,
+            metric_diagnostics=metric_diagnostics,
+        )
+        if kernel_result.best_score <= 0.0:
+            result = kernel_result
+        else:
+            sigma_candidates = sigma_values(sigma_min, sigma_max, sigma_step)
+            sigma_fixed = dict(kernel_result.best_parameters)
+            result = _ternary_sigma_search(
+                source_for_score,
+                target_for_score,
+                sigma_candidates,
+                sigma_fixed,
+                progress_callback=_progress,
+                metric=metric,
+                metric_diagnostics=metric_diagnostics,
+            )
+            result = replace(
+                result,
+                evaluated_count=(
+                    kernel_result.evaluated_count + result.evaluated_count
+                ),
+            )
+    original_kernel = _unscale_odd_kernel(
+        result.best_parameters['kernel_size'],
+        downscale_step,
+        kernel_min,
+        kernel_max,
+    )
+    best_parameters = dict(result.best_parameters)
+    best_parameters['kernel_size'] = original_kernel
+    return replace(result, best_parameters=best_parameters), downscale_step
+
+
+def _refinement_dimensions_for_image(image, max_dimension):
+    if max_dimension not in DEFAULT_REFINEMENT_DIMENSIONS:
+        return (max_dimension,)
+
+    largest_dimension = max(image.shape[:2])
+    dimensions = tuple(
+        dimension
+        for dimension in DEFAULT_REFINEMENT_DIMENSIONS
+        if dimension is not None and largest_dimension > dimension
+    )
+    return dimensions + (None,)
+
+
+def tune_gaussian_blur(
+    source_image,
+    target_image,
+    current_parameters=None,
+    kernel_min=DEFAULT_KERNEL_MIN,
+    kernel_max=DEFAULT_KERNEL_MAX,
+    sigma_min=DEFAULT_SIGMA_MIN,
+    sigma_max=DEFAULT_SIGMA_MAX,
+    sigma_step=DEFAULT_SIGMA_STEP,
+    max_dimension=DEFAULT_MAX_DIMENSION,
+    progress_callback=None,
+    metric_name='local_smoothness',
+    refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
+):
+    """Tune Gaussian Blur kernel size and, when enabled, sigma.
+
+    The tuner uses coarse-to-fine ternary-style refinement over odd kernel sizes.
+    When ``auto_sigma`` is true, sigma is fixed to ``0.0`` to match the
+    Gaussian Blur node's auto-sigma behavior.
+    """
+    metric = objective_metric(metric_name)
+    metric_diagnostics = objective_metric_diagnostics(metric_name)
+    current_parameters = dict(current_parameters or {})
+    auto_sigma = bool(current_parameters.get('auto_sigma', True))
+    refinement_dimensions = _refinement_dimensions_for_image(
+        source_image,
+        max_dimension,
+    )
+
+    current_kernel_min = int(kernel_min)
+    current_kernel_max = int(kernel_max)
+    total_evaluated_count = 0
+    result = None
+    current_sigma = float(
+        current_parameters.get('sigma', (sigma_min + sigma_max) / 2.0)
+    )
+    refinement_iterations = max(1, int(refinement_iterations))
+    pass_count = len(refinement_dimensions) * refinement_iterations
+    pass_index = 0
+    for iteration_index in range(refinement_iterations):
+        for refinement_dimension in refinement_dimensions:
+            pass_index += 1
+            result, downscale_step = _tune_gaussian_blur_pass(
+                source_image,
+                target_image,
+                auto_sigma,
+                current_kernel_min,
+                current_kernel_max,
+                sigma_min,
+                sigma_max,
+                sigma_step,
+                current_sigma,
+                refinement_dimension,
+                metric,
+                metric_diagnostics,
+                pass_index,
+                pass_count,
+                total_evaluated_count,
+                progress_callback,
+            )
+            total_evaluated_count += result.evaluated_count
+            current_sigma = float(result.best_parameters.get('sigma', current_sigma))
+            current_kernel_min, current_kernel_max = _refined_kernel_bounds(
+                result.best_parameters['kernel_size'],
+                downscale_step,
+                kernel_min,
+                kernel_max,
+            )
+            if result.best_score <= 0.0:
+                break
+        if result is not None and result.best_score <= 0.0:
+            break
+
+    best_parameters = dict(result.best_parameters)
+    best_image = image_process(
+        source_image.copy(),
+        int(best_parameters['kernel_size']),
+        float(best_parameters['sigma']),
+    )
+    return replace(
+        result,
+        best_parameters=best_parameters,
+        best_image=best_image,
+        evaluated_count=total_evaluated_count,
+    )

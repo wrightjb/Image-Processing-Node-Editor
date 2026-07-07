@@ -228,8 +228,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         node_image_dict,
         node_result_dict,
     ):
-        del node_result_dict
-
         tag_node_name = self._node_name(node_id)
         ports = self._ensure_declarative_port_handles(
             node_id,
@@ -246,7 +244,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
         connection_info_src = ''
-        self._sync_linked_parameters(connection_list)
+        self._sync_linked_parameters(connection_list, node_result_dict)
 
         for (
             connection_info,
@@ -507,7 +505,18 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
     def process(self, frame, **parameter_values):
         pass
 
-    def _sync_linked_parameters(self, connection_list):
+    def _source_allows_parameter_sync(self, source_tag, node_result_dict):
+        source_node_key = self._extract_source_node_key(source_tag)
+        if source_node_key.endswith(':AutoTuneGaussianBlur'):
+            source_result = node_result_dict.get(source_node_key)
+            if not isinstance(source_result, dict):
+                return False
+            return bool(source_result.get('__auto_tune_ready__'))
+        return True
+
+    def _sync_linked_parameters(self, connection_list, node_result_dict=None):
+        if node_result_dict is None:
+            node_result_dict = {}
         for (
             connection_info,
             source_tag,
@@ -515,6 +524,12 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             connection_type,
         ) in self._iter_connection_infos(connection_list):
             destination_ref = getattr(connection_info, 'destination', None)
+            if not self._source_allows_parameter_sync(
+                source_tag,
+                node_result_dict,
+            ):
+                continue
+
             if destination_ref is not None:
                 destination_port = destination_ref.port_name
             else:

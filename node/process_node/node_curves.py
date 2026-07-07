@@ -7,7 +7,9 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
-from node_editor.util import dpg_get_value, dpg_get_item_children
+from node.curves_points_ui import CurvesPointsEditorMixin
+from node.port_model import PortDataType
+from node_editor.util import dpg_set_value
 
 
 def image_process(image, points):
@@ -19,10 +21,21 @@ def image_process(image, points):
     return image
 
 
-class Node(DeclarativeImageProcessNodeBase):
+class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     """Curves adjustment node."""
 
-    _ver = '0.0.2'
+    _ver = '0.0.3'
+
+    parameters = [
+        {
+            'name': 'points',
+            'type': PortDataType.CURVE_POINTS,
+            'port': 'Input02',
+            'label': 'Points',
+            'widget': 'custom',
+            'default': '[[0, 0], [255, 255]]',
+        },
+    ]
 
     node_label = 'Curves'
     node_tag = 'Curves'
@@ -31,162 +44,22 @@ class Node(DeclarativeImageProcessNodeBase):
     _max_val = 255
     _delete_hit_radius = 6
 
-    def _get_tag_plot_name(self, node_id):
-        return f'{self._node_name(node_id)}:plot'
-
-    def _get_tag_plot_series_name(self, node_id):
-        return f'{self._node_name(node_id)}:line'
-
-    def _get_drag_points(self, node_id):
-        plot_tag = self._get_tag_plot_name(node_id)
-        if not dpg.does_item_exist(plot_tag):
-            return self._default_points()
-
-        point_items = dpg_get_item_children(plot_tag, slot=0)
-        points = []
-        for point_tag in point_items:
-            value = dpg_get_value(point_tag)
-            if (
-                isinstance(value, (list, tuple))
-                and len(value) == 2
-                and value[0] is not None
-                and value[1] is not None
-            ):
-                points.append([value[0], value[1]])
-
-        if len(points) < 2:
-            return self._default_points()
-
-        return sorted(points)
-
-    def _default_points(self):
-        return [
-            [self._min_val, self._min_val],
-            [self._max_val, self._max_val],
-        ]
-
-    def _callback_add_point(self, sender, app_data, user_data):
-        del sender, app_data
-        node_id, static_x = user_data
-        before_points = self._get_drag_points(node_id)
-        plot_tag = self._get_tag_plot_name(node_id)
-        if static_x is not None:
-            y = x = static_x
-        else:
-            x, y = dpg.get_plot_mouse_pos()
-
-        dpg.add_drag_point(
-            parent=plot_tag,
-            label='',
-            default_value=[x, y],
-            delayed=True,
-            callback=self._callback_moved_point,
-            user_data=(node_id, static_x),
-        )
-        self._redraw_line(node_id)
-        self._emit_points_changed(
-            node_id,
-            before_points,
-            self._get_drag_points(node_id),
-            coalesce=False,
-        )
-
-    def _callback_moved_point(self, sender, app_data, user_data):
-        del app_data
-        node_id, static_x = user_data
-        before_points = self._get_drag_points(node_id)
-
-        point_value = dpg_get_value(sender)
-        if not isinstance(point_value, (list, tuple)) or len(point_value) != 2:
+    def _set_points_parameter_value(self, node_id, points):
+        try:
+            value_tag = self._parameter_port_ref(
+                node_id, self.parameters[0]
+            ).value_tag
+        except (KeyError, IndexError):
             return
+        serialized_points = self._serialize_points(points)
+        try:
+            dpg_set_value(value_tag, serialized_points)
+        except Exception:
+            return
+        self._last_parameter_values[value_tag] = serialized_points
 
-        x, y = point_value
-        if static_x is not None:
-            x = static_x
-        y = max(self._min_val, min(self._max_val, int(y)))
-        dpg.set_value(sender, [x, y])
-        self._redraw_line(node_id)
-        self._emit_points_changed(
-            node_id,
-            before_points,
-            self._get_drag_points(node_id),
-            coalesce=True,
-        )
-
-    def _callback_delete_point(self, sender, app_data, user_data):
-        del sender, app_data
-        node_id = user_data[0]
-        before_points = self._get_drag_points(node_id)
-        plot_tag = self._get_tag_plot_name(node_id)
-        point_items = dpg_get_item_children(plot_tag, slot=0)
-        mouse_x, mouse_y = dpg.get_plot_mouse_pos()
-
-        closest_point_tag = None
-        closest_distance_sq = float('inf')
-        hit_radius_sq = self._delete_hit_radius**2
-
-        for point_tag in point_items:
-            point_user_data = dpg.get_item_user_data(point_tag)
-            if point_user_data is None:
-                continue
-
-            _, static_x = point_user_data
-            if static_x is not None:
-                continue
-
-            point_value = dpg_get_value(point_tag)
-            if not isinstance(point_value, (list, tuple)) or len(point_value) != 2:
-                continue
-
-            px, py = point_value
-            distance_sq = ((px - mouse_x) ** 2) + ((py - mouse_y) ** 2)
-            if distance_sq > hit_radius_sq:
-                continue
-
-            if distance_sq < closest_distance_sq:
-                closest_distance_sq = distance_sq
-                closest_point_tag = point_tag
-
-        if closest_point_tag is not None:
-            dpg.delete_item(closest_point_tag)
-            self._redraw_line(node_id)
-            self._emit_points_changed(
-                node_id,
-                before_points,
-                self._get_drag_points(node_id),
-                coalesce=False,
-            )
-
-    def _redraw_line(self, node_id):
-        points = self._get_drag_points(node_id)
-        x_values, y_values = zip(*points)
-        series_tag = self._get_tag_plot_series_name(node_id)
-        dpg.set_value(series_tag, [x_values, y_values])
-
-    def _reset_points_from_setting(self, node_id, setting_points):
-        plot_tag = self._get_tag_plot_name(node_id)
-        existing_points = dpg_get_item_children(plot_tag, slot=0)
-        for point_tag in existing_points:
-            dpg.delete_item(point_tag)
-
-        points_to_add = setting_points if setting_points else self._default_points()
-
-        for point in points_to_add:
-            if not isinstance(point, (list, tuple)) or len(point) != 2:
-                continue
-            x, y = int(point[0]), int(point[1])
-            y = max(self._min_val, min(self._max_val, y))
-            static_x = x if x in [self._min_val, self._max_val] else None
-            dpg.add_drag_point(
-                parent=plot_tag,
-                label='',
-                default_value=[x, y],
-                delayed=True,
-                callback=self._callback_moved_point,
-                user_data=(node_id, static_x),
-            )
-
-        self._redraw_line(node_id)
+    def _on_points_changed(self, node_id, points):
+        self._set_points_parameter_value(node_id, points)
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         if self._ui_callback is None:
@@ -194,12 +67,12 @@ class Node(DeclarativeImageProcessNodeBase):
         if before_points == after_points:
             return
         node_id_name = self._node_name(node_id)
-        value_tag = f'{node_id_name}:Text:CurvesPointsValue'
+        value_tag = self._parameter_port_ref(node_id, self.parameters[0]).value_tag
         self._ui_callback(
             'parameter_changed',
             {
                 'node_id_name': node_id_name,
-                'port_tag': f'{node_id_name}:Text:CurvesPoints',
+                'port_tag': self._parameter_port_ref(node_id, self.parameters[0]).dpg_tag,
                 'value_tag': value_tag,
                 'before_value': before_points,
                 'after_value': after_points,
@@ -210,7 +83,10 @@ class Node(DeclarativeImageProcessNodeBase):
     def apply_history_value(self, value_tag, value):
         if not isinstance(value_tag, str):
             return False
-        if not value_tag.endswith(':CurvesPointsValue'):
+        if not (
+            value_tag.endswith(':CurvesPointsValue')
+            or value_tag.endswith(':Input02Value')
+        ):
             return False
         node_id_text = value_tag.split(':', maxsplit=1)[0]
         try:
@@ -219,46 +95,37 @@ class Node(DeclarativeImageProcessNodeBase):
             return False
         if not isinstance(value, list):
             return False
-        self._reset_points_from_setting(node_id, value)
+        self._reset_points_from_setting(node_id, self._parse_points(value))
         return True
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback
+        self.build_curve_points_file_dialogs(node_id)
 
-        with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-            plot_tag = self._get_tag_plot_name(node_id)
-            series_tag = self._get_tag_plot_series_name(node_id)
-            with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
-                dpg.add_plot_axis(dpg.mvXAxis, tag=f'{self._node_name(node_id)}:plot_x')
-                dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
-                dpg.add_plot_axis(dpg.mvYAxis, tag=f'{self._node_name(node_id)}:plot_y')
-                dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
-                dpg.add_line_series(
-                    x=[self._min_val, self._max_val],
-                    y=[self._min_val, self._max_val],
-                    parent=f'{self._node_name(node_id)}:plot_y',
-                    tag=series_tag,
-                )
-                handler = dpg.add_item_handler_registry()
-                dpg.add_item_clicked_handler(
-                    callback=self._callback_add_point,
-                    user_data=(node_id, None),
-                    button=dpg.mvMouseButton_Left,
-                    parent=handler,
-                )
-                dpg.add_item_clicked_handler(
-                    callback=self._callback_delete_point,
-                    user_data=(node_id,),
-                    button=dpg.mvMouseButton_Right,
-                    parent=handler,
-                )
-                dpg.bind_item_handler_registry(plot_tag, handler)
-
-            self._reset_points_from_setting(node_id, self._default_points())
+        points_port = self._parameter_port_ref(node_id, self.parameters[0])
+        with dpg.node_attribute(
+            tag=points_port.dpg_tag,
+            attribute_type=dpg.mvNode_Attr_Input,
+        ):
+            dpg.add_input_text(
+                tag=points_port.value_tag,
+                default_value=self._serialize_points(self._default_points()),
+                show=False,
+            )
+            self.build_curve_points_editor(node_id)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
-        parameter_values['points'] = self._get_drag_points(node_id)
+        raw_points = parameter_values.get('points')
+        current_points = self._get_drag_points(node_id)
+        if raw_points is None:
+            parameter_values['points'] = current_points
+            return parameter_values
+
+        linked_points = self._parse_points(raw_points)
+        if linked_points != current_points:
+            self._reset_points_from_setting(node_id, linked_points)
+        parameter_values['points'] = linked_points
         return parameter_values
 
     def process(self, frame, **parameter_values):
@@ -267,8 +134,12 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def get_custom_setting_dict(self, tag_node_name, node_id):
         del tag_node_name
-        return {'points': self._get_drag_points(node_id)}
+        points = self._get_drag_points(node_id)
+        self._set_points_parameter_value(node_id, points)
+        return {'points': points}
 
     def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
         del tag_node_name
-        self._reset_points_from_setting(node_id, setting_dict.get('points', []))
+        points = self._parse_points(setting_dict.get('points', []))
+        self._reset_points_from_setting(node_id, points)
+        self._set_points_parameter_value(node_id, points)

@@ -254,3 +254,57 @@ def test_direct_node_updates_use_typed_connection_info_iteration():
             failures.append(str(path.relative_to(node_root.parent)))
 
     assert failures == []
+
+
+def test_curve_points_port_data_type_round_trips():
+    from node.port_model import PortDataType
+    from node.port_serialization import port_ref_from_tag
+
+    port = port_ref_from_tag('1:CurvesPoints:CurvePoints:Output01')
+
+    assert port.data_type is PortDataType.CURVE_POINTS
+    assert port.value_tag == '1:CurvesPoints:CurvePoints:Output01Value'
+
+
+def test_curve_points_dragging_dynamic_point_outside_deletes_it(monkeypatch):
+    from node import curves_points_ui as curves_ui
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    class TestEditor(CurvesPointsEditorMixin):
+        def __init__(self):
+            self.deleted = []
+            self.changed = []
+            self.emitted = []
+            self.points = [[0, 0], [128, 128], [255, 255]]
+
+        def _node_name(self, node_id):
+            return f'{node_id}:TestCurves'
+
+        def _get_drag_points(self, node_id):
+            del node_id
+            return self.points
+
+        def _redraw_line(self, node_id):
+            del node_id
+
+        def _on_points_changed(self, node_id, points):
+            self.changed.append((node_id, points))
+
+        def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
+            self.emitted.append((node_id, before_points, after_points, coalesce))
+
+    editor = TestEditor()
+    monkeypatch.setattr(curves_ui, 'dpg_get_value', lambda tag: [-1, 128])
+    monkeypatch.setattr(
+        curves_ui.dpg,
+        'delete_item',
+        lambda tag: editor.deleted.append(tag),
+    )
+
+    editor._callback_moved_point('point-tag', None, (7, None))
+
+    assert editor.deleted == ['point-tag']
+    assert editor.changed == [(7, editor.points)]
+    assert editor.emitted == [
+        (7, editor.points, editor.points, False),
+    ]

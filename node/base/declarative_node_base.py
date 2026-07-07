@@ -569,6 +569,8 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             'callback': parameter.get('callback', callback),
         }
         self._last_parameter_values[value_tag] = parameter.get('default', None)
+        if parameter['widget'] == 'custom':
+            return
 
         with dpg.node_attribute(
             tag=port_tag,

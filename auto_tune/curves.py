@@ -12,6 +12,7 @@ from node.process_node.node_curves import image_process
 DEFAULT_MAX_POINTS = 20
 DEFAULT_REFINEMENT_ITERATIONS = 2
 DEFAULT_COMPLEXITY_PENALTY = 0.25
+DEFAULT_POINT_PRECISION = 6
 _LUT_X = np.arange(256, dtype=np.float32)
 
 
@@ -106,11 +107,12 @@ def _normalize_points(points):
     return normalized
 
 
-def _format_points(points):
+def _format_points(points, precision=DEFAULT_POINT_PRECISION):
     formatted = []
+    precision = max(0, int(precision))
     for x, y in _normalize_points(points):
-        rounded_x = round(float(x), 3)
-        rounded_y = round(float(y), 3)
+        rounded_x = round(float(x), precision)
+        rounded_y = round(float(y), precision)
         if rounded_x.is_integer():
             rounded_x = int(rounded_x)
         if rounded_y.is_integer():
@@ -252,13 +254,14 @@ def fit_curve_y_values(
     observed_mask=None,
     prior_values=None,
     prior_weight=1e-4,
+    precision=DEFAULT_POINT_PRECISION,
 ):
     """Fit point y-values for fixed x positions against observed bins."""
-    x_positions = sorted({int(round(float(x))) for x in x_positions})
-    if x_positions[0] != 0:
-        x_positions.insert(0, 0)
-    if x_positions[-1] != 255:
-        x_positions.append(255)
+    x_positions = sorted({round(float(x), 6) for x in x_positions})
+    if x_positions[0] != 0.0:
+        x_positions.insert(0, 0.0)
+    if x_positions[-1] != 255.0:
+        x_positions.append(255.0)
 
     observed_values = np.asarray(observed_values, dtype=np.float32)
     if observed_mask is None:
@@ -294,7 +297,7 @@ def fit_curve_y_values(
 
     fitted_y, *_ = np.linalg.lstsq(weighted_basis, weighted_y, rcond=None)
     fitted_y = np.clip(fitted_y, 0, 255)
-    return _format_points(zip(x_positions, fitted_y))
+    return _format_points(zip(x_positions, fitted_y), precision=precision)
 
 
 def _score_points(points, observed, metric='balanced_huber'):
@@ -321,13 +324,14 @@ def simplify_curve_points_weighted_rdp(values, weights=None, max_points=DEFAULT_
     )
 
 
-def _refit_points(points, observed):
+def _refit_points(points, observed, precision=DEFAULT_POINT_PRECISION):
     return fit_curve_y_values(
         [point[0] for point in points],
         observed.observed_values,
         weights=observed.weights,
         observed_mask=observed.observed_mask,
         prior_values=observed.values,
+        precision=precision,
     )
 
 
@@ -338,6 +342,8 @@ def refine_curve_points_local_search(
     metric='balanced_huber',
     iterations=DEFAULT_REFINEMENT_ITERATIONS,
     observed_mask=None,
+    precision=DEFAULT_POINT_PRECISION,
+    progress_callback=None,
 ):
     """Locally refine interior point x positions, refitting y-values each time."""
     observed = ObservedCurveLut(
@@ -347,16 +353,16 @@ def refine_curve_points_local_search(
         observed_values=np.asarray(observed_lut, dtype=np.float32),
         observed_mask=(~np.isnan(observed_lut) if observed_mask is None else observed_mask),
     )
-    best_points = _refit_points(points, observed)
+    best_points = _refit_points(points, observed, precision=precision)
     best_score = _score_points(best_points, observed, metric=metric)
-    radii = (64, 32, 16, 8, 4, 2, 1)
+    radii = (64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125)
     for _round in range(max(0, int(iterations))):
         improved = False
         for radius in radii:
             for index in range(1, len(best_points) - 1):
-                current_x = int(round(float(best_points[index][0])))
-                min_x = int(round(float(best_points[index - 1][0]))) + 1
-                max_x = int(round(float(best_points[index + 1][0]))) - 1
+                current_x = float(best_points[index][0])
+                min_x = float(best_points[index - 1][0]) + 0.001
+                max_x = float(best_points[index + 1][0]) - 0.001
                 candidates = {
                     current_x,
                     max(min_x, current_x - radius),
@@ -367,12 +373,22 @@ def refine_curve_points_local_search(
                         continue
                     candidate = [point[:] for point in best_points]
                     candidate[index][0] = candidate_x
-                    candidate = _refit_points(candidate, observed)
+                    candidate = _refit_points(candidate, observed, precision=precision)
                     score = _score_points(candidate, observed, metric=metric)
                     if score < best_score:
                         best_points = candidate
                         best_score = score
                         improved = True
+                        if progress_callback is not None:
+                            progress_callback({
+                                'phase': 'refine',
+                                'round_index': _round + 1,
+                                'radius': radius,
+                                'parameters': {'points': best_points},
+                                'score': float(best_score),
+                                'best_score': float(best_score),
+                                'point_count': len(best_points),
+                            })
         if not improved:
             break
     return best_points
@@ -384,15 +400,16 @@ def prune_curve_points(
     metric='balanced_huber',
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     min_points=2,
+    precision=DEFAULT_POINT_PRECISION,
 ):
     """Remove points that do not improve observed-fit enough to justify complexity."""
-    best_points = _refit_points(points, observed)
+    best_points = _refit_points(points, observed, precision=precision)
     best_score = _score_points(best_points, observed, metric=metric)
     while len(best_points) > max(2, int(min_points)):
         best_removal = None
         for index in range(1, len(best_points) - 1):
             candidate = [point[:] for i, point in enumerate(best_points) if i != index]
-            candidate = _refit_points(candidate, observed)
+            candidate = _refit_points(candidate, observed, precision=precision)
             score = _score_points(candidate, observed, metric=metric)
             score_increase = score - best_score
             if best_removal is None or score_increase < best_removal[0]:
@@ -411,6 +428,7 @@ def tune_curves(
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
     progress_callback=None,
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
+    point_precision=DEFAULT_POINT_PRECISION,
 ):
     """Recover Curves-node points from source/target images."""
     observed = estimate_curve_lut(source_image, target_image)
@@ -425,6 +443,7 @@ def tune_curves(
         weights=observed.weights,
         observed_mask=observed.observed_mask,
         prior_values=observed.values,
+        precision=point_precision,
     )
     initial_score = _score_points(initial_points, observed, metric=metric_name)
     if progress_callback is not None:
@@ -445,8 +464,10 @@ def tune_curves(
         metric=metric_name,
         iterations=refinement_iterations,
         observed_mask=observed.observed_mask,
+        precision=point_precision,
+        progress_callback=progress_callback,
     )
-    refined_points = _refit_points(refined_points, observed)
+    refined_points = _refit_points(refined_points, observed, precision=point_precision)
     refined_score = _score_points(refined_points, observed, metric=metric_name)
     if progress_callback is not None:
         progress_callback({
@@ -464,6 +485,7 @@ def tune_curves(
         observed,
         metric=metric_name,
         complexity_penalty=complexity_penalty,
+        precision=point_precision,
     )
     lut_score = _score_points(pruned_points, observed, metric=metric_name)
     source_uint8 = _as_uint8_values(source_image).copy()

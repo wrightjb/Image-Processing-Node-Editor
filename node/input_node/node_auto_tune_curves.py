@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 import dearpygui.dearpygui as dpg
 
-from auto_tune.curves import DEFAULT_MAX_POINTS, DEFAULT_REFINEMENT_ITERATIONS
+from auto_tune.curves import DEFAULT_MAX_POINTS, DEFAULT_POINT_PRECISION
+from auto_tune.curves import DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.curves import tune_curves
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
@@ -102,6 +103,20 @@ class Node(DpgNodeBase):
                     width=120,
                 )
             with dpg.node_attribute(
+                tag=self._point_precision_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_input_int(
+                    tag=self._point_precision_value_tag(node_id),
+                    label='Point Decimals',
+                    default_value=DEFAULT_POINT_PRECISION,
+                    min_value=0,
+                    min_clamped=True,
+                    max_value=12,
+                    max_clamped=True,
+                    width=120,
+                )
+            with dpg.node_attribute(
                 tag=source_image,
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
@@ -155,6 +170,12 @@ class Node(DpgNodeBase):
 
     def _refinement_iterations_value_tag(self, node_id):
         return self._node_control_value_tag(node_id, self.TYPE_INT, 'RefineRounds')
+
+    def _point_precision_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_INT, 'PointDecimals')
+
+    def _point_precision_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_INT, 'PointDecimals')
 
     def _status_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
@@ -218,17 +239,31 @@ class Node(DpgNodeBase):
             DEFAULT_REFINEMENT_ITERATIONS,
             0,
         )
+        point_precision = min(12, self._int_setting(
+            self._point_precision_value_tag(node_id),
+            DEFAULT_POINT_PRECISION,
+            0,
+        ))
         metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'balanced_huber'
         dpg_set_value(self._max_points_value_tag(node_id), max_points)
         dpg_set_value(self._refinement_iterations_value_tag(node_id), refinement_iterations)
+        dpg_set_value(self._point_precision_value_tag(node_id), point_precision)
         self._set_status(node_id, 'running')
 
         def _progress(update):
-            message = (
-                f"candidate {update['candidate_index']}/{update['candidate_count']}\n"
-                f"points={update['point_count']} bins={update['observed_bins']}\n"
-                f"score={update['score']:.6g}"
-            )
+            if update.get('phase') == 'refine':
+                message = (
+                    f"refine round {update['round_index']} "
+                    f"radius={update['radius']}\n"
+                    f"points={update['point_count']} "
+                    f"score={update['score']:.6g}"
+                )
+            else:
+                message = (
+                    f"candidate {update['candidate_index']}/{update['candidate_count']}\n"
+                    f"points={update['point_count']} bins={update['observed_bins']}\n"
+                    f"score={update['score']:.6g}"
+                )
             if 'image_score' in update:
                 message = f"{message}\nimage={update['image_score']:.6g}"
             print(f'AutoTuneCurves: {message}')
@@ -241,6 +276,7 @@ class Node(DpgNodeBase):
             metric_name=metric_name,
             refinement_iterations=refinement_iterations,
             progress_callback=_progress,
+            point_precision=point_precision,
         )
         dpg_set_value(ports.points.value_tag, str(result.best_parameters['points']))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
@@ -269,6 +305,9 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id): dpg_get_value(
                 self._refinement_iterations_value_tag(node_id),
             ),
+            self._point_precision_value_tag(node_id): dpg_get_value(
+                self._point_precision_value_tag(node_id),
+            ),
             '__cache_enabled__': False,
         }
 
@@ -280,6 +319,7 @@ class Node(DpgNodeBase):
             self._max_points_value_tag(node_id),
             self._metric_value_tag(node_id),
             self._refinement_iterations_value_tag(node_id),
+            self._point_precision_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

@@ -647,3 +647,41 @@ def test_auto_tune_node_passes_refinement_iterations(monkeypatch):
     )
 
     assert result['tune_result'].best_score == 0.0
+
+
+def test_tune_curves_recovers_solar_points():
+    from auto_tune.curves import tune_curves
+    from auto_tune.curves import points_to_lut
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (12, 1))
+    solar_points = [
+        [0, 0],
+        [32, 245],
+        [64, 10],
+        [96, 235],
+        [128, 20],
+        [160, 225],
+        [192, 30],
+        [224, 215],
+        [255, 40],
+    ]
+    target = points_to_lut(solar_points).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=len(solar_points),
+        refinement_iterations=1,
+    )
+
+    assert len(result.best_parameters['points']) <= len(solar_points)
+    assert result.best_score < 80.0
+    assert result.best_parameters['image_score'] < 0.002
+
+
+def test_auto_tune_curves_node_waits_for_run_button():
+    import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
+
+    node = auto_tune_curves_node_module.Node()
+
+    assert node.update(7, [], {}, {}) == (None, {'__auto_tune_ready__': False})

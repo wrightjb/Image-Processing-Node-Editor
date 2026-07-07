@@ -517,12 +517,12 @@ def test_auto_tune_node_passes_selected_metric(monkeypatch):
 
     def _get_value(tag):
         if tag.endswith(':Text:MetricValue'):
-            return 'smoothness'
+            return 'local_smoothness'
         return True
 
     def _tune_stub(source_image, target_image, current_parameters, **kwargs):
         del source_image, target_image, current_parameters
-        assert kwargs['metric_name'] == 'smoothness'
+        assert kwargs['metric_name'] == 'local_smoothness'
         return _TuneResult()
 
     monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
@@ -544,6 +544,25 @@ def test_auto_tune_node_passes_selected_metric(monkeypatch):
     )
 
     assert result['tune_result'].best_score == 0.0
+
+
+def test_local_smoothness_compares_neighbor_contrast_locations():
+    from auto_tune.gaussian_blur import (
+        blur_smoothness_error,
+        local_blur_smoothness_error,
+    )
+
+    candidate = np.array(
+        [[0, 255, 255], [0, 255, 255]],
+        dtype=np.uint8,
+    )
+    target = np.array(
+        [[255, 255, 0], [255, 255, 0]],
+        dtype=np.uint8,
+    )
+
+    assert blur_smoothness_error(candidate, target) == 0.0
+    assert local_blur_smoothness_error(candidate, target) > 0.0
 
 
 def test_smoothness_metric_reports_per_candidate_diagnostics(monkeypatch):

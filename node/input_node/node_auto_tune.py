@@ -91,7 +91,7 @@ class Node(DpgNodeBase):
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
                 dpg.add_combo(
-                    ('mse', 'smoothness'),
+                    ('mse', 'smoothness', 'local_smoothness'),
                     label='Metric',
                     tag=metric_value_tag,
                     default_value='mse',

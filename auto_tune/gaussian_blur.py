@@ -5,6 +5,8 @@
 from dataclasses import replace
 import math
 
+import numpy as np
+
 from auto_tune.service import TuneResult, mean_squared_error
 from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
 from node.process_node.node_gaussian_blur import image_process
@@ -19,30 +21,49 @@ def _luminance_float(image):
     return array
 
 
-def _gradient_energy(image):
+def _local_gradient_energy_map(image):
     luminance = _luminance_float(image)
-    if luminance.shape[0] < 2 or luminance.shape[1] < 2:
-        return 0.0
-    dx = luminance[:, 1:] - luminance[:, :-1]
-    dy = luminance[1:, :] - luminance[:-1, :]
-    return float((dx * dx).mean() + (dy * dy).mean())
+    energy = np.zeros(luminance.shape, dtype='float32')
+    if luminance.shape[1] > 1:
+        dx = luminance[:, 1:] - luminance[:, :-1]
+        energy[:, :-1] += dx * dx
+        energy[:, 1:] += dx * dx
+    if luminance.shape[0] > 1:
+        dy = luminance[1:, :] - luminance[:-1, :]
+        energy[:-1, :] += dy * dy
+        energy[1:, :] += dy * dy
+    return energy
+
+
+def _gradient_energy(image):
+    return float(_local_gradient_energy_map(image).mean())
 
 
 def blur_smoothness_error(candidate, target):
-    """Compare blur strength by high-frequency energy, not pixel equality."""
+    """Compare whole-image blur strength, not pixel equality."""
     candidate_energy = _gradient_energy(candidate)
     target_energy = _gradient_energy(target)
     return abs(candidate_energy - target_energy)
 
 
+def local_blur_smoothness_error(candidate, target):
+    """Compare where neighboring-pixel contrast remains in the image."""
+    return mean_squared_error(
+        _local_gradient_energy_map(candidate),
+        _local_gradient_energy_map(target),
+    )
+
+
 def objective_metric(name):
     if name == 'smoothness':
         return blur_smoothness_error
+    if name == 'local_smoothness':
+        return local_blur_smoothness_error
     return mean_squared_error
 
 
 def objective_metric_diagnostics(name):
-    if name != 'smoothness':
+    if name not in ('smoothness', 'local_smoothness'):
         return None
 
     def _smoothness_diagnostics(candidate, target):

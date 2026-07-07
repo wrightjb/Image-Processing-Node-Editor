@@ -153,6 +153,24 @@ class CurvesPointsEditorMixin:
             return
 
         x, y = point_value
+        if static_x is None and (
+            x < self._min_val
+            or x > self._max_val
+            or y < self._min_val
+            or y > self._max_val
+        ):
+            dpg.delete_item(sender)
+            self._redraw_line(node_id)
+            points = self._get_drag_points(node_id)
+            self._on_points_changed(node_id, points)
+            self._emit_points_changed(
+                node_id,
+                before_points,
+                points,
+                coalesce=False,
+            )
+            return
+
         if static_x is not None:
             x = static_x
         y = max(self._min_val, min(self._max_val, int(y)))

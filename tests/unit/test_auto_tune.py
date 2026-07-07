@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from auto_tune.gaussian_blur import (
     DEFAULT_KERNEL_MAX,
@@ -685,3 +686,18 @@ def test_auto_tune_curves_node_waits_for_run_button():
     node = auto_tune_curves_node_module.Node()
 
     assert node.update(7, [], {}, {}) == (None, {'__auto_tune_ready__': False})
+
+
+def test_image_diff_reports_metrics_and_absolute_visualization():
+    from node.draw_node.node_image_diff import image_process
+
+    image_a = np.array([[[10, 20, 30], [100, 100, 100]]], dtype=np.uint8)
+    image_b = np.array([[[15, 10, 30], [90, 120, 130]]], dtype=np.uint8)
+
+    diff, metrics = image_process(image_a, image_b, amplify=2.0)
+
+    assert diff.tolist() == [[[10, 20, 0], [20, 40, 60]]]
+    assert metrics['mae'] == 12.5
+    assert metrics['mse'] == pytest.approx(254.1666667)
+    assert metrics['max_abs'] == 30.0
+    assert metrics['changed_pixels'] == 2

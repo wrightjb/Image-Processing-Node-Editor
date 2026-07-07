@@ -21,6 +21,9 @@ class CurvesPointsEditorMixin:
     def _get_tag_plot_series_name(self, node_id):
         return f'{self._node_name(node_id)}:line'
 
+    def _get_tag_points_display_name(self, node_id):
+        return f'{self._node_name(node_id)}:points_display'
+
     def _default_points(self):
         return [[self._min_val, self._min_val], [self._max_val, self._max_val]]
 
@@ -90,6 +93,9 @@ class CurvesPointsEditorMixin:
         points = self._get_drag_points(node_id)
         x_values, y_values = zip(*points)
         dpg.set_value(self._get_tag_plot_series_name(node_id), [x_values, y_values])
+        display_tag = self._get_tag_points_display_name(node_id)
+        if dpg.does_item_exist(display_tag):
+            dpg.set_value(display_tag, self._serialize_points(points))
 
     def _reset_points_from_setting(self, node_id, setting_points):
         plot_tag = self._get_tag_plot_name(node_id)
@@ -318,4 +324,12 @@ class CurvesPointsEditorMixin:
                 callback=self._callback_show_export_dialog,
                 user_data=node_id,
             )
+        dpg.add_input_text(
+            tag=self._get_tag_points_display_name(node_id),
+            default_value=self._serialize_points(self._default_points()),
+            readonly=True,
+            multiline=True,
+            width=240,
+            height=90,
+        )
         self._reset_points_from_setting(node_id, self._default_points())

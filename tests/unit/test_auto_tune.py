@@ -113,6 +113,7 @@ def test_tune_gaussian_blur_searches_odd_kernels_and_auto_sigma(monkeypatch):
         current_parameters={'auto_sigma': True},
         kernel_min=1,
         kernel_max=9,
+        metric_name='mse',
     )
 
     assert result.best_parameters['kernel_size'] == 5
@@ -307,6 +308,7 @@ def test_tune_gaussian_blur_does_not_constrain_first_run_to_prior_kernel(monkeyp
         current_parameters={'auto_sigma': True, 'kernel_size': 5},
         kernel_min=1,
         kernel_max=201,
+        metric_name='mse',
         refinement_iterations=1,
     )
 
@@ -334,6 +336,7 @@ def test_tune_gaussian_blur_refines_downscaled_kernel_to_original_scale(monkeypa
         source,
         target,
         current_parameters={'auto_sigma': True},
+        metric_name='mse',
     )
 
     assert result.best_parameters['kernel_size'] == 117
@@ -485,6 +488,7 @@ def test_tune_gaussian_blur_manual_sigma_can_recover_from_bad_prior(monkeypatch)
             'kernel_size': 117,
             'sigma': 2.0,
         },
+        metric_name='mse',
     )
 
     assert abs(result.best_parameters['sigma'] - 60.0) <= 0.5

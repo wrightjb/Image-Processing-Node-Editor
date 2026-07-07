@@ -197,9 +197,9 @@ assumptions:
   strength matching, but it can be fooled when later operations such as curves
   or solarization change global contrast.
 - `local_smoothness`: compares per-pixel neighboring-gradient-energy maps. This
-  is the preferred blur-recovery metric when the target may have had a curve or
-  solarizing curve applied after blur, because it ignores exact color equality
-  while still preserving where local contrast remains.
+  is the default and preferred blur-recovery metric when the target may have had
+  a curve or solarizing curve applied after blur, because it ignores exact color
+  equality while still preserving where local contrast remains.
 
 Future metrics can still be added for other node families:
 

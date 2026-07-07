@@ -484,7 +484,7 @@ def tune_gaussian_blur(
     sigma_step=DEFAULT_SIGMA_STEP,
     max_dimension=DEFAULT_MAX_DIMENSION,
     progress_callback=None,
-    metric_name='mse',
+    metric_name='local_smoothness',
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.

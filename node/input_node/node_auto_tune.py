@@ -94,7 +94,7 @@ class Node(DpgNodeBase):
                     ('mse', 'smoothness', 'local_smoothness'),
                     label='Metric',
                     tag=metric_value_tag,
-                    default_value='mse',
+                    default_value='local_smoothness',
                     width=120,
                 )
             with dpg.node_attribute(
@@ -265,7 +265,7 @@ class Node(DpgNodeBase):
         current_parameters.update(output_parameters)
         auto_sigma = bool(current_parameters.get('auto_sigma', True))
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
-        metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'mse'
+        metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'local_smoothness'
         refinement_iterations = self._refinement_iterations(node_id)
         dpg_set_value(
             self._refinement_iterations_value_tag(node_id),

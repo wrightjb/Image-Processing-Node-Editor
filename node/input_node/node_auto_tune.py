@@ -48,6 +48,7 @@ class Node(DpgNodeBase):
         best_score = best_score_port.dpg_tag
         status_value_tag = self._status_value_tag(node_id)
         auto_sigma_value_tag = self._auto_sigma_value_tag(node_id)
+        metric_value_tag = self._metric_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         with dpg.node(
@@ -82,6 +83,17 @@ class Node(DpgNodeBase):
                     label='Auto Sigma',
                     tag=auto_sigma_value_tag,
                     default_value=True,
+                )
+            with dpg.node_attribute(
+                tag=self._metric_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_combo(
+                    ('mse', 'smoothness'),
+                    label='Metric',
+                    tag=metric_value_tag,
+                    default_value='mse',
+                    width=120,
                 )
             with dpg.node_attribute(
                 tag=source_image,
@@ -128,6 +140,12 @@ class Node(DpgNodeBase):
                 )
 
         return tag_node_name
+
+    def _metric_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'Metric')
+
+    def _metric_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'Metric')
 
     def _auto_sigma_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_INT, 'AutoSigma')
@@ -222,6 +240,7 @@ class Node(DpgNodeBase):
         current_parameters.update(output_parameters)
         auto_sigma = bool(current_parameters.get('auto_sigma', True))
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
+        metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'mse'
         plan = tuning_plan(source, DEFAULT_KERNEL_MIN, DEFAULT_KERNEL_MAX)
         print(
             'AutoTuneGaussianBlur: tuning started; '
@@ -230,6 +249,7 @@ class Node(DpgNodeBase):
             f'({DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}), '
             f'downscale step={plan["downscale_step"]}, '
             f'auto_sigma={auto_sigma}, '
+            f'metric={metric_name}, '
             f'start={current_parameters}.'
         )
 
@@ -254,6 +274,7 @@ class Node(DpgNodeBase):
             target,
             current_parameters=current_parameters,
             progress_callback=_progress,
+            metric_name=metric_name,
         )
         dpg_set_value(
             ports.kernel_size.value_tag,
@@ -295,6 +316,9 @@ class Node(DpgNodeBase):
             self._auto_sigma_value_tag(node_id): dpg_get_value(
                 self._auto_sigma_value_tag(node_id),
             ),
+            self._metric_value_tag(node_id): dpg_get_value(
+                self._metric_value_tag(node_id),
+            ),
             '__cache_enabled__': False,
         }
         return setting_dict
@@ -306,6 +330,7 @@ class Node(DpgNodeBase):
             ports.sigma.value_tag,
             ports.best_score.value_tag,
             self._auto_sigma_value_tag(node_id),
+            self._metric_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

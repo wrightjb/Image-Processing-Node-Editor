@@ -10,6 +10,37 @@ from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
 from node.process_node.node_gaussian_blur import image_process
 
 
+def _luminance_float(image):
+    array = image.astype('float32')
+    if array.max(initial=0.0) > 1.0:
+        array = array / 255.0
+    if array.ndim == 3:
+        array = array.mean(axis=2)
+    return array
+
+
+def _gradient_energy(image):
+    luminance = _luminance_float(image)
+    if luminance.shape[0] < 2 or luminance.shape[1] < 2:
+        return 0.0
+    dx = luminance[:, 1:] - luminance[:, :-1]
+    dy = luminance[1:, :] - luminance[:-1, :]
+    return float((dx * dx).mean() + (dy * dy).mean())
+
+
+def blur_smoothness_error(candidate, target):
+    """Compare blur strength by high-frequency energy, not pixel equality."""
+    candidate_energy = _gradient_energy(candidate)
+    target_energy = _gradient_energy(target)
+    return abs(candidate_energy - target_energy)
+
+
+def objective_metric(name):
+    if name == 'smoothness':
+        return blur_smoothness_error
+    return mean_squared_error
+
+
 def _gaussian_parameter(name):
     for parameter in GaussianBlurNode.parameters:
         if parameter.get('name') == name:
@@ -138,6 +169,7 @@ def _ternary_kernel_search(
     scaled_kernels,
     fixed_parameters,
     progress_callback=None,
+    metric=mean_squared_error,
 ):
     target = target_for_score
     score_cache = {}
@@ -160,7 +192,7 @@ def _ternary_kernel_search(
             int(parameters['kernel_size']),
             float(parameters['sigma']),
         )
-        score = mean_squared_error(image, target)
+        score = metric(image, target)
         evaluated_count += 1
         if best_score is None or score < best_score:
             best_score = score
@@ -217,6 +249,7 @@ def _ternary_sigma_search(
     sigma_candidates,
     fixed_parameters,
     progress_callback=None,
+    metric=mean_squared_error,
 ):
     target = target_for_score
     score_cache = {}
@@ -239,7 +272,7 @@ def _ternary_sigma_search(
             int(parameters['kernel_size']),
             float(parameters['sigma']),
         )
-        score = mean_squared_error(image, target)
+        score = metric(image, target)
         evaluated_count += 1
         if best_score is None or score < best_score:
             best_score = score
@@ -301,6 +334,7 @@ def _tune_gaussian_blur_pass(
     sigma_step,
     starting_sigma,
     max_dimension,
+    metric,
     pass_index,
     pass_count,
     total_evaluated_before,
@@ -343,6 +377,7 @@ def _tune_gaussian_blur_pass(
             scaled_kernels,
             fixed,
             progress_callback=_progress,
+            metric=metric,
         )
     else:
         fixed['sigma'] = starting_sigma
@@ -352,6 +387,7 @@ def _tune_gaussian_blur_pass(
             scaled_kernels,
             fixed,
             progress_callback=_progress,
+            metric=metric,
         )
         if kernel_result.best_score <= 0.0:
             result = kernel_result
@@ -364,6 +400,7 @@ def _tune_gaussian_blur_pass(
                 sigma_candidates,
                 sigma_fixed,
                 progress_callback=_progress,
+                metric=metric,
             )
             result = replace(
                 result,
@@ -406,6 +443,7 @@ def tune_gaussian_blur(
     sigma_step=DEFAULT_SIGMA_STEP,
     max_dimension=DEFAULT_MAX_DIMENSION,
     progress_callback=None,
+    metric_name='mse',
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
@@ -413,6 +451,7 @@ def tune_gaussian_blur(
     When ``auto_sigma`` is true, sigma is fixed to ``0.0`` to match the
     Gaussian Blur node's auto-sigma behavior.
     """
+    metric = objective_metric(metric_name)
     current_parameters = dict(current_parameters or {})
     auto_sigma = bool(current_parameters.get('auto_sigma', True))
     kernel_min, kernel_max = _local_odd_bounds(
@@ -445,6 +484,7 @@ def tune_gaussian_blur(
             sigma_step,
             current_sigma,
             refinement_dimension,
+            metric,
             pass_offset + 1,
             pass_count,
             total_evaluated_count,

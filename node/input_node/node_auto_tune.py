@@ -302,6 +302,12 @@ class Node(DpgNodeBase):
                 f"score={update['score']:.6g} "
                 f"best={update['best_score']:.6g}"
             )
+            if 'candidate_smoothness' in update:
+                message = (
+                    f"{message}\n"
+                    f"smooth={update['candidate_smoothness']:.6g} "
+                    f"target={update['target_smoothness']:.6g}"
+                )
             print(f'AutoTuneGaussianBlur: {message}')
             self._set_status(node_id, message)
 

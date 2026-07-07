@@ -546,6 +546,38 @@ def test_auto_tune_node_passes_selected_metric(monkeypatch):
     assert result['tune_result'].best_score == 0.0
 
 
+def test_smoothness_metric_reports_per_candidate_diagnostics(monkeypatch):
+    updates = []
+    source = np.zeros((4, 4, 1), dtype=np.uint8)
+    target = np.tile(np.arange(4, dtype=np.uint8), (4, 1)).reshape(4, 4, 1)
+
+    def _gaussian_stub(image, kernel, sigma):
+        del sigma
+        return np.full_like(image, kernel[0])
+
+    monkeypatch.setattr(
+        gaussian_blur_module.cv2,
+        'GaussianBlur',
+        _gaussian_stub,
+        raising=False,
+    )
+
+    tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={'auto_sigma': True},
+        kernel_min=1,
+        kernel_max=9,
+        metric_name='smoothness',
+        refinement_iterations=1,
+        progress_callback=updates.append,
+    )
+
+    assert updates
+    assert 'candidate_smoothness' in updates[0]
+    assert 'target_smoothness' in updates[0]
+
+
 def test_auto_tune_node_passes_refinement_iterations(monkeypatch):
     import node.input_node.node_auto_tune as auto_tune_node_module
 

@@ -41,6 +41,19 @@ def objective_metric(name):
     return mean_squared_error
 
 
+def objective_metric_diagnostics(name):
+    if name != 'smoothness':
+        return None
+
+    def _smoothness_diagnostics(candidate, target):
+        return {
+            'candidate_smoothness': _gradient_energy(candidate),
+            'target_smoothness': _gradient_energy(target),
+        }
+
+    return _smoothness_diagnostics
+
+
 def _gaussian_parameter(name):
     for parameter in GaussianBlurNode.parameters:
         if parameter.get('name') == name:
@@ -59,7 +72,7 @@ DEFAULT_SIGMA_MAX = float(_parameter_bound('sigma', 'max', 100.0))
 DEFAULT_SIGMA_STEP = 0.1
 DEFAULT_MAX_DIMENSION = 512
 DEFAULT_REFINEMENT_DIMENSIONS = (128, 256, 512, None)
-DEFAULT_REFINEMENT_ITERATIONS = 3
+DEFAULT_REFINEMENT_ITERATIONS = 1
 
 
 def odd_kernel_values(min_value=DEFAULT_KERNEL_MIN, max_value=DEFAULT_KERNEL_MAX):
@@ -175,6 +188,7 @@ def _ternary_kernel_search(
     fixed_parameters,
     progress_callback=None,
     metric=mean_squared_error,
+    metric_diagnostics=None,
 ):
     target = target_for_score
     score_cache = {}
@@ -205,14 +219,17 @@ def _ternary_kernel_search(
             best_image = image
         score_cache[kernel_size] = (score, image, dict(parameters))
         if progress_callback is not None:
-            progress_callback({
+            update = {
                 'candidate_index': evaluated_count,
                 'candidate_count': total_count,
                 'parameters': dict(parameters),
                 'score': float(score),
                 'best_score': float(best_score),
                 'best_parameters': dict(best_parameters),
-            })
+            }
+            if metric_diagnostics is not None:
+                update.update(metric_diagnostics(image, target))
+            progress_callback(update)
         return score
 
     left = 0
@@ -255,6 +272,7 @@ def _ternary_sigma_search(
     fixed_parameters,
     progress_callback=None,
     metric=mean_squared_error,
+    metric_diagnostics=None,
 ):
     target = target_for_score
     score_cache = {}
@@ -285,14 +303,17 @@ def _ternary_sigma_search(
             best_image = image
         score_cache[sigma] = (score, image, dict(parameters))
         if progress_callback is not None:
-            progress_callback({
+            update = {
                 'candidate_index': evaluated_count,
                 'candidate_count': total_count,
                 'parameters': dict(parameters),
                 'score': float(score),
                 'best_score': float(best_score),
                 'best_parameters': dict(best_parameters),
-            })
+            }
+            if metric_diagnostics is not None:
+                update.update(metric_diagnostics(image, target))
+            progress_callback(update)
         return score
 
     left = 0
@@ -340,6 +361,7 @@ def _tune_gaussian_blur_pass(
     starting_sigma,
     max_dimension,
     metric,
+    metric_diagnostics,
     pass_index,
     pass_count,
     total_evaluated_before,
@@ -383,6 +405,7 @@ def _tune_gaussian_blur_pass(
             fixed,
             progress_callback=_progress,
             metric=metric,
+            metric_diagnostics=metric_diagnostics,
         )
     else:
         fixed['sigma'] = starting_sigma
@@ -393,6 +416,7 @@ def _tune_gaussian_blur_pass(
             fixed,
             progress_callback=_progress,
             metric=metric,
+            metric_diagnostics=metric_diagnostics,
         )
         if kernel_result.best_score <= 0.0:
             result = kernel_result
@@ -406,6 +430,7 @@ def _tune_gaussian_blur_pass(
                 sigma_fixed,
                 progress_callback=_progress,
                 metric=metric,
+                metric_diagnostics=metric_diagnostics,
             )
             result = replace(
                 result,
@@ -458,6 +483,7 @@ def tune_gaussian_blur(
     Gaussian Blur node's auto-sigma behavior.
     """
     metric = objective_metric(metric_name)
+    metric_diagnostics = objective_metric_diagnostics(metric_name)
     current_parameters = dict(current_parameters or {})
     auto_sigma = bool(current_parameters.get('auto_sigma', True))
     refinement_dimensions = _refinement_dimensions_for_image(
@@ -490,6 +516,7 @@ def tune_gaussian_blur(
                 current_sigma,
                 refinement_dimension,
                 metric,
+                metric_diagnostics,
                 pass_index,
                 pass_count,
                 total_evaluated_count,

@@ -725,35 +725,19 @@ def test_tune_curves_refits_sparse_endpoint_segments_and_prunes_extra_points():
     assert result.best_parameters['image_score'] < 1e-4
 
 
-def test_tune_curves_point_precision_controls_serialized_decimals():
-    from auto_tune.curves import points_to_lut, tune_curves
+def test_tune_curves_defaults_to_practical_point_precision():
+    from auto_tune.curves import DEFAULT_POINT_PRECISION, points_to_lut, tune_curves
 
     source = np.tile(np.arange(35, 256, dtype=np.uint8), (4, 1))
     points = [[0, 0], [81.324324, 224], [173.675676, 31], [255, 255]]
     target = points_to_lut(points, quantize=True).astype(np.uint8)[source]
 
-    low_precision = tune_curves(
-        source,
-        target,
-        max_points=4,
-        refinement_iterations=1,
-        point_precision=2,
-    )
-    high_precision = tune_curves(
-        source,
-        target,
-        max_points=4,
-        refinement_iterations=1,
-        point_precision=6,
-    )
+    result = tune_curves(source, target, max_points=4, refinement_iterations=1)
 
-    assert any(
-        isinstance(value, float) and len(str(value).split('.')[-1]) > 2
-        for point in high_precision.best_parameters['points']
-        for value in point
-    )
+    assert DEFAULT_POINT_PRECISION == 3
     assert all(
-        not isinstance(value, float) or len(str(value).split('.')[-1]) <= 2
-        for point in low_precision.best_parameters['points']
+        not isinstance(value, float)
+        or len(str(value).split('.')[-1]) <= DEFAULT_POINT_PRECISION
+        for point in result.best_parameters['points']
         for value in point
     )

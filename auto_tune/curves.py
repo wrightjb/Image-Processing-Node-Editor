@@ -12,7 +12,7 @@ from node.process_node.node_curves import image_process
 DEFAULT_MAX_POINTS = 20
 DEFAULT_REFINEMENT_ITERATIONS = 2
 DEFAULT_COMPLEXITY_PENALTY = 0.25
-DEFAULT_POINT_PRECISION = 6
+DEFAULT_POINT_PRECISION = 3
 _LUT_X = np.arange(256, dtype=np.float32)
 
 
@@ -355,7 +355,7 @@ def refine_curve_points_local_search(
     )
     best_points = _refit_points(points, observed, precision=precision)
     best_score = _score_points(best_points, observed, metric=metric)
-    radii = (64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125)
+    radii = (64, 32, 16, 8, 4, 2, 1)
     for _round in range(max(0, int(iterations))):
         improved = False
         for radius in radii:
@@ -415,6 +415,44 @@ def prune_curve_points(
             if best_removal is None or score_increase < best_removal[0]:
                 best_removal = (score_increase, score, candidate)
         if best_removal is None or best_removal[0] > complexity_penalty:
+            break
+        _increase, best_score, best_points = best_removal
+    return best_points
+
+
+def prune_close_curve_points(
+    points,
+    observed,
+    metric='balanced_huber',
+    min_spacing=2.0,
+    complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
+    precision=DEFAULT_POINT_PRECISION,
+):
+    """Remove nearly overlaid interior points when they do not materially help."""
+    best_points = _refit_points(points, observed, precision=precision)
+    best_score = _score_points(best_points, observed, metric=metric)
+    while len(best_points) > 2:
+        close_indexes = [
+            index
+            for index in range(1, len(best_points) - 1)
+            if (
+                abs(float(best_points[index][0]) - float(best_points[index - 1][0]))
+                < min_spacing
+                or abs(float(best_points[index + 1][0]) - float(best_points[index][0]))
+                < min_spacing
+            )
+        ]
+        if not close_indexes:
+            break
+        best_removal = None
+        for index in close_indexes:
+            candidate = [point[:] for i, point in enumerate(best_points) if i != index]
+            candidate = _refit_points(candidate, observed, precision=precision)
+            score = _score_points(candidate, observed, metric=metric)
+            score_increase = score - best_score
+            if best_removal is None or score_increase < best_removal[0]:
+                best_removal = (score_increase, score, candidate)
+        if best_removal is None or best_removal[0] > (complexity_penalty * 4.0):
             break
         _increase, best_score, best_points = best_removal
     return best_points
@@ -480,6 +518,13 @@ def tune_curves(
             'point_count': len(refined_points),
         })
 
+    refined_points = prune_close_curve_points(
+        refined_points,
+        observed,
+        metric=metric_name,
+        complexity_penalty=complexity_penalty,
+        precision=point_precision,
+    )
     pruned_points = prune_curve_points(
         refined_points,
         observed,

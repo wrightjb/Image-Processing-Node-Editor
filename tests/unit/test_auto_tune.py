@@ -701,3 +701,25 @@ def test_image_diff_reports_metrics_and_absolute_visualization():
     assert metrics['mse'] == pytest.approx(254.1666667)
     assert metrics['max_abs'] == 30.0
     assert metrics['changed_pixels'] == 2
+
+
+def test_tune_curves_refits_sparse_endpoint_segments_and_prunes_extra_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(35, 256, dtype=np.uint8), (10, 1))
+    points = [[0, 0], [78, 240], [188, 34], [255, 255]]
+    target = points_to_lut(points, quantize=True).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=10,
+        refinement_iterations=2,
+    )
+
+    recovered = result.best_parameters['points']
+    assert len(recovered) == 4
+    assert recovered[0][1] < 5
+    assert recovered[1][0] == 78
+    assert recovered[2][0] == 188
+    assert result.best_parameters['image_score'] < 1e-4

@@ -51,8 +51,8 @@ class CurvesPointsEditorMixin:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
             try:
-                x = int(point[0])
-                y = int(point[1])
+                x = float(point[0])
+                y = float(point[1])
             except (TypeError, ValueError):
                 continue
             x = max(self._min_val, min(self._max_val, x))
@@ -106,7 +106,7 @@ class CurvesPointsEditorMixin:
         for point in points_to_add:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
-            x, y = int(point[0]), int(point[1])
+            x, y = float(point[0]), float(point[1])
             y = max(self._min_val, min(self._max_val, y))
             static_x = x if x in [self._min_val, self._max_val] else None
             dpg.add_drag_point(
@@ -179,7 +179,7 @@ class CurvesPointsEditorMixin:
 
         if static_x is not None:
             x = static_x
-        y = max(self._min_val, min(self._max_val, int(y)))
+        y = max(self._min_val, min(self._max_val, float(y)))
         dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
         points = self._get_drag_points(node_id)

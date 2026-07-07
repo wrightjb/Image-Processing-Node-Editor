@@ -122,16 +122,6 @@ def sigma_values(
     return tuple(values)
 
 
-def _local_odd_bounds(center, min_value, max_value):
-    if center is None:
-        return min_value, max_value
-    center = int(center)
-    radius = max(16, abs(center) // 2)
-    local_min = max(int(min_value), center - radius)
-    local_max = min(int(max_value), center + radius)
-    return local_min, local_max
-
-
 def _downscale_for_tuning(image, max_dimension=DEFAULT_MAX_DIMENSION):
     height, width = image.shape[:2]
     largest_dimension = max(height, width)

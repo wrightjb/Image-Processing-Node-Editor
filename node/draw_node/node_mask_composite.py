@@ -72,7 +72,6 @@ class Node(DpgNodeBase):
     )
 
     _opencv_setting_dict = None
-    _debug_state_by_node = {}
 
     def add_node(
         self,
@@ -102,8 +101,6 @@ class Node(DpgNodeBase):
         elapsed_port = ports.elapsed
         elapsed = elapsed_port.dpg_tag
         elapsed_value = elapsed_port.value_tag
-        status_attr = self._status_attr_tag(node_id)
-        status_value = self._status_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         small_window_w = self._opencv_setting_dict['process_width']
@@ -124,14 +121,6 @@ class Node(DpgNodeBase):
 
         with dpg.node(tag=tag_node_name, parent=parent, label=self.node_label, pos=pos):
             self.add_editor_toolbar(node_id, callback=callback)
-            with dpg.node_attribute(
-                tag=status_attr,
-                attribute_type=dpg.mvNode_Attr_Static,
-            ):
-                dpg.add_text(
-                    'created; waiting for update() to run',
-                    tag=status_value,
-                )
             with dpg.node_attribute(
                 tag=image_a,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -168,11 +157,6 @@ class Node(DpgNodeBase):
                 ):
                     dpg.add_text(tag=elapsed_value, default_value='elapsed time(ms)')
 
-        self._debug_print(
-            node_id,
-            'add_node',
-            'created Mask Composite node; waiting for runtime update',
-        )
         return tag_node_name
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
@@ -187,12 +171,7 @@ class Node(DpgNodeBase):
         image_a_port_name = ports.image_a.port_name
         mask_port_name = ports.mask.port_name
         image_b_port_name = ports.image_b.port_name
-        status_value_tag = self._status_value_tag(node_id)
-
-        dpg_set_value(status_value_tag, 'updating connections')
-
         images_by_port = {}
-        debug_connections = []
         for (
             connection_info,
             source_tag,
@@ -207,13 +186,7 @@ class Node(DpgNodeBase):
             source_node_key = self._connection_source_node_key(
                 connection_info, source_tag
             )
-            source_image = node_image_dict.get(source_node_key)
-            images_by_port[destination_port_name] = source_image
-            debug_connections.append(
-                f'{source_node_key}->{destination_port_name} '
-                f'type={enum_value(connection_type)} '
-                f'image={source_image is not None}'
-            )
+            images_by_port[destination_port_name] = node_image_dict.get(source_node_key)
 
         image_a = images_by_port.get(image_a_port_name)
         mask = images_by_port.get(mask_port_name)
@@ -221,39 +194,10 @@ class Node(DpgNodeBase):
         frame = image_a
         result = None
 
-        self._debug_print(
-            node_id,
-            'update',
-            f'raw_connections={len(connection_list)}; '
-            f'image_links={len(images_by_port)}; '
-            f'image_a={image_a is not None}; '
-            f'mask={mask is not None}; '
-            f'image_b={image_b is not None}; '
-            f'links={debug_connections}; '
-            f'available_images={list(node_image_dict.keys())}'
-        )
-
-        if image_a is None:
-            dpg_set_value(
-                status_value_tag,
-                f'waiting for Image A ({len(images_by_port)} image link(s) seen)',
-            )
-        elif mask is None:
-            dpg_set_value(
-                status_value_tag,
-                f'waiting for Mask; passing Image A through '
-                f'({len(images_by_port)} image link(s) seen)',
-            )
-        else:
+        if image_a is not None and mask is not None:
             start_time = time.perf_counter() if use_pref_counter else None
             invert_mask = bool(dpg_get_value(ports.invert_mask.value_tag))
-            mask_bool = _mask_to_bool(mask, image_a)
-            mask_white_ratio = float(np.mean(mask_bool)) * 100.0
             frame = image_process(image_a, mask, image_b, invert_mask)
-            dpg_set_value(
-                status_value_tag,
-                f'composited; mask white {mask_white_ratio:.1f}%',
-            )
             if use_pref_counter and start_time is not None:
                 elapsed_time = int((time.perf_counter() - start_time) * 1000)
                 dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
@@ -264,33 +208,16 @@ class Node(DpgNodeBase):
 
         return frame, result
 
-    def _debug_print(self, node_id, stage, message):
-        node_key = self._node_name(node_id)
-        key = (node_key, stage)
-        count, last_message = self._debug_state_by_node.get(key, (0, None))
-        count += 1
-        if count <= 10 or message != last_message:
-            print(f'[MaskComposite][{node_key}][{stage}][#{count}] {message}')
-        self._debug_state_by_node[key] = (count, message)
-
-    def _status_attr_tag(self, node_id):
-        return f'{self._node_name(node_id)}:StatusAttr'
-
-    def _status_value_tag(self, node_id):
-        return f'{self._node_name(node_id)}:StatusValue'
-
     def close(self, node_id):
         del node_id
 
     def get_setting_dict(self, node_id):
         tag_node_name = self._node_name(node_id)
         invert_value_tag = self.ports(node_id).invert_mask.value_tag
-        self._debug_print(node_id, 'get_setting_dict', 'runtime/settings requested')
         return {
             'ver': self._ver,
             'pos': dpg.get_item_pos(tag_node_name),
             invert_value_tag: dpg_get_value(invert_value_tag),
-            '__cache_enabled__': False,
         }
 
     def set_setting_dict(self, node_id, setting_dict):

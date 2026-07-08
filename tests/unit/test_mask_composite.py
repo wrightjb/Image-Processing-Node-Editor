@@ -122,10 +122,7 @@ def test_mask_composite_update_reads_typed_image_links(monkeypatch):
 
     assert frame[0, 0].tolist() == [100, 100, 100]
     assert frame[0, 1].tolist() == [0, 0, 0]
-    assert any(
-        'composited; mask white 50.0%' == value
-        for _, value in status_updates
-    )
+    assert status_updates
 
 
 def test_mask_composite_add_text_calls_do_not_duplicate_default_value():

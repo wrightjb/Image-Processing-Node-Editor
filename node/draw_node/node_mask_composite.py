@@ -183,6 +183,8 @@ class Node(DpgNodeBase):
         image_b_port_name = ports.image_b.port_name
         status_value_tag = self._status_value_tag(node_id)
 
+        dpg_set_value(status_value_tag, 'updating connections')
+
         images_by_port = {}
         for (
             connection_info,
@@ -207,9 +209,16 @@ class Node(DpgNodeBase):
         result = None
 
         if image_a is None:
-            dpg_set_value(status_value_tag, 'waiting for Image A')
+            dpg_set_value(
+                status_value_tag,
+                f'waiting for Image A ({len(images_by_port)} image link(s) seen)',
+            )
         elif mask is None:
-            dpg_set_value(status_value_tag, 'waiting for Mask; passing Image A through')
+            dpg_set_value(
+                status_value_tag,
+                f'waiting for Mask; passing Image A through '
+                f'({len(images_by_port)} image link(s) seen)',
+            )
         else:
             start_time = time.perf_counter() if use_pref_counter else None
             invert_mask = bool(dpg_get_value(ports.invert_mask.value_tag))
@@ -246,6 +255,7 @@ class Node(DpgNodeBase):
             'ver': self._ver,
             'pos': dpg.get_item_pos(tag_node_name),
             invert_value_tag: dpg_get_value(invert_value_tag),
+            '__cache_enabled__': False,
         }
 
     def set_setting_dict(self, node_id, setting_dict):

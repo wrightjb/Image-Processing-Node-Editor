@@ -166,7 +166,7 @@ class Node(DpgNodeBase):
                     tag=elapsed,
                     attribute_type=dpg.mvNode_Attr_Output,
                 ):
-                    dpg.add_text(elapsed_value, default_value='elapsed time(ms)')
+                    dpg.add_text(tag=elapsed_value, default_value='elapsed time(ms)')
 
         self._debug_print(
             node_id,

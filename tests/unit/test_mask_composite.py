@@ -126,3 +126,26 @@ def test_mask_composite_update_reads_typed_image_links(monkeypatch):
         'composited; mask white 50.0%' == value
         for _, value in status_updates
     )
+
+
+def test_mask_composite_add_text_calls_do_not_duplicate_default_value():
+    import ast
+    from pathlib import Path
+
+    source_path = Path(node_mask_composite.__file__)
+    tree = ast.parse(source_path.read_text(encoding='utf-8'))
+    offenders = []
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call):
+            continue
+        if not isinstance(call.func, ast.Attribute):
+            continue
+        if call.func.attr != 'add_text':
+            continue
+        has_default_keyword = any(
+            keyword.arg == 'default_value' for keyword in call.keywords
+        )
+        if call.args and has_default_keyword:
+            offenders.append(call.lineno)
+
+    assert offenders == []

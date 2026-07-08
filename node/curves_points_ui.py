@@ -335,10 +335,9 @@ class CurvesPointsEditorMixin:
                 callback=self._callback_copy_points,
                 user_data=node_id,
             )
-        with dpg.collapsing_header(label='Points', default_open=False):
-            dpg.add_text(
-                self._serialize_points(self._default_points()),
-                tag=self._get_tag_points_display_name(node_id),
-                wrap=240,
-            )
+        dpg.add_text(
+            '',
+            tag=self._get_tag_points_display_name(node_id),
+            show=False,
+        )
         self._reset_points_from_setting(node_id, self._default_points())

@@ -230,6 +230,11 @@ class CurvesPointsEditorMixin:
     def _import_dialog_tag(self, node_id):
         return f'{self._node_name(node_id)}:CurvesPointsImportDialog'
 
+
+    def _callback_copy_points(self, sender, app_data, user_data):
+        del sender, app_data
+        dpg.set_clipboard_text(self._serialize_points(self._get_drag_points(user_data)))
+
     def _callback_show_export_dialog(self, sender, app_data, user_data):
         del sender, app_data
         dpg.show_item(self._export_dialog_tag(user_data))
@@ -324,9 +329,16 @@ class CurvesPointsEditorMixin:
                 callback=self._callback_show_export_dialog,
                 user_data=node_id,
             )
-        dpg.add_text(
-            self._serialize_points(self._default_points()),
-            tag=self._get_tag_points_display_name(node_id),
-            wrap=240,
-        )
+            dpg.add_button(
+                label='Copy Points',
+                width=92,
+                callback=self._callback_copy_points,
+                user_data=node_id,
+            )
+        with dpg.collapsing_header(label='Points', default_open=False):
+            dpg.add_text(
+                self._serialize_points(self._default_points()),
+                tag=self._get_tag_points_display_name(node_id),
+                wrap=240,
+            )
         self._reset_points_from_setting(node_id, self._default_points())

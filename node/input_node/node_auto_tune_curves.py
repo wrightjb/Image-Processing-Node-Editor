@@ -117,12 +117,14 @@ class Node(DpgNodeBase):
             ):
                 dpg.add_input_text(
                     tag=points_port.value_tag,
-                    label='points',
                     default_value='[[0, 0], [255, 255]]',
-                    readonly=True,
-                    multiline=True,
-                    width=180,
-                    height=80,
+                    show=False,
+                )
+                dpg.add_button(
+                    label='Copy Points',
+                    width=120,
+                    callback=self._copy_points_to_clipboard,
+                    user_data=points_port.value_tag,
                 )
             with dpg.node_attribute(
                 tag=best_score,
@@ -137,6 +139,11 @@ class Node(DpgNodeBase):
                 )
 
         return tag_node_name
+
+
+    def _copy_points_to_clipboard(self, sender, app_data, user_data):
+        del sender, app_data
+        dpg.set_clipboard_text(str(dpg_get_value(user_data) or ''))
 
     def _metric_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Metric')

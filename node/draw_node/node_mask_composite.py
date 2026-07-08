@@ -7,7 +7,13 @@ import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.node_abc import DpgNodeBase
-from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node.port_model import (
+    InputPort,
+    OutputPort,
+    PortDataType,
+    PortSpecs,
+    enum_value,
+)
 from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
 
 
@@ -75,7 +81,6 @@ class Node(DpgNodeBase):
         opencv_setting_dict=None,
         callback=None,
     ):
-        del callback
         tag_node_name = self._node_name(node_id)
         ports = self.create_ports(node_id)
         image_a_port = ports.image_a
@@ -115,6 +120,7 @@ class Node(DpgNodeBase):
             )
 
         with dpg.node(tag=tag_node_name, parent=parent, label=self.node_label, pos=pos):
+            self.add_editor_toolbar(node_id, callback=callback)
             with dpg.node_attribute(
                 tag=image_a,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -169,10 +175,14 @@ class Node(DpgNodeBase):
             destination_tag,
             connection_type,
         ) in self._iter_connection_infos(connection_list):
-            if connection_type != self.TYPE_IMAGE:
+            if enum_value(connection_type) != self.TYPE_IMAGE:
                 continue
-            destination_port_name = self._connection_port_name(connection_info, destination_tag)
-            source_node_key = self._connection_source_node_key(connection_info, source_tag)
+            destination_port_name = self._connection_port_name(
+                connection_info, destination_tag
+            )
+            source_node_key = self._connection_source_node_key(
+                connection_info, source_tag
+            )
             images_by_port[destination_port_name] = node_image_dict.get(source_node_key)
 
         image_a = images_by_port.get('Input01')

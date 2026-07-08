@@ -21,6 +21,9 @@ class CurvesPointsEditorMixin:
     def _get_tag_plot_series_name(self, node_id):
         return f'{self._node_name(node_id)}:line'
 
+    def _get_tag_points_display_name(self, node_id):
+        return f'{self._node_name(node_id)}:points_display'
+
     def _default_points(self):
         return [[self._min_val, self._min_val], [self._max_val, self._max_val]]
 
@@ -48,8 +51,8 @@ class CurvesPointsEditorMixin:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
             try:
-                x = int(point[0])
-                y = int(point[1])
+                x = float(point[0])
+                y = float(point[1])
             except (TypeError, ValueError):
                 continue
             x = max(self._min_val, min(self._max_val, x))
@@ -90,6 +93,9 @@ class CurvesPointsEditorMixin:
         points = self._get_drag_points(node_id)
         x_values, y_values = zip(*points)
         dpg.set_value(self._get_tag_plot_series_name(node_id), [x_values, y_values])
+        display_tag = self._get_tag_points_display_name(node_id)
+        if dpg.does_item_exist(display_tag):
+            dpg.set_value(display_tag, self._serialize_points(points))
 
     def _reset_points_from_setting(self, node_id, setting_points):
         plot_tag = self._get_tag_plot_name(node_id)
@@ -100,7 +106,7 @@ class CurvesPointsEditorMixin:
         for point in points_to_add:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
-            x, y = int(point[0]), int(point[1])
+            x, y = float(point[0]), float(point[1])
             y = max(self._min_val, min(self._max_val, y))
             static_x = x if x in [self._min_val, self._max_val] else None
             dpg.add_drag_point(
@@ -173,7 +179,7 @@ class CurvesPointsEditorMixin:
 
         if static_x is not None:
             x = static_x
-        y = max(self._min_val, min(self._max_val, int(y)))
+        y = max(self._min_val, min(self._max_val, float(y)))
         dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
         points = self._get_drag_points(node_id)
@@ -223,6 +229,11 @@ class CurvesPointsEditorMixin:
 
     def _import_dialog_tag(self, node_id):
         return f'{self._node_name(node_id)}:CurvesPointsImportDialog'
+
+
+    def _callback_copy_points(self, sender, app_data, user_data):
+        del sender, app_data
+        dpg.set_clipboard_text(self._serialize_points(self._get_drag_points(user_data)))
 
     def _callback_show_export_dialog(self, sender, app_data, user_data):
         del sender, app_data
@@ -318,4 +329,15 @@ class CurvesPointsEditorMixin:
                 callback=self._callback_show_export_dialog,
                 user_data=node_id,
             )
+            dpg.add_button(
+                label='Copy Points',
+                width=92,
+                callback=self._callback_copy_points,
+                user_data=node_id,
+            )
+        dpg.add_text(
+            '',
+            tag=self._get_tag_points_display_name(node_id),
+            show=False,
+        )
         self._reset_points_from_setting(node_id, self._default_points())

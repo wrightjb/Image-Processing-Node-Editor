@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from auto_tune.gaussian_blur import (
     DEFAULT_KERNEL_MAX,
@@ -647,3 +648,96 @@ def test_auto_tune_node_passes_refinement_iterations(monkeypatch):
     )
 
     assert result['tune_result'].best_score == 0.0
+
+
+def test_tune_curves_recovers_solar_points():
+    from auto_tune.curves import tune_curves
+    from auto_tune.curves import points_to_lut
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (12, 1))
+    solar_points = [
+        [0, 0],
+        [32, 245],
+        [64, 10],
+        [96, 235],
+        [128, 20],
+        [160, 225],
+        [192, 30],
+        [224, 215],
+        [255, 40],
+    ]
+    target = points_to_lut(solar_points).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=len(solar_points),
+        refinement_iterations=1,
+    )
+
+    assert len(result.best_parameters['points']) <= len(solar_points)
+    assert result.best_score < 80.0
+    assert result.best_parameters['image_score'] < 0.002
+
+
+def test_auto_tune_curves_node_waits_for_run_button():
+    import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
+
+    node = auto_tune_curves_node_module.Node()
+
+    assert node.update(7, [], {}, {}) == (None, {'__auto_tune_ready__': False})
+
+
+def test_image_diff_reports_metrics_and_absolute_visualization():
+    from node.draw_node.node_image_diff import image_process
+
+    image_a = np.array([[[10, 20, 30], [100, 100, 100]]], dtype=np.uint8)
+    image_b = np.array([[[15, 10, 30], [90, 120, 130]]], dtype=np.uint8)
+
+    diff, metrics = image_process(image_a, image_b, amplify=2.0)
+
+    assert diff.tolist() == [[[10, 20, 0], [20, 40, 60]]]
+    assert metrics['mae'] == 12.5
+    assert metrics['mse'] == pytest.approx(254.1666667)
+    assert metrics['max_abs'] == 30.0
+    assert metrics['changed_pixels'] == 2
+
+
+def test_tune_curves_refits_sparse_endpoint_segments_and_prunes_extra_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(35, 256, dtype=np.uint8), (10, 1))
+    points = [[0, 0], [78, 240], [188, 34], [255, 255]]
+    target = points_to_lut(points, quantize=True).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=10,
+        refinement_iterations=2,
+    )
+
+    recovered = result.best_parameters['points']
+    assert len(recovered) == 4
+    assert recovered[0][1] < 5
+    assert recovered[1][0] == 78
+    assert recovered[2][0] == 188
+    assert result.best_parameters['image_score'] < 1e-4
+
+
+def test_tune_curves_defaults_to_practical_point_precision():
+    from auto_tune.curves import DEFAULT_POINT_PRECISION, points_to_lut, tune_curves
+
+    source = np.tile(np.arange(35, 256, dtype=np.uint8), (4, 1))
+    points = [[0, 0], [81.324324, 224], [173.675676, 31], [255, 255]]
+    target = points_to_lut(points, quantize=True).astype(np.uint8)[source]
+
+    result = tune_curves(source, target, max_points=4, refinement_iterations=1)
+
+    assert DEFAULT_POINT_PRECISION == 3
+    assert all(
+        not isinstance(value, float)
+        or len(str(value).split('.')[-1]) <= DEFAULT_POINT_PRECISION
+        for point in result.best_parameters['points']
+        for value in point
+    )

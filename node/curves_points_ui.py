@@ -324,12 +324,9 @@ class CurvesPointsEditorMixin:
                 callback=self._callback_show_export_dialog,
                 user_data=node_id,
             )
-        dpg.add_input_text(
+        dpg.add_text(
+            self._serialize_points(self._default_points()),
             tag=self._get_tag_points_display_name(node_id),
-            default_value=self._serialize_points(self._default_points()),
-            readonly=True,
-            multiline=True,
-            width=240,
-            height=90,
+            wrap=240,
         )
         self._reset_points_from_setting(node_id, self._default_points())

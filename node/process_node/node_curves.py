@@ -12,21 +12,73 @@ from node.port_model import PortDataType
 from node_editor.util import dpg_set_value
 
 
-def image_process(image, points):
-    # Builds LUT from curves points
-    # Assumes points are pre-sorted and between 0 and 255
+_CHANNELS = ('White', 'Red', 'Green', 'Blue')
+_BGR_INDEX_BY_CHANNEL = {
+    'Blue': 0,
+    'Green': 1,
+    'Red': 2,
+}
+
+
+def _normalize_channel(channel):
+    if isinstance(channel, str) and channel in _CHANNELS:
+        return channel
+    return 'White'
+
+
+def _payload_channel(value, fallback='White'):
+    if isinstance(value, str):
+        import ast
+        import json
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            try:
+                value = ast.literal_eval(value)
+            except (SyntaxError, ValueError):
+                return _normalize_channel(fallback)
+    if isinstance(value, dict):
+        return _normalize_channel(value.get('channel', fallback))
+    return _normalize_channel(fallback)
+
+
+def _apply_lut(image, table):
+    try:
+        return cv2.LUT(image, table)
+    except AttributeError:
+        return table[np.asarray(image)]
+
+
+def image_process(image, points, channel='White'):
+    # Builds LUT from curves points.
+    # Assumes points are pre-sorted and between 0 and 255.
     xs, ys = zip(*points)
     table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
-    image = cv2.LUT(image, table)
-    return image
+    channel = _normalize_channel(channel)
+    if channel == 'White' or image is None or image.ndim != 3 or image.shape[2] < 3:
+        return _apply_lut(image, table)
+
+    channel_index = _BGR_INDEX_BY_CHANNEL[channel]
+    output = image.copy()
+    output[:, :, channel_index] = _apply_lut(image[:, :, channel_index], table)
+    return output
 
 
 class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     """Curves adjustment node."""
 
-    _ver = '0.0.3'
+    _ver = '0.0.4'
 
     parameters = [
+        {
+            'name': 'channel',
+            'type': DeclarativeImageProcessNodeBase.TYPE_TEXT,
+            'port': 'Input03',
+            'widget': 'combo',
+            'label': 'Channel',
+            'items': list(_CHANNELS),
+            'default': 'White',
+        },
         {
             'name': 'points',
             'type': PortDataType.CURVE_POINTS,
@@ -47,7 +99,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     def _set_points_parameter_value(self, node_id, points):
         try:
             value_tag = self._parameter_port_ref(
-                node_id, self.parameters[0]
+                node_id, self.parameters[1]
             ).value_tag
         except (KeyError, IndexError):
             return
@@ -67,12 +119,12 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         if before_points == after_points:
             return
         node_id_name = self._node_name(node_id)
-        value_tag = self._parameter_port_ref(node_id, self.parameters[0]).value_tag
+        value_tag = self._parameter_port_ref(node_id, self.parameters[1]).value_tag
         self._ui_callback(
             'parameter_changed',
             {
                 'node_id_name': node_id_name,
-                'port_tag': self._parameter_port_ref(node_id, self.parameters[0]).dpg_tag,
+                'port_tag': self._parameter_port_ref(node_id, self.parameters[1]).dpg_tag,
                 'value_tag': value_tag,
                 'before_value': before_points,
                 'after_value': after_points,
@@ -102,7 +154,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         del tag_node_name, width, callback
         self.build_curve_points_file_dialogs(node_id)
 
-        points_port = self._parameter_port_ref(node_id, self.parameters[0])
+        points_port = self._parameter_port_ref(node_id, self.parameters[1])
         with dpg.node_attribute(
             tag=points_port.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Input,
@@ -117,6 +169,10 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
         raw_points = parameter_values.get('points')
+        parameter_values['channel'] = _payload_channel(
+            raw_points,
+            parameter_values.get('channel', 'White'),
+        )
         current_points = self._get_drag_points(node_id)
         if raw_points is None:
             parameter_values['points'] = current_points
@@ -129,7 +185,11 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         return parameter_values
 
     def process(self, frame, **parameter_values):
-        frame = image_process(frame, parameter_values['points'])
+        frame = image_process(
+            frame,
+            parameter_values['points'],
+            parameter_values.get('channel', 'White'),
+        )
         return frame, None
 
     def get_custom_setting_dict(self, tag_node_name, node_id):

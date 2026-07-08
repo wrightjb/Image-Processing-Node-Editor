@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
-from node.process_node.node_curves import image_process
+from node.process_node.node_curves import _normalize_channel, image_process
 
 DEFAULT_MAX_POINTS = 20
 DEFAULT_REFINEMENT_ITERATIONS = 2
@@ -51,10 +51,18 @@ def _filled_values(observed_values):
     return np.clip(filled, 0, 255).astype(np.float32)
 
 
-def estimate_curve_lut(source_image, target_image):
+def _select_channel(image, channel='White'):
+    channel = _normalize_channel(channel)
+    array = np.asarray(image)
+    if channel == 'White' or array.ndim != 3 or array.shape[2] < 3:
+        return image
+    return array[:, :, {'Blue': 0, 'Green': 1, 'Red': 2}[channel]]
+
+
+def estimate_curve_lut(source_image, target_image, channel='White'):
     """Estimate a 256-entry curves LUT from matching source/target pixels."""
-    source = _as_uint8_values(source_image)
-    target = _as_uint8_values(target_image)
+    source = _as_uint8_values(_select_channel(source_image, channel))
+    target = _as_uint8_values(_select_channel(target_image, channel))
     if source.shape != target.shape:
         raise ValueError(
             'source and target images must have matching shapes: '
@@ -467,9 +475,11 @@ def tune_curves(
     progress_callback=None,
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     point_precision=DEFAULT_POINT_PRECISION,
+    channel='White',
 ):
     """Recover Curves-node points from source/target images."""
-    observed = estimate_curve_lut(source_image, target_image)
+    channel = _normalize_channel(channel)
+    observed = estimate_curve_lut(source_image, target_image, channel=channel)
     x_positions = rdp_curve_x_positions(
         observed.values,
         observed.weights,
@@ -535,7 +545,7 @@ def tune_curves(
     lut_score = _score_points(pruned_points, observed, metric=metric_name)
     source_uint8 = _as_uint8_values(source_image).copy()
     try:
-        best_image = image_process(source_uint8, pruned_points)
+        best_image = image_process(source_uint8, pruned_points, channel=channel)
     except AttributeError:
         best_image = points_to_lut(pruned_points, quantize=True).astype(np.uint8)[source_uint8]
     image_score = mean_squared_error(best_image, target_image)

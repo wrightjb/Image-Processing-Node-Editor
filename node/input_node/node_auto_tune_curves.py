@@ -6,11 +6,12 @@ from auto_tune.curves import DEFAULT_MAX_POINTS, DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.curves import tune_curves
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node.process_node.node_curves import _CHANNELS, _normalize_channel
 from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.2'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -102,6 +103,17 @@ class Node(DpgNodeBase):
                     width=120,
                 )
             with dpg.node_attribute(
+                tag=self._channel_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_combo(
+                    list(_CHANNELS),
+                    label='Channel',
+                    tag=self._channel_value_tag(node_id),
+                    default_value='White',
+                    width=140,
+                )
+            with dpg.node_attribute(
                 tag=source_image,
                 attribute_type=dpg.mvNode_Attr_Input,
             ):
@@ -140,6 +152,14 @@ class Node(DpgNodeBase):
 
         return tag_node_name
 
+    def _channel_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'Channel')
+
+    def _channel_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'Channel')
+
+    def _channel_value(self, node_id):
+        return _normalize_channel(dpg_get_value(self._channel_value_tag(node_id)))
 
     def _copy_points_to_clipboard(self, sender, app_data, user_data):
         del sender, app_data
@@ -252,18 +272,23 @@ class Node(DpgNodeBase):
         result = tune_curves(
             source,
             target,
+            channel=self._channel_value(node_id),
             max_points=max_points,
             metric_name=metric_name,
             refinement_iterations=refinement_iterations,
             progress_callback=_progress,
         )
-        dpg_set_value(ports.points.value_tag, str(result.best_parameters['points']))
+        points_payload = {
+            'channel': self._channel_value(node_id),
+            'points': result.best_parameters['points'],
+        }
+        dpg_set_value(ports.points.value_tag, str(points_payload))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
         self._set_status(node_id, f'done: {len(result.best_parameters["points"])} points')
         return result.best_image, {
             '__auto_tune_ready__': True,
             'tune_result': result,
-            'points': result.best_parameters['points'],
+            'points': points_payload,
         }
 
     def close(self, node_id):
@@ -284,6 +309,7 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id): dpg_get_value(
                 self._refinement_iterations_value_tag(node_id),
             ),
+            self._channel_value_tag(node_id): self._channel_value(node_id),
             '__cache_enabled__': False,
         }
 
@@ -295,6 +321,7 @@ class Node(DpgNodeBase):
             self._max_points_value_tag(node_id),
             self._metric_value_tag(node_id),
             self._refinement_iterations_value_tag(node_id),
+            self._channel_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

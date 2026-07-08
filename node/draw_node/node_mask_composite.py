@@ -26,9 +26,9 @@ def _resize_like(image, reference):
 
 def _ensure_three_channels(image):
     if image.ndim == 2:
-        return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        return np.repeat(image[:, :, None], 3, axis=2)
     if image.shape[2] == 1:
-        return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        return np.repeat(image, 3, axis=2)
     if image.shape[2] == 4:
         return image[:, :, :3]
     return image
@@ -37,7 +37,7 @@ def _ensure_three_channels(image):
 def _mask_to_bool(mask, reference):
     mask = _resize_like(mask, reference)
     if mask.ndim == 3:
-        mask = cv2.cvtColor(_ensure_three_channels(mask), cv2.COLOR_BGR2GRAY)
+        mask = _ensure_three_channels(mask).max(axis=2)
     return mask > 0
 
 
@@ -101,6 +101,8 @@ class Node(DpgNodeBase):
         elapsed_port = ports.elapsed
         elapsed = elapsed_port.dpg_tag
         elapsed_value = elapsed_port.value_tag
+        status_attr = self._status_attr_tag(node_id)
+        status_value = self._status_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
 
         small_window_w = self._opencv_setting_dict['process_width']
@@ -121,6 +123,14 @@ class Node(DpgNodeBase):
 
         with dpg.node(tag=tag_node_name, parent=parent, label=self.node_label, pos=pos):
             self.add_editor_toolbar(node_id, callback=callback)
+            with dpg.node_attribute(
+                tag=status_attr,
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_text(
+                    'waiting for Image A and Mask',
+                    tag=status_value,
+                )
             with dpg.node_attribute(
                 tag=image_a,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -168,6 +178,11 @@ class Node(DpgNodeBase):
         small_window_h = self._opencv_setting_dict['process_height']
         use_pref_counter = self._opencv_setting_dict['use_pref_counter']
 
+        image_a_port_name = ports.image_a.port_name
+        mask_port_name = ports.mask.port_name
+        image_b_port_name = ports.image_b.port_name
+        status_value_tag = self._status_value_tag(node_id)
+
         images_by_port = {}
         for (
             connection_info,
@@ -185,16 +200,26 @@ class Node(DpgNodeBase):
             )
             images_by_port[destination_port_name] = node_image_dict.get(source_node_key)
 
-        image_a = images_by_port.get('Input01')
-        mask = images_by_port.get('Input02')
-        image_b = images_by_port.get('Input03')
+        image_a = images_by_port.get(image_a_port_name)
+        mask = images_by_port.get(mask_port_name)
+        image_b = images_by_port.get(image_b_port_name)
         frame = image_a
         result = None
 
-        if image_a is not None and mask is not None:
+        if image_a is None:
+            dpg_set_value(status_value_tag, 'waiting for Image A')
+        elif mask is None:
+            dpg_set_value(status_value_tag, 'waiting for Mask; passing Image A through')
+        else:
             start_time = time.perf_counter() if use_pref_counter else None
             invert_mask = bool(dpg_get_value(ports.invert_mask.value_tag))
+            mask_bool = _mask_to_bool(mask, image_a)
+            mask_white_ratio = float(np.mean(mask_bool)) * 100.0
             frame = image_process(image_a, mask, image_b, invert_mask)
+            dpg_set_value(
+                status_value_tag,
+                f'composited; mask white {mask_white_ratio:.1f}%',
+            )
             if use_pref_counter and start_time is not None:
                 elapsed_time = int((time.perf_counter() - start_time) * 1000)
                 dpg_set_value(elapsed_value_tag, str(elapsed_time).zfill(4) + 'ms')
@@ -204,6 +229,12 @@ class Node(DpgNodeBase):
             dpg_set_value(output_value_tag, texture)
 
         return frame, result
+
+    def _status_attr_tag(self, node_id):
+        return f'{self._node_name(node_id)}:StatusAttr'
+
+    def _status_value_tag(self, node_id):
+        return f'{self._node_name(node_id)}:StatusValue'
 
     def close(self, node_id):
         del node_id

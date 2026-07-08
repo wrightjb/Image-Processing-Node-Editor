@@ -19,6 +19,7 @@ import node.process_node.node_omnidirectional_viewer as omni_module
 import node.process_node.node_hue_rotation as hue_rotation_module
 import node.process_node.node_hue_saturation_adjustment as hue_saturation_adjustment_module
 import node.process_node.node_warmth_tint as warmth_tint_module
+import node.process_node.node_rgb_channel_swap as rgb_channel_swap_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -35,6 +36,7 @@ OmniNode = omni_module.Node
 HueRotationNode = hue_rotation_module.Node
 HueSaturationAdjustmentNode = hue_saturation_adjustment_module.Node
 WarmthTintNode = warmth_tint_module.Node
+RGBChannelSwapNode = rgb_channel_swap_module.Node
 
 
 class DpgStub:
@@ -1216,3 +1218,25 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
     assert out_frame.shape == frame.shape
     assert written['102:Curves:CurvePoints:Input02Value'] == '[[0, 0], [96, 180], [255, 255]]'
     assert captured['points'] == [[0, 0], [96, 180], [255, 255]]
+
+
+def test_rgb_channel_swap_reorders_rgb_channels_and_preserves_alpha():
+    bgr_pixel = [10, 20, 30]
+    bgra_pixel = [10, 20, 30, 40]
+
+    bgr_image = np.array([[bgr_pixel]], dtype=np.uint8)
+    bgra_image = np.array([[bgra_pixel]], dtype=np.uint8)
+
+    swapped_bgr = rgb_channel_swap_module.image_process(bgr_image, 'BGR')
+    swapped_bgra = rgb_channel_swap_module.image_process(bgra_image, 'GBR')
+
+    assert swapped_bgr[0, 0].tolist() == [30, 20, 10]
+    assert swapped_bgra[0, 0].tolist() == [30, 10, 20, 40]
+
+
+def test_rgb_channel_swap_node_falls_back_to_rgb_on_invalid_order():
+    image = np.array([[[10, 20, 30]]], dtype=np.uint8)
+
+    result = rgb_channel_swap_module.image_process(image, 'invalid')
+
+    assert result[0, 0].tolist() == [10, 20, 30]

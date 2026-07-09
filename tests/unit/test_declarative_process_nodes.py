@@ -32,6 +32,17 @@ GaussianBlurNode = gaussian_blur_module.Node
 CropNode = crop_module.Node
 SimpleFilterNode = simple_filter_module.Node
 CurvesNode = curves_module.Node
+
+
+def _identity_curve_set():
+    return {
+        'White': [[0, 0], [255, 255]],
+        'Red': [[0, 0], [255, 255]],
+        'Green': [[0, 0], [255, 255]],
+        'Blue': [[0, 0], [255, 255]],
+    }
+
+
 OmniNode = omni_module.Node
 HueRotationNode = hue_rotation_module.Node
 HueSaturationAdjustmentNode = hue_saturation_adjustment_module.Node
@@ -512,8 +523,9 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
 
     captured = {}
 
-    def _lut_stub(image, points):
+    def _lut_stub(image, points, channel='White'):
         captured['points'] = points
+        captured['channel'] = channel
         return image
 
     monkeypatch.setattr(curves_module, 'image_process', _lut_stub)
@@ -531,8 +543,20 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert captured['points'] == [[0, 0], [128, 200], [255, 255]]
+    expected_curves = _identity_curve_set()
+    expected_curves['White'] = [[0, 0], [128, 200], [255, 255]]
+    assert captured['points'] == expected_curves
+    assert captured['channel'] == 'White'
 
+
+
+def test_curves_node_declares_curve_set_output_port():
+    node = CurvesNode()
+
+    port = node._curves_output_port_ref(17)
+
+    assert port.dpg_tag == '17:Curves:CurvePoints:Output03'
+    assert port.value_tag == '17:Curves:CurvePoints:Output03Value'
 
 def test_curves_node_settings_include_points(monkeypatch):
     node = CurvesNode()
@@ -546,7 +570,7 @@ def test_curves_node_settings_include_points(monkeypatch):
 
     assert setting['ver'] == node._ver
     assert setting['pos'] == [10, 20]
-    assert setting['points'] == [[0, 0], [64, 80], [255, 255]]
+    assert setting['curves']['White'] == [[0, 0], [64, 80], [255, 255]]
 
 
 def test_omnidirectional_viewer_reuses_cached_maps(monkeypatch):
@@ -1162,7 +1186,7 @@ def test_custom_parameter_ui_defers_attribute_to_node(monkeypatch):
 
     assert dpg_recorder.node_attributes == []
     assert dpg_recorder.widgets == []
-    assert node.ports(7).parameters['points'].dpg_tag == '7:Curves:CurvePoints:Input02'
+    assert node.ports(7).parameters['curves'].dpg_tag == '7:Curves:CurvePoints:Input02'
 
 
 def test_curves_node_uses_linked_points_parameter(monkeypatch):
@@ -1191,13 +1215,22 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
         _record_write,
     )
     monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
-    monkeypatch.setattr(curves_module.Node, '_get_drag_points', lambda self, node_id: [[0, 0], [255, 255]])
-    monkeypatch.setattr(curves_module.Node, '_reset_points_from_setting', lambda self, node_id, points: None)
+    monkeypatch.setattr(
+        curves_module.Node,
+        '_get_drag_points',
+        lambda self, node_id: [[0, 0], [255, 255]],
+    )
+    monkeypatch.setattr(
+        curves_module.Node,
+        '_reset_points_from_setting',
+        lambda self, node_id, points: None,
+    )
 
     captured = {}
 
-    def _lut_stub(image, points):
+    def _lut_stub(image, points, channel='White'):
         captured['points'] = points
+        captured['channel'] = channel
         return image
 
     monkeypatch.setattr(curves_module, 'image_process', _lut_stub)
@@ -1217,8 +1250,97 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
     assert result is None
     assert out_frame.shape == frame.shape
     assert written['102:Curves:CurvePoints:Input02Value'] == '[[0, 0], [96, 180], [255, 255]]'
-    assert captured['points'] == [[0, 0], [96, 180], [255, 255]]
+    expected_curves = _identity_curve_set()
+    expected_curves['White'] = [[0, 0], [96, 180], [255, 255]]
+    assert captured['points'] == expected_curves
+    assert captured['channel'] == 'White'
 
+def test_curves_image_process_applies_selected_rgb_channel_only():
+    image = np.array([[[10, 20, 30, 40]]], dtype=np.uint8)
+    points = [[0, 0], [255, 255]]
+    points[1][1] = 0
+
+    red = curves_module.image_process(image, points, 'Red')
+    green = curves_module.image_process(image, points, 'Green')
+    blue = curves_module.image_process(image, points, 'Blue')
+
+    assert red[0, 0].tolist() == [10, 20, 0, 40]
+    assert green[0, 0].tolist() == [10, 0, 30, 40]
+    assert blue[0, 0].tolist() == [0, 20, 30, 40]
+
+
+def test_curves_image_process_applies_white_before_rgb_curve_set():
+    image = np.array([[[10, 20, 30, 40]]], dtype=np.uint8)
+    curve_set = _identity_curve_set()
+    curve_set['White'] = [[0, 0], [255, 255]]
+    curve_set['White'][1][1] = 100
+    curve_set['Red'] = [[0, 0], [100, 50], [255, 255]]
+    curve_set['Green'] = [[0, 0], [100, 75], [255, 255]]
+    curve_set['Blue'] = [[0, 0], [100, 25], [255, 255]]
+
+    result = curves_module.image_process(image, {'curves': curve_set})
+
+    assert result[0, 0].tolist() == [0, 5, 5, 40]
+
+
+def test_curves_node_uses_channel_from_linked_points_payload(monkeypatch):
+    node = CurvesNode()
+    _prepare_node(node)
+
+    values = {
+        '201:CurvesPoints:CurvePoints:Output01Value': (
+            '{"channel": "Red", "points": [[0, 0], [255, 128]]}'
+        ),
+        '202:Curves:CurvePoints:Input02Value': '[[0, 0], [255, 255]]',
+    }
+
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(
+        base_module,
+        'dpg_set_value',
+        lambda tag, value: values.__setitem__(tag, value),
+    )
+    monkeypatch.setattr(
+        curves_module,
+        'dpg_set_value',
+        lambda tag, value: values.__setitem__(tag, value),
+    )
+    monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
+    monkeypatch.setattr(
+        curves_module.Node,
+        '_get_drag_points',
+        lambda self, node_id: [[0, 0], [255, 255]],
+    )
+    monkeypatch.setattr(
+        curves_module.Node,
+        '_reset_points_from_setting',
+        lambda self, node_id, points: None,
+    )
+
+    captured = {}
+
+    def _lut_stub(image, points, channel='White'):
+        captured['points'] = points
+        captured['channel'] = channel
+        return image
+
+    monkeypatch.setattr(curves_module, 'image_process', _lut_stub)
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    node.update(
+        202,
+        [
+            ['3:ImageSource:Image:Output01', '202:Curves:Image:Input01'],
+            ['201:CurvesPoints:CurvePoints:Output01', '202:Curves:CurvePoints:Input02'],
+        ],
+        {'3:ImageSource': frame},
+        {},
+    )
+
+    expected_curves = _identity_curve_set()
+    expected_curves['Red'] = [[0, 0], [255, 128]]
+    assert captured['points'] == expected_curves
+    assert captured['channel'] == 'White'
 
 def test_rgb_channel_swap_reorders_rgb_channels_and_preserves_alpha():
     bgr_pixel = [10, 20, 30]

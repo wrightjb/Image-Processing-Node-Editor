@@ -680,6 +680,26 @@ def test_tune_curves_recovers_solar_points():
     assert result.best_parameters['image_score'] < 0.002
 
 
+
+def test_tune_curve_set_returns_all_channels_for_white_then_rgb_workflow():
+    from auto_tune.curves import tune_curve_set
+    from node.process_node.node_curves import image_process
+
+    source = np.tile(np.arange(0, 256, 16, dtype=np.uint8), (4, 1))
+    source = np.dstack((source, source, source))
+    curve_set = {
+        'White': [[0, 0], [255, 200]],
+        'Red': [[0, 0], [200, 180], [255, 255]],
+        'Green': [[0, 0], [200, 160], [255, 255]],
+        'Blue': [[0, 0], [200, 140], [255, 255]],
+    }
+    target = image_process(source, {'curves': curve_set})
+
+    result = tune_curve_set(source, target, max_points=4, refinement_iterations=0)
+
+    assert set(result.best_parameters['curves']) == {'White', 'Red', 'Green', 'Blue'}
+    assert result.best_parameters['image_score'] < 0.02
+
 def test_auto_tune_curves_node_waits_for_run_button():
     import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
 

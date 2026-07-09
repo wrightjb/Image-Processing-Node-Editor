@@ -304,7 +304,13 @@ def test_curve_points_dragging_dynamic_point_outside_deletes_it(monkeypatch):
     editor._callback_moved_point('point-tag', None, (7, None))
 
     assert editor.deleted == ['point-tag']
-    assert editor.changed == [(7, editor.points)]
+    expected_curve_set = {
+        'White': editor.points,
+        'Red': [[0, 0], [255, 255]],
+        'Green': [[0, 0], [255, 255]],
+        'Blue': [[0, 0], [255, 255]],
+    }
+    assert editor.changed == [(7, expected_curve_set)]
     assert editor.emitted == [
         (7, editor.points, editor.points, False),
     ]

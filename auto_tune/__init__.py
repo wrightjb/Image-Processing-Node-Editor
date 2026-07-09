@@ -10,7 +10,7 @@ from auto_tune.service import (
     normalize_image_for_metric,
 )
 from auto_tune.gaussian_blur import tune_gaussian_blur
-from auto_tune.curves import tune_curves
+from auto_tune.curves import tune_curve_set, tune_curves
 
 __all__ = [
     'EvaluationPlan',
@@ -21,5 +21,6 @@ __all__ = [
     'mean_squared_error',
     'normalize_image_for_metric',
     'tune_gaussian_blur',
+    'tune_curve_set',
     'tune_curves',
 ]

@@ -7,7 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
-from node.process_node.node_curves import _normalize_channel, image_process
+from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
+from node.process_node.node_curves import image_process
 
 DEFAULT_MAX_POINTS = 20
 DEFAULT_REFINEMENT_ITERATIONS = 2
@@ -49,6 +50,19 @@ def _filled_values(observed_values):
         missing = np.flatnonzero(np.isnan(filled))
         filled[missing] = np.interp(missing, observed, filled[observed])
     return np.clip(filled, 0, 255).astype(np.float32)
+
+
+def _normalize_channel(channel):
+    if isinstance(channel, str) and channel in CURVE_CHANNELS:
+        return channel
+    return 'White'
+
+
+def _single_channel_curve_set(channel, points):
+    helper = CurvesPointsEditorMixin()
+    curve_set = helper._default_curve_set()
+    curve_set[_normalize_channel(channel)] = points
+    return curve_set
 
 
 def _select_channel(image, channel='White'):
@@ -545,9 +559,13 @@ def tune_curves(
     lut_score = _score_points(pruned_points, observed, metric=metric_name)
     source_uint8 = _as_uint8_values(source_image).copy()
     try:
-        best_image = image_process(source_uint8, pruned_points, channel=channel)
+        best_image = image_process(
+            source_uint8,
+            _single_channel_curve_set(channel, pruned_points),
+        )
     except AttributeError:
-        best_image = points_to_lut(pruned_points, quantize=True).astype(np.uint8)[source_uint8]
+        lut = points_to_lut(pruned_points, quantize=True).astype(np.uint8)
+        best_image = lut[source_uint8]
     image_score = mean_squared_error(best_image, target_image)
     if progress_callback is not None:
         progress_callback({
@@ -571,4 +589,71 @@ def tune_curves(
         best_score=float(lut_score),
         best_image=best_image,
         evaluated_count=3,
+    )
+
+
+def tune_curve_set(
+    source_image,
+    target_image,
+    max_points=DEFAULT_MAX_POINTS,
+    metric_name='balanced_huber',
+    refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
+    progress_callback=None,
+    complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
+    point_precision=DEFAULT_POINT_PRECISION,
+):
+    """Recover a White-first, then RGB, Curves-node curve set."""
+
+    def _channel_progress(channel):
+        def _progress(update):
+            if progress_callback is not None:
+                update = dict(update)
+                update['channel'] = channel
+                progress_callback(update)
+        return _progress
+
+    white_result = tune_curves(
+        source_image,
+        target_image,
+        max_points=max_points,
+        metric_name=metric_name,
+        refinement_iterations=refinement_iterations,
+        progress_callback=_channel_progress('White'),
+        complexity_penalty=complexity_penalty,
+        point_precision=point_precision,
+        channel='White',
+    )
+    helper = CurvesPointsEditorMixin()
+    curve_set = helper._default_curve_set()
+    curve_set['White'] = white_result.best_parameters['points']
+    white_adjusted_source = image_process(source_image, curve_set)
+    channel_results = {'White': white_result}
+
+    for channel in ('Red', 'Green', 'Blue'):
+        result = tune_curves(
+            white_adjusted_source,
+            target_image,
+            max_points=max_points,
+            metric_name=metric_name,
+            refinement_iterations=refinement_iterations,
+            progress_callback=_channel_progress(channel),
+            complexity_penalty=complexity_penalty,
+            point_precision=point_precision,
+            channel=channel,
+        )
+        curve_set[channel] = result.best_parameters['points']
+        channel_results[channel] = result
+
+    best_image = image_process(source_image, curve_set)
+    image_score = mean_squared_error(best_image, target_image)
+    best_score = float(np.mean([result.best_score for result in channel_results.values()]))
+    return TuneResult(
+        best_parameters={
+            'curves': curve_set,
+            'channel_results': channel_results,
+            'image_score': float(image_score),
+        },
+        best_score=best_score,
+        best_image=best_image,
+        evaluated_count=sum(result.evaluated_count for result in channel_results.values()),
     )

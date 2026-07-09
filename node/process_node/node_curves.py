@@ -7,12 +7,10 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
-from node.curves_points_ui import CurvesPointsEditorMixin
+from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.port_model import PortDataType
 from node_editor.util import dpg_set_value
 
-
-_CHANNELS = ('White', 'Red', 'Green', 'Blue')
 _BGR_INDEX_BY_CHANNEL = {
     'Blue': 0,
     'Green': 1,
@@ -20,26 +18,9 @@ _BGR_INDEX_BY_CHANNEL = {
 }
 
 
-def _normalize_channel(channel):
-    if isinstance(channel, str) and channel in _CHANNELS:
-        return channel
-    return 'White'
-
-
-def _payload_channel(value, fallback='White'):
-    if isinstance(value, str):
-        import ast
-        import json
-        try:
-            value = json.loads(value)
-        except json.JSONDecodeError:
-            try:
-                value = ast.literal_eval(value)
-            except (SyntaxError, ValueError):
-                return _normalize_channel(fallback)
-    if isinstance(value, dict):
-        return _normalize_channel(value.get('channel', fallback))
-    return _normalize_channel(fallback)
+def _points_to_lut(points):
+    xs, ys = zip(*points)
+    return np.interp(np.arange(256), xs, ys).astype(np.uint8)
 
 
 def _apply_lut(image, table):
@@ -49,43 +30,43 @@ def _apply_lut(image, table):
         return table[np.asarray(image)]
 
 
-def image_process(image, points, channel='White'):
-    # Builds LUT from curves points.
-    # Assumes points are pre-sorted and between 0 and 255.
-    xs, ys = zip(*points)
-    table = np.interp(np.arange(256), xs, ys).astype(np.uint8)
-    channel = _normalize_channel(channel)
-    if channel == 'White' or image is None or image.ndim != 3 or image.shape[2] < 3:
-        return _apply_lut(image, table)
+def image_process(image, curves, channel=None):
+    """Apply White first, then per-channel RGB curves."""
+    helper = CurvesPointsEditorMixin()
+    if channel in CURVE_CHANNELS:
+        curve_set = helper._default_curve_set()
+        curve_set[channel] = helper._parse_points(curves)
+    else:
+        curve_set = helper._normalize_curve_set(curves)
+    white_lut = _points_to_lut(curve_set['White'])
+    if image is None or image.ndim != 3 or image.shape[2] < 3:
+        return _apply_lut(image, white_lut)
 
-    channel_index = _BGR_INDEX_BY_CHANNEL[channel]
     output = image.copy()
-    output[:, :, channel_index] = _apply_lut(image[:, :, channel_index], table)
+    color_channels = output[:, :, :3]
+    for channel, channel_index in _BGR_INDEX_BY_CHANNEL.items():
+        channel_lut = _points_to_lut(curve_set[channel])
+        composed_lut = channel_lut[white_lut]
+        color_channels[:, :, channel_index] = _apply_lut(
+            image[:, :, channel_index],
+            composed_lut,
+        )
     return output
 
 
 class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     """Curves adjustment node."""
 
-    _ver = '0.0.4'
+    _ver = '0.0.5'
 
     parameters = [
         {
-            'name': 'channel',
-            'type': DeclarativeImageProcessNodeBase.TYPE_TEXT,
-            'port': 'Input03',
-            'widget': 'combo',
-            'label': 'Channel',
-            'items': list(_CHANNELS),
-            'default': 'White',
-        },
-        {
-            'name': 'points',
+            'name': 'curves',
             'type': PortDataType.CURVE_POINTS,
             'port': 'Input02',
-            'label': 'Points',
+            'label': 'Curves',
             'widget': 'custom',
-            'default': '[[0, 0], [255, 255]]',
+            'default': '{"curves": {}}',
         },
     ]
 
@@ -96,22 +77,25 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     _max_val = 255
     _delete_hit_radius = 6
 
-    def _set_points_parameter_value(self, node_id, points):
+    def _set_curves_parameter_value(self, node_id, curve_set):
         try:
             value_tag = self._parameter_port_ref(
-                node_id, self.parameters[1]
+                node_id, self.parameters[0]
             ).value_tag
         except (KeyError, IndexError):
             return
-        serialized_points = self._serialize_points(points)
+        serialized_curves = self._serialize_curve_set(curve_set)
+        if str(node_id) not in self._curve_editor_built_by_node:
+            self._last_parameter_values[value_tag] = serialized_curves
+            return
         try:
-            dpg_set_value(value_tag, serialized_points)
+            dpg_set_value(value_tag, serialized_curves)
         except Exception:
             return
-        self._last_parameter_values[value_tag] = serialized_points
+        self._last_parameter_values[value_tag] = serialized_curves
 
-    def _on_points_changed(self, node_id, points):
-        self._set_points_parameter_value(node_id, points)
+    def _on_points_changed(self, node_id, curve_set):
+        self._set_curves_parameter_value(node_id, curve_set)
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         if self._ui_callback is None:
@@ -119,12 +103,12 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         if before_points == after_points:
             return
         node_id_name = self._node_name(node_id)
-        value_tag = self._parameter_port_ref(node_id, self.parameters[1]).value_tag
+        value_tag = self._parameter_port_ref(node_id, self.parameters[0]).value_tag
         self._ui_callback(
             'parameter_changed',
             {
                 'node_id_name': node_id_name,
-                'port_tag': self._parameter_port_ref(node_id, self.parameters[1]).dpg_tag,
+                'port_tag': self._parameter_port_ref(node_id, self.parameters[0]).dpg_tag,
                 'value_tag': value_tag,
                 'before_value': before_points,
                 'after_value': after_points,
@@ -145,61 +129,53 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             node_id = int(node_id_text)
         except ValueError:
             return False
-        if not isinstance(value, list):
-            return False
-        self._reset_points_from_setting(node_id, self._parse_points(value))
+        self._reset_points_from_setting(node_id, value)
         return True
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback
         self.build_curve_points_file_dialogs(node_id)
 
-        points_port = self._parameter_port_ref(node_id, self.parameters[1])
+        curves_port = self._parameter_port_ref(node_id, self.parameters[0])
         with dpg.node_attribute(
-            tag=points_port.dpg_tag,
+            tag=curves_port.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Input,
         ):
             dpg.add_input_text(
-                tag=points_port.value_tag,
-                default_value=self._serialize_points(self._default_points()),
+                tag=curves_port.value_tag,
+                default_value=self._serialize_curve_set(self._default_curve_set()),
                 show=False,
             )
             self.build_curve_points_editor(node_id)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
-        raw_points = parameter_values.get('points')
-        parameter_values['channel'] = _payload_channel(
-            raw_points,
-            parameter_values.get('channel', 'White'),
-        )
-        current_points = self._get_drag_points(node_id)
-        if raw_points is None:
-            parameter_values['points'] = current_points
-            return parameter_values
-
-        linked_points = self._parse_points(raw_points)
-        if linked_points != current_points:
-            self._reset_points_from_setting(node_id, linked_points)
-        parameter_values['points'] = linked_points
+        raw_curves = parameter_values.get('curves')
+        if raw_curves is None:
+            curve_set = self._curve_set(node_id)
+        else:
+            curve_set = self._normalize_curve_set(raw_curves)
+            if curve_set != self._curve_set(node_id):
+                self._reset_points_from_setting(node_id, curve_set)
+        parameter_values['curves'] = curve_set
         return parameter_values
 
     def process(self, frame, **parameter_values):
-        frame = image_process(
-            frame,
-            parameter_values['points'],
-            parameter_values.get('channel', 'White'),
-        )
+        frame = image_process(frame, parameter_values['curves'])
         return frame, None
 
     def get_custom_setting_dict(self, tag_node_name, node_id):
         del tag_node_name
-        points = self._get_drag_points(node_id)
-        self._set_points_parameter_value(node_id, points)
-        return {'points': points}
+        self._redraw_line(node_id)
+        curve_set = self._curve_set(node_id)
+        self._set_curves_parameter_value(node_id, curve_set)
+        return {'curves': curve_set, 'active_channel': self._active_channel(node_id)}
 
     def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
         del tag_node_name
-        points = self._parse_points(setting_dict.get('points', []))
-        self._reset_points_from_setting(node_id, points)
-        self._set_points_parameter_value(node_id, points)
+        active_channel = setting_dict.get('active_channel', 'White')
+        if active_channel in CURVE_CHANNELS:
+            self._set_active_channel(node_id, active_channel)
+        curves = setting_dict.get('curves', setting_dict.get('points', []))
+        self._reset_points_from_setting(node_id, curves)
+        self._set_curves_parameter_value(node_id, self._curve_set(node_id))

@@ -3,15 +3,15 @@
 import dearpygui.dearpygui as dpg
 
 from auto_tune.curves import DEFAULT_MAX_POINTS, DEFAULT_REFINEMENT_ITERATIONS
-from auto_tune.curves import tune_curves
+from auto_tune.curves import tune_curve_set, tune_curves
+from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
-from node.process_node.node_curves import _CHANNELS, _normalize_channel
 from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.2'
+    _ver = '0.0.3'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -107,10 +107,10 @@ class Node(DpgNodeBase):
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
                 dpg.add_combo(
-                    list(_CHANNELS),
-                    label='Channel',
+                    ['All'] + list(CURVE_CHANNELS),
+                    label='Tune',
                     tag=self._channel_value_tag(node_id),
-                    default_value='White',
+                    default_value='All',
                     width=140,
                 )
             with dpg.node_attribute(
@@ -129,7 +129,9 @@ class Node(DpgNodeBase):
             ):
                 dpg.add_input_text(
                     tag=points_port.value_tag,
-                    default_value='[[0, 0], [255, 255]]',
+                    default_value=CurvesPointsEditorMixin()._serialize_curve_set(
+                        CurvesPointsEditorMixin()._default_curve_set(),
+                    ),
                     show=False,
                 )
                 dpg.add_button(
@@ -159,7 +161,10 @@ class Node(DpgNodeBase):
         return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'Channel')
 
     def _channel_value(self, node_id):
-        return _normalize_channel(dpg_get_value(self._channel_value_tag(node_id)))
+        value = dpg_get_value(self._channel_value_tag(node_id))
+        if value == 'All' or value in CURVE_CHANNELS:
+            return value
+        return 'All'
 
     def _copy_points_to_clipboard(self, sender, app_data, user_data):
         del sender, app_data
@@ -264,31 +269,47 @@ class Node(DpgNodeBase):
                     f"points={update['point_count']} bins={update['observed_bins']}\n"
                     f"score={update['score']:.6g}"
                 )
+            if 'channel' in update:
+                message = f"{update['channel']} | {message}"
             if 'image_score' in update:
                 message = f"{message}\nimage={update['image_score']:.6g}"
             print(f'AutoTuneCurves: {message}')
             self._set_status(node_id, message)
 
-        result = tune_curves(
-            source,
-            target,
-            channel=self._channel_value(node_id),
-            max_points=max_points,
-            metric_name=metric_name,
-            refinement_iterations=refinement_iterations,
-            progress_callback=_progress,
-        )
-        points_payload = {
-            'channel': self._channel_value(node_id),
-            'points': result.best_parameters['points'],
-        }
-        dpg_set_value(ports.points.value_tag, str(points_payload))
+        tune_channel = self._channel_value(node_id)
+        if tune_channel == 'All':
+            result = tune_curve_set(
+                source,
+                target,
+                max_points=max_points,
+                metric_name=metric_name,
+                refinement_iterations=refinement_iterations,
+                progress_callback=_progress,
+            )
+            curves_payload = {'curves': result.best_parameters['curves']}
+            status_detail = '4 curves'
+        else:
+            result = tune_curves(
+                source,
+                target,
+                channel=tune_channel,
+                max_points=max_points,
+                metric_name=metric_name,
+                refinement_iterations=refinement_iterations,
+                progress_callback=_progress,
+            )
+            helper = CurvesPointsEditorMixin()
+            curve_set = helper._default_curve_set()
+            curve_set[tune_channel] = result.best_parameters['points']
+            curves_payload = {'curves': curve_set}
+            status_detail = f'{len(result.best_parameters["points"])} points'
+        dpg_set_value(ports.points.value_tag, str(curves_payload))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
-        self._set_status(node_id, f'done: {len(result.best_parameters["points"])} points')
+        self._set_status(node_id, f'done: {status_detail}')
         return result.best_image, {
             '__auto_tune_ready__': True,
             'tune_result': result,
-            'points': points_payload,
+            'points': curves_payload,
         }
 
     def close(self, node_id):

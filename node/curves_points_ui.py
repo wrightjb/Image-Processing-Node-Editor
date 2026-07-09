@@ -7,13 +7,30 @@ import json
 
 import dearpygui.dearpygui as dpg
 
-from node_editor.util import dpg_get_item_children, dpg_get_value
+from node_editor.util import dpg_get_item_children, dpg_get_value, dpg_set_value
+
+CURVE_CHANNELS = ('White', 'Red', 'Green', 'Blue')
+CURVE_CHANNEL_COLORS = {
+    'White': (235, 235, 235, 255),
+    'Red': (255, 80, 80, 255),
+    'Green': (80, 220, 100, 255),
+    'Blue': (80, 140, 255, 255),
+}
+CURVE_GHOST_COLORS = {
+    'White': (180, 180, 180, 80),
+    'Red': (255, 80, 80, 70),
+    'Green': (80, 220, 100, 70),
+    'Blue': (80, 140, 255, 70),
+}
 
 
 class CurvesPointsEditorMixin:
     _min_val = 0
     _max_val = 255
     _delete_hit_radius = 6
+    _curve_sets_by_node = {}
+    _active_curve_channel_by_node = {}
+    _curve_editor_built_by_node = set()
 
     def _get_tag_plot_name(self, node_id):
         return f'{self._node_name(node_id)}:plot'
@@ -21,26 +38,42 @@ class CurvesPointsEditorMixin:
     def _get_tag_plot_series_name(self, node_id):
         return f'{self._node_name(node_id)}:line'
 
+    def _get_tag_plot_channel_series_name(self, node_id, channel):
+        return f'{self._node_name(node_id)}:line:{channel}'
+
     def _get_tag_points_display_name(self, node_id):
         return f'{self._node_name(node_id)}:points_display'
+
+    def _get_tag_active_channel_name(self, node_id):
+        return f'{self._node_name(node_id)}:active_channel'
 
     def _default_points(self):
         return [[self._min_val, self._min_val], [self._max_val, self._max_val]]
 
+    def _default_curve_set(self):
+        return {channel: self._default_points() for channel in CURVE_CHANNELS}
+
     def _serialize_points(self, points):
         return json.dumps(points, indent=2)
+
+    def _serialize_curve_set(self, curve_set):
+        return json.dumps({'curves': self._normalize_curve_set(curve_set)}, indent=2)
+
+    def _decode_serialized_value(self, value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                try:
+                    return ast.literal_eval(value)
+                except (SyntaxError, ValueError):
+                    return value
+        return value
 
     def _parse_points(self, value):
         if value is None or value == '':
             return self._default_points()
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except json.JSONDecodeError:
-                try:
-                    value = ast.literal_eval(value)
-                except (SyntaxError, ValueError):
-                    return self._default_points()
+        value = self._decode_serialized_value(value)
         if isinstance(value, dict):
             value = value.get('points')
         if not isinstance(value, (list, tuple)):
@@ -69,10 +102,53 @@ class CurvesPointsEditorMixin:
             points.append([self._max_val, points[-1][1]])
         return points
 
+    def _normalize_curve_set(self, value):
+        value = self._decode_serialized_value(value)
+        curve_set = self._default_curve_set()
+        if isinstance(value, dict):
+            curves_value = value.get('curves')
+            if isinstance(curves_value, dict):
+                for channel in CURVE_CHANNELS:
+                    if channel in curves_value:
+                        curve_set[channel] = self._parse_points(curves_value[channel])
+                return curve_set
+            if all(channel in value for channel in CURVE_CHANNELS):
+                for channel in CURVE_CHANNELS:
+                    curve_set[channel] = self._parse_points(value[channel])
+                return curve_set
+            if 'points' in value:
+                channel = value.get('channel', 'White')
+                if channel not in CURVE_CHANNELS:
+                    channel = 'White'
+                curve_set[channel] = self._parse_points(value.get('points'))
+                return curve_set
+        if isinstance(value, (list, tuple)) or value in (None, ''):
+            curve_set['White'] = self._parse_points(value)
+        return curve_set
+
+    def _active_channel(self, node_id):
+        return self._active_curve_channel_by_node.get(str(node_id), 'White')
+
+    def _set_active_channel(self, node_id, channel):
+        if channel not in CURVE_CHANNELS:
+            channel = 'White'
+        self._active_curve_channel_by_node[str(node_id)] = channel
+        if str(node_id) in self._curve_editor_built_by_node:
+            dpg_set_value(self._get_tag_active_channel_name(node_id), channel)
+
+    def _curve_set(self, node_id):
+        return self._curve_sets_by_node.setdefault(str(node_id), self._default_curve_set())
+
+    def _set_curve_set(self, node_id, curve_set):
+        self._curve_sets_by_node[str(node_id)] = self._normalize_curve_set(curve_set)
+
     def _get_drag_points(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
-        if not dpg.does_item_exist(plot_tag):
-            return self._default_points()
+        if str(node_id) not in self._curve_editor_built_by_node:
+            return self._curve_set(node_id).get(
+                self._active_channel(node_id),
+                self._default_points(),
+            )
 
         points = []
         for point_tag in dpg_get_item_children(plot_tag, slot=0):
@@ -89,20 +165,51 @@ class CurvesPointsEditorMixin:
             return self._default_points()
         return sorted(points)
 
-    def _redraw_line(self, node_id):
-        points = self._get_drag_points(node_id)
+    def _store_active_points(self, node_id, points):
+        curve_set = self._curve_set(node_id)
+        curve_set[self._active_channel(node_id)] = points
+        return curve_set
+
+    def _line_values(self, points):
         x_values, y_values = zip(*points)
-        dpg.set_value(self._get_tag_plot_series_name(node_id), [x_values, y_values])
+        return [x_values, y_values]
+
+    def _set_line_value_if_exists(self, tag, points):
+        if dpg.does_item_exist(tag):
+            dpg.set_value(tag, self._line_values(points))
+
+    def _redraw_line(self, node_id):
+        active_channel = self._active_channel(node_id)
+        points = self._get_drag_points(node_id)
+        curve_set = self._curve_set(node_id)
+        curve_set[active_channel] = points
+        if str(node_id) not in self._curve_editor_built_by_node:
+            return
+        active_line_tag = self._get_tag_plot_series_name(node_id)
+        self._bind_line_theme(active_line_tag, CURVE_CHANNEL_COLORS[active_channel])
+        self._set_line_value_if_exists(active_line_tag, points)
+        for channel in CURVE_CHANNELS:
+            self._set_line_value_if_exists(
+                self._get_tag_plot_channel_series_name(node_id, channel),
+                curve_set[channel],
+            )
         display_tag = self._get_tag_points_display_name(node_id)
         if dpg.does_item_exist(display_tag):
-            dpg.set_value(display_tag, self._serialize_points(points))
+            dpg.set_value(display_tag, self._serialize_curve_set(curve_set))
 
-    def _reset_points_from_setting(self, node_id, setting_points):
+    def _delete_drag_points(self, node_id):
+        if str(node_id) not in self._curve_editor_built_by_node:
+            return
         plot_tag = self._get_tag_plot_name(node_id)
         for point_tag in dpg_get_item_children(plot_tag, slot=0):
             dpg.delete_item(point_tag)
 
-        points_to_add = setting_points if setting_points else self._default_points()
+    def _load_active_drag_points(self, node_id, points):
+        if str(node_id) not in self._curve_editor_built_by_node:
+            return
+        plot_tag = self._get_tag_plot_name(node_id)
+        self._delete_drag_points(node_id)
+        points_to_add = points if points else self._default_points()
         for point in points_to_add:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
@@ -118,14 +225,19 @@ class CurvesPointsEditorMixin:
                 user_data=(node_id, static_x),
             )
 
+    def _reset_points_from_setting(self, node_id, setting_points):
+        curve_set = self._normalize_curve_set(setting_points)
+        self._set_curve_set(node_id, curve_set)
+        active_channel = self._active_channel(node_id)
+        self._load_active_drag_points(node_id, curve_set[active_channel])
         self._redraw_line(node_id)
-        self._on_points_reset(node_id, self._get_drag_points(node_id))
+        self._on_points_reset(node_id, curve_set)
 
-    def _on_points_reset(self, node_id, points):
-        self._on_points_changed(node_id, points)
+    def _on_points_reset(self, node_id, curve_set):
+        self._on_points_changed(node_id, curve_set)
 
-    def _on_points_changed(self, node_id, points):
-        del node_id, points
+    def _on_points_changed(self, node_id, curve_set):
+        del node_id, curve_set
 
     def _callback_add_point(self, sender, app_data, user_data):
         del sender, app_data
@@ -147,7 +259,7 @@ class CurvesPointsEditorMixin:
         )
         self._redraw_line(node_id)
         points = self._get_drag_points(node_id)
-        self._on_points_changed(node_id, points)
+        self._on_points_changed(node_id, self._curve_set(node_id))
         self._emit_points_changed(node_id, before_points, points, coalesce=False)
 
     def _callback_moved_point(self, sender, app_data, user_data):
@@ -168,7 +280,7 @@ class CurvesPointsEditorMixin:
             dpg.delete_item(sender)
             self._redraw_line(node_id)
             points = self._get_drag_points(node_id)
-            self._on_points_changed(node_id, points)
+            self._on_points_changed(node_id, self._store_active_points(node_id, points))
             self._emit_points_changed(
                 node_id,
                 before_points,
@@ -183,7 +295,7 @@ class CurvesPointsEditorMixin:
         dpg.set_value(sender, [x, y])
         self._redraw_line(node_id)
         points = self._get_drag_points(node_id)
-        self._on_points_changed(node_id, points)
+        self._on_points_changed(node_id, self._store_active_points(node_id, points))
         self._emit_points_changed(node_id, before_points, points, coalesce=True)
 
     def _callback_delete_point(self, sender, app_data, user_data):
@@ -218,8 +330,20 @@ class CurvesPointsEditorMixin:
             dpg.delete_item(closest_point_tag)
             self._redraw_line(node_id)
             points = self._get_drag_points(node_id)
-            self._on_points_changed(node_id, points)
+            self._on_points_changed(node_id, self._store_active_points(node_id, points))
             self._emit_points_changed(node_id, before_points, points, coalesce=False)
+
+    def _callback_channel_changed(self, sender, app_data, user_data):
+        del sender
+        node_id = user_data
+        previous_channel = self._active_channel(node_id)
+        curve_set = self._curve_set(node_id)
+        curve_set[previous_channel] = self._get_drag_points(node_id)
+        channel = app_data if app_data in CURVE_CHANNELS else 'White'
+        self._set_active_channel(node_id, channel)
+        self._load_active_drag_points(node_id, curve_set[channel])
+        self._redraw_line(node_id)
+        self._on_points_changed(node_id, curve_set)
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         del node_id, before_points, after_points, coalesce
@@ -230,10 +354,10 @@ class CurvesPointsEditorMixin:
     def _import_dialog_tag(self, node_id):
         return f'{self._node_name(node_id)}:CurvesPointsImportDialog'
 
-
     def _callback_copy_points(self, sender, app_data, user_data):
         del sender, app_data
-        dpg.set_clipboard_text(self._serialize_points(self._get_drag_points(user_data)))
+        self._redraw_line(user_data)
+        dpg.set_clipboard_text(self._serialize_curve_set(self._curve_set(user_data)))
 
     def _callback_show_export_dialog(self, sender, app_data, user_data):
         del sender, app_data
@@ -249,9 +373,9 @@ class CurvesPointsEditorMixin:
         file_path = app_data.get('file_path_name') if isinstance(app_data, dict) else None
         if not file_path:
             return
-        payload = {'points': self._get_drag_points(node_id)}
+        self._redraw_line(node_id)
         with open(file_path, 'w', encoding='utf-8') as file:
-            json.dump(payload, file, indent=2)
+            json.dump({'curves': self._curve_set(node_id)}, file, indent=2)
 
     def _callback_import_points(self, sender, app_data, user_data):
         del sender
@@ -264,7 +388,7 @@ class CurvesPointsEditorMixin:
                 payload = json.load(file)
         except (OSError, json.JSONDecodeError):
             return
-        self._reset_points_from_setting(node_id, self._parse_points(payload))
+        self._reset_points_from_setting(node_id, payload)
 
     def build_curve_points_file_dialogs(self, node_id):
         with dpg.file_dialog(
@@ -288,19 +412,60 @@ class CurvesPointsEditorMixin:
             dpg.add_file_extension('Curves (*.json){.json}')
             dpg.add_file_extension('', color=(150, 255, 150, 255))
 
+    def _bind_line_theme(self, item, color):
+        try:
+            with dpg.theme() as theme:
+                with dpg.theme_component(dpg.mvLineSeries):
+                    dpg.add_theme_color(
+                        dpg.mvPlotCol_Line,
+                        color,
+                        category=dpg.mvThemeCat_Plots,
+                    )
+            dpg.bind_item_theme(item, theme)
+        except Exception:
+            return
+
+    def _add_curve_line_series(self, node_id, channel, parent, active=False):
+        tag = (
+            self._get_tag_plot_series_name(node_id)
+            if active
+            else self._get_tag_plot_channel_series_name(node_id, channel)
+        )
+        dpg.add_line_series(
+            x=[self._min_val, self._max_val],
+            y=[self._min_val, self._max_val],
+            parent=parent,
+            tag=tag,
+        )
+        color = CURVE_CHANNEL_COLORS[channel] if active else CURVE_GHOST_COLORS[channel]
+        self._bind_line_theme(tag, color)
+
     def build_curve_points_editor(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
-        series_tag = self._get_tag_plot_series_name(node_id)
+        y_axis_tag = f'{self._node_name(node_id)}:plot_y'
+        self._curve_editor_built_by_node.add(str(node_id))
+        self._set_active_channel(node_id, self._active_channel(node_id))
+        dpg.add_combo(
+            list(CURVE_CHANNELS),
+            label='Edit Channel',
+            tag=self._get_tag_active_channel_name(node_id),
+            default_value=self._active_channel(node_id),
+            width=160,
+            callback=self._callback_channel_changed,
+            user_data=node_id,
+        )
         with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
             dpg.add_plot_axis(dpg.mvXAxis, tag=f'{self._node_name(node_id)}:plot_x')
             dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
-            dpg.add_plot_axis(dpg.mvYAxis, tag=f'{self._node_name(node_id)}:plot_y')
+            dpg.add_plot_axis(dpg.mvYAxis, tag=y_axis_tag)
             dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
-            dpg.add_line_series(
-                x=[self._min_val, self._max_val],
-                y=[self._min_val, self._max_val],
-                parent=f'{self._node_name(node_id)}:plot_y',
-                tag=series_tag,
+            for channel in CURVE_CHANNELS:
+                self._add_curve_line_series(node_id, channel, y_axis_tag, active=False)
+            self._add_curve_line_series(
+                node_id,
+                self._active_channel(node_id),
+                y_axis_tag,
+                active=True,
             )
             handler = dpg.add_item_handler_registry()
             dpg.add_item_clicked_handler(
@@ -330,7 +495,7 @@ class CurvesPointsEditorMixin:
                 user_data=node_id,
             )
             dpg.add_button(
-                label='Copy Points',
+                label='Copy Curves',
                 width=92,
                 callback=self._callback_copy_points,
                 user_data=node_id,
@@ -340,4 +505,4 @@ class CurvesPointsEditorMixin:
             tag=self._get_tag_points_display_name(node_id),
             show=False,
         )
-        self._reset_points_from_setting(node_id, self._default_points())
+        self._reset_points_from_setting(node_id, self._default_curve_set())

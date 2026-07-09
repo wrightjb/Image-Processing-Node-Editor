@@ -333,6 +333,26 @@ class CurvesPointsEditorMixin:
             self._on_points_changed(node_id, self._store_active_points(node_id, points))
             self._emit_points_changed(node_id, before_points, points, coalesce=False)
 
+
+    def _callback_clear_channel(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id = user_data
+        curve_set = self._curve_set(node_id)
+        active_channel = self._active_channel(node_id)
+        curve_set[active_channel] = self._default_points()
+        self._load_active_drag_points(node_id, curve_set[active_channel])
+        self._redraw_line(node_id)
+        self._on_points_changed(node_id, curve_set)
+
+    def _callback_clear_all(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id = user_data
+        curve_set = self._default_curve_set()
+        self._set_curve_set(node_id, curve_set)
+        self._load_active_drag_points(node_id, curve_set[self._active_channel(node_id)])
+        self._redraw_line(node_id)
+        self._on_points_changed(node_id, curve_set)
+
     def _callback_channel_changed(self, sender, app_data, user_data):
         del sender
         node_id = user_data
@@ -498,6 +518,19 @@ class CurvesPointsEditorMixin:
                 label='Copy Curves',
                 width=92,
                 callback=self._callback_copy_points,
+                user_data=node_id,
+            )
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Clear Channel',
+                width=104,
+                callback=self._callback_clear_channel,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Clear All',
+                width=82,
+                callback=self._callback_clear_all,
                 user_data=node_id,
             )
         dpg.add_text(

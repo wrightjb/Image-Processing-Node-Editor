@@ -8,7 +8,7 @@ import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
-from node.port_model import PortDataType
+from node.port_model import OutputPort, PortDataType
 from node_editor.util import dpg_set_value
 
 _BGR_INDEX_BY_CHANNEL = {
@@ -77,6 +77,28 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     _max_val = 255
     _delete_hit_radius = 6
 
+    def _curves_output_port_ref(self, node_id):
+        try:
+            return self.ports(node_id).curves_output
+        except (AttributeError, KeyError):
+            return self.create_port(
+                node_id,
+                'curves_output',
+                OutputPort(PortDataType.CURVE_POINTS, index=3),
+            )
+
+    def _set_curves_output_value(self, node_id, curve_set):
+        try:
+            value_tag = self._curves_output_port_ref(node_id).value_tag
+        except (AttributeError, KeyError):
+            return
+        if str(node_id) not in self._curve_editor_built_by_node:
+            return
+        try:
+            dpg_set_value(value_tag, self._serialize_curve_set(curve_set))
+        except Exception:
+            return
+
     def _set_curves_parameter_value(self, node_id, curve_set):
         try:
             value_tag = self._parameter_port_ref(
@@ -96,6 +118,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
 
     def _on_points_changed(self, node_id, curve_set):
         self._set_curves_parameter_value(node_id, curve_set)
+        self._set_curves_output_value(node_id, curve_set)
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         if self._ui_callback is None:
@@ -148,6 +171,18 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             )
             self.build_curve_points_editor(node_id)
 
+        curves_output_port = self._curves_output_port_ref(node_id)
+        with dpg.node_attribute(
+            tag=curves_output_port.dpg_tag,
+            attribute_type=dpg.mvNode_Attr_Output,
+        ):
+            dpg.add_input_text(
+                tag=curves_output_port.value_tag,
+                default_value=self._serialize_curve_set(self._default_curve_set()),
+                show=False,
+            )
+            dpg.add_text('curves')
+
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])
         raw_curves = parameter_values.get('curves')
@@ -169,6 +204,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         self._redraw_line(node_id)
         curve_set = self._curve_set(node_id)
         self._set_curves_parameter_value(node_id, curve_set)
+        self._set_curves_output_value(node_id, curve_set)
         return {'curves': curve_set, 'active_channel': self._active_channel(node_id)}
 
     def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
@@ -179,3 +215,4 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         curves = setting_dict.get('curves', setting_dict.get('points', []))
         self._reset_points_from_setting(node_id, curves)
         self._set_curves_parameter_value(node_id, self._curve_set(node_id))
+        self._set_curves_output_value(node_id, self._curve_set(node_id))

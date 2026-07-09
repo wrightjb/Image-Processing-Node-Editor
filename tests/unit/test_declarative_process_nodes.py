@@ -549,6 +549,15 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
     assert captured['channel'] == 'White'
 
 
+
+def test_curves_node_declares_curve_set_output_port():
+    node = CurvesNode()
+
+    port = node._curves_output_port_ref(17)
+
+    assert port.dpg_tag == '17:Curves:CurvePoints:Output03'
+    assert port.value_tag == '17:Curves:CurvePoints:Output03Value'
+
 def test_curves_node_settings_include_points(monkeypatch):
     node = CurvesNode()
 

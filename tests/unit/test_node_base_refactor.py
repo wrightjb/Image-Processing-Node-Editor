@@ -314,3 +314,36 @@ def test_curve_points_dragging_dynamic_point_outside_deletes_it(monkeypatch):
     assert editor.emitted == [
         (7, editor.points, editor.points, False),
     ]
+
+
+def test_curve_points_clear_channel_and_all_reset_curve_sets():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    class TestEditor(CurvesPointsEditorMixin):
+        def __init__(self):
+            self.changed = []
+
+        def _node_name(self, node_id):
+            return f'{node_id}:TestCurves'
+
+        def _on_points_changed(self, node_id, curve_set):
+            self.changed.append((node_id, curve_set))
+
+    editor = TestEditor()
+    editor._set_active_channel(7, 'Red')
+    editor._set_curve_set(7, {
+        'White': [[0, 0], [255, 100]],
+        'Red': [[0, 0], [255, 50]],
+        'Green': [[0, 0], [255, 80]],
+        'Blue': [[0, 0], [255, 30]],
+    })
+
+    editor._callback_clear_channel(None, None, 7)
+
+    assert editor._curve_set(7)['White'] == [[0.0, 0.0], [255.0, 100.0]]
+    assert editor._curve_set(7)['Red'] == [[0, 0], [255, 255]]
+
+    editor._callback_clear_all(None, None, 7)
+
+    assert editor._curve_set(7) == editor._default_curve_set()
+    assert editor.changed[-1] == (7, editor._default_curve_set())

@@ -164,20 +164,24 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             tag=curves_port.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Input,
         ):
-            dpg.add_input_text(
-                tag=curves_port.value_tag,
-                default_value=self._serialize_curve_set(self._default_curve_set()),
-                show=False,
-            )
-            # Match the curve editor height so DPG places the input pin
-            # across from the output pin instead of up by the image input.
-            dpg.add_spacer(height=180)
+            pass
 
         curves_output_port = self._curves_output_port_ref(node_id)
         with dpg.node_attribute(
             tag=curves_output_port.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Output,
         ):
+            pass
+
+        with dpg.node_attribute(
+            tag=f'{self._node_name(node_id)}:CurvesEditor',
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            dpg.add_input_text(
+                tag=curves_port.value_tag,
+                default_value=self._serialize_curve_set(self._default_curve_set()),
+                show=False,
+            )
             dpg.add_input_text(
                 tag=curves_output_port.value_tag,
                 default_value=self._serialize_curve_set(self._default_curve_set()),

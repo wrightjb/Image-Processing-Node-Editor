@@ -761,3 +761,42 @@ def test_tune_curves_defaults_to_practical_point_precision():
         for point in result.best_parameters['points']
         for value in point
     )
+
+
+def test_tune_hue_bands_recovers_simple_band_adjustment():
+    import cv2
+    if not hasattr(cv2, 'cvtColor'):
+        pytest.skip('cv2 stub does not implement HSV conversion')
+
+    from auto_tune.hue_bands import tune_hue_bands
+    from node.process_node.node_hue_saturation_adjustment import image_process
+
+    source = np.zeros((24, 24, 3), dtype=np.uint8)
+    source[:, :, 2] = 255
+    target = image_process(source, red_hue_shift=30, red_saturation=25)
+
+    result = tune_hue_bands(
+        source,
+        target,
+        current_parameters={},
+        refinement_iterations=0,
+    )
+
+    assert result.evaluated_count > 1
+    assert result.best_score < 0.01
+    assert result.best_parameters['red_hue_shift'] == 30
+    assert result.best_parameters['red_saturation'] == 25
+
+
+def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+    ports = node.create_ports(42)
+
+    assert ports.source_image.dpg_tag == '42:AutoTuneHueBands:Image:Input01'
+    assert ports.target_image.dpg_tag == '42:AutoTuneHueBands:Image:Input02'
+    assert ports.blend.dpg_tag == '42:AutoTuneHueBands:Float:Output01'
+    assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output02'
+    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output13'
+    assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output14'

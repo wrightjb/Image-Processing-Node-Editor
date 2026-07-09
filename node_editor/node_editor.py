@@ -1006,6 +1006,13 @@ class DpgNodeEditor(object):
                 return
             self._cntrl_delete_targets([node_id_name], [])
             return
+        if event_name == 'spawn_hue_bands_tuner_requested':
+            if not isinstance(data, dict):
+                return
+            node_id_name = str(data.get('node_id_name', ''))
+            if node_id_name:
+                self._cntrl_spawn_hue_bands_tuner(node_id_name)
+            return
         if event_name == 'parameter_changed':
             if not isinstance(data, dict):
                 return
@@ -1411,6 +1418,87 @@ class DpgNodeEditor(object):
 
         return None
 
+
+    def _cntrl_spawn_hue_bands_tuner(self, hue_bands_node_id_name):
+        if hue_bands_node_id_name not in self._node_registry:
+            self._vw_set_link_feedback(
+                'Cannot add Hue Bands tuner: node is not registered.'
+            )
+            return
+        tuner_tag = 'AutoTuneHueBands'
+        if tuner_tag not in self._node_instance_list:
+            self._vw_set_link_feedback(
+                'Cannot add Hue Bands tuner: tuner node is not available.'
+            )
+            return
+        source_pos = dpg.get_item_pos(hue_bands_node_id_name)
+        new_pos = [source_pos[0] - 300, source_pos[1] + 40]
+        new_id, new_node_id_name = self._mdl_add_node(tuner_tag)
+        self._mdl_register_node_ref(NodeRef(str(new_id), tuner_tag))
+        self._vw_add_node(tuner_tag, new_id, new_pos)
+        self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
+
+        tuner = self.get_node_instance(tuner_tag)
+        tuner_ports = tuner.ports(new_id)
+        hue_node_tag = hue_bands_node_id_name
+        link_payloads = []
+        parameter_names = ['blend']
+        parameter_names.extend(
+            f'{band_name}_{suffix}'
+            for band_name in ('red', 'yellow', 'green', 'cyan', 'blue', 'magenta')
+            for suffix in ('hue_shift', 'saturation')
+        )
+        for parameter_name in parameter_names:
+            source_port = getattr(tuner_ports, parameter_name, None)
+            dest_port = self._port_registry.get(
+                f'{hue_node_tag}:{source_port.data_type.value}:'
+                f'{source_port.dpg_tag.split(":")[-1].replace("Output", "Input")}'
+            ) if source_port is not None else None
+            if dest_port is None:
+                dest_port = self._cntrl_find_hue_bands_parameter_port(
+                    hue_bands_node_id_name, parameter_name
+                )
+            if source_port is None or dest_port is None:
+                continue
+            existing_link = self._mdl_get_link_by_destination(dest_port.dpg_tag)
+            if existing_link is not None:
+                self._cntrl_remove_link_by_tags(
+                    existing_link[0],
+                    existing_link[1],
+                    record_history=False,
+                )
+            if self._cntrl_add_link_by_tags(source_port.dpg_tag, dest_port.dpg_tag):
+                link_payloads.append(
+                    self._cntrl_history_link_payload(
+                        source_port.dpg_tag,
+                        dest_port.dpg_tag,
+                    )
+                )
+        self._mdl_sort_node_graph()
+        node_setting = tuner.get_setting_dict(str(new_id))
+        self._cntrl_push_undo_command(
+            AddNodeCommand(
+                new_id,
+                tuner_tag,
+                list(new_pos),
+                copy.deepcopy(node_setting),
+                link_payloads,
+                [],
+            )
+        )
+        self._vw_set_link_feedback(
+            'Added Hue Bands tuner and connected parameter outputs.'
+        )
+
+    def _cntrl_find_hue_bands_parameter_port(self, node_id_name, parameter_name):
+        for port_ref in self._mdl_iter_registered_ports(
+            direction=PortDirection.INPUT,
+            node_id_name=node_id_name,
+        ):
+            if port_ref.spec_key == parameter_name:
+                return port_ref
+        return None
 
     def _cntrl_add_node_from_output_port(self, sender, data, user_data):
         del sender, data

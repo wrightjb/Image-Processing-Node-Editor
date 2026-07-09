@@ -120,7 +120,7 @@ def image_process(image, blend=1.0, **adjustments):
 class Node(DeclarativeImageProcessNodeBase):
     _ver = '0.0.2'
 
-    node_label = 'Hue/Saturation Adjustment'
+    node_label = 'Hue Bands'
     node_tag = 'HueSaturationAdjustment'
 
     _last_touched_slider_tag_by_node = {}
@@ -175,6 +175,12 @@ class Node(DeclarativeImageProcessNodeBase):
             tag=self._port_tag(tag_node_name, self.TYPE_TEXT, 'Input99'),
             attribute_type=dpg.mvNode_Attr_Static,
         ):
+            dpg.add_button(
+                label='Add tuner',
+                width=width - 80,
+                callback=self._add_tuner_callback,
+                user_data=node_id,
+            )
             dpg.add_button(
                 label='Reset all',
                 width=width - 80,
@@ -242,6 +248,15 @@ class Node(DeclarativeImageProcessNodeBase):
                         'after_value': updated_value,
                     },
                 )
+
+    def _add_tuner_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        if self._ui_callback is None:
+            return
+        self._ui_callback(
+            'spawn_hue_bands_tuner_requested',
+            {'node_id_name': self._node_name(user_data)},
+        )
 
     def _reset_all_callback(self, sender, app_data, user_data):
         del sender, app_data

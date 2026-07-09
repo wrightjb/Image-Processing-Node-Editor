@@ -159,17 +159,6 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         del tag_node_name, width, callback
         self.build_curve_points_file_dialogs(node_id)
 
-        curves_port = self._parameter_port_ref(node_id, self.parameters[0])
-        with dpg.node_attribute(
-            tag=curves_port.dpg_tag,
-            attribute_type=dpg.mvNode_Attr_Input,
-        ):
-            dpg.add_input_text(
-                tag=curves_port.value_tag,
-                default_value=self._serialize_curve_set(self._default_curve_set()),
-                show=False,
-            )
-
         curves_output_port = self._curves_output_port_ref(node_id)
         with dpg.node_attribute(
             tag=curves_output_port.dpg_tag,
@@ -181,6 +170,17 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
                 show=False,
             )
             self.build_curve_points_editor(node_id)
+
+        curves_port = self._parameter_port_ref(node_id, self.parameters[0])
+        with dpg.node_attribute(
+            tag=curves_port.dpg_tag,
+            attribute_type=dpg.mvNode_Attr_Input,
+        ):
+            dpg.add_input_text(
+                tag=curves_port.value_tag,
+                default_value=self._serialize_curve_set(self._default_curve_set()),
+                show=False,
+            )
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])

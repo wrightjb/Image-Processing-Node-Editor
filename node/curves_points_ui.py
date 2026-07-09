@@ -460,11 +460,11 @@ class CurvesPointsEditorMixin:
         color = CURVE_CHANNEL_COLORS[channel] if active else CURVE_GHOST_COLORS[channel]
         self._bind_line_theme(tag, color)
 
-    def build_curve_points_editor(self, node_id):
-        plot_tag = self._get_tag_plot_name(node_id)
-        y_axis_tag = f'{self._node_name(node_id)}:plot_y'
+    def begin_curve_points_editor(self, node_id):
         self._curve_editor_built_by_node.add(str(node_id))
         self._set_active_channel(node_id, self._active_channel(node_id))
+
+    def build_curve_points_channel_selector(self, node_id):
         dpg.add_combo(
             list(CURVE_CHANNELS),
             label='Edit Channel',
@@ -474,6 +474,10 @@ class CurvesPointsEditorMixin:
             callback=self._callback_channel_changed,
             user_data=node_id,
         )
+
+    def build_curve_points_plot_controls(self, node_id):
+        plot_tag = self._get_tag_plot_name(node_id)
+        y_axis_tag = f'{self._node_name(node_id)}:plot_y'
         with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
             dpg.add_plot_axis(dpg.mvXAxis, tag=f'{self._node_name(node_id)}:plot_x')
             dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
@@ -539,3 +543,8 @@ class CurvesPointsEditorMixin:
             show=False,
         )
         self._reset_points_from_setting(node_id, self._default_curve_set())
+
+    def build_curve_points_editor(self, node_id):
+        self.begin_curve_points_editor(node_id)
+        self.build_curve_points_channel_selector(node_id)
+        self.build_curve_points_plot_controls(node_id)

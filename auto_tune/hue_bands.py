@@ -6,14 +6,17 @@ import cv2
 import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
-from node.process_node.node_hue_saturation_adjustment import _BANDS, image_process
+from node.process_node.node_hue_saturation_adjustment import (
+    _BANDS,
+    _get_blend_weight_lut,
+    image_process,
+)
 
 DEFAULT_REFINEMENT_ITERATIONS = 2
-SATURATION_CANDIDATES = (-100, -75, -50, -25, 0, 25, 50, 75, 100)
-HUE_CANDIDATES = (-180, -120, -60, -30, 0, 30, 60, 120, 180)
+BLEND_CANDIDATES = (1.0, 0.75, 0.5, 0.25, 0.0)
 
 
-def _resize_pair(source, target, max_size=160):
+def _resize_pair(source, target, max_size=240):
     source = np.asarray(source)
     target = np.asarray(target)
     if source.shape[:2] != target.shape[:2]:
@@ -27,6 +30,14 @@ def _resize_pair(source, target, max_size=160):
         cv2.resize(source, new_size, interpolation=cv2.INTER_AREA),
         cv2.resize(target, new_size, interpolation=cv2.INTER_AREA),
     )
+
+
+def _match_target_shape(source, target):
+    source = np.asarray(source)
+    target = np.asarray(target)
+    if target.shape == source.shape:
+        return target
+    return cv2.resize(target, (source.shape[1], source.shape[0]))
 
 
 def _score(image, target):
@@ -53,9 +64,95 @@ def _initial_parameters(current_parameters):
     parameters = {'blend': float(current_parameters.get('blend', 1.0))}
     for band_name, _center in _BANDS:
         hue_name, sat_name = _band_parameter_names(band_name)
-        parameters[hue_name] = _clamp_int(current_parameters.get(hue_name, 0), -180, 180)
-        parameters[sat_name] = _clamp_int(current_parameters.get(sat_name, 0), -100, 100)
+        parameters[hue_name] = _clamp_int(
+            current_parameters.get(hue_name, 0),
+            -180,
+            180,
+        )
+        parameters[sat_name] = _clamp_int(
+            current_parameters.get(sat_name, 0),
+            -100,
+            100,
+        )
     return parameters
+
+
+def _parameter_penalty(parameters):
+    penalty = abs(float(parameters.get('blend', 1.0)) - 1.0) * 0.01
+    for band_name, _center in _BANDS:
+        hue_name, sat_name = _band_parameter_names(band_name)
+        penalty += abs(float(parameters.get(hue_name, 0))) / 180.0
+        penalty += abs(float(parameters.get(sat_name, 0))) / 100.0
+    return penalty * 1.0e-7
+
+
+def _hsv_pair(source, target):
+    source_bgr = np.asarray(source)[:, :, :3]
+    target_bgr = np.asarray(target)[:, :, :3]
+    return (
+        cv2.cvtColor(source_bgr, cv2.COLOR_BGR2HSV).astype(np.float32),
+        cv2.cvtColor(target_bgr, cv2.COLOR_BGR2HSV).astype(np.float32),
+    )
+
+
+def _weighted_least_squares(matrix, observed, sample_weight):
+    valid = sample_weight > 1.0e-6
+    if int(np.count_nonzero(valid)) < matrix.shape[1]:
+        return np.zeros(matrix.shape[1], dtype=np.float32)
+    weighted_matrix = matrix[valid] * sample_weight[valid, None]
+    weighted_observed = observed[valid] * sample_weight[valid]
+    solution, *_unused = np.linalg.lstsq(
+        weighted_matrix,
+        weighted_observed,
+        rcond=None,
+    )
+    return solution.astype(np.float32)
+
+
+def _estimate_parameters_from_hsv(source, target, blend):
+    source_hsv, target_hsv = _hsv_pair(source, target)
+    source_hue = np.clip(source_hsv[:, :, 0].astype(np.int16), 0, 179)
+    source_sat = source_hsv[:, :, 1].astype(np.float32)
+    target_sat = target_hsv[:, :, 1].astype(np.float32)
+    weights = _get_blend_weight_lut(blend)[source_hue].reshape(-1, len(_BANDS))
+
+    hue_delta = target_hsv[:, :, 0] - source_hsv[:, :, 0]
+    hue_delta = ((hue_delta + 90.0) % 180.0) - 90.0
+    hue_observed = hue_delta.reshape(-1)
+    hue_sample_weight = (source_sat.reshape(-1) / 255.0) ** 2
+    hue_solution = _weighted_least_squares(
+        weights,
+        hue_observed,
+        hue_sample_weight,
+    )
+
+    sat_ratio = (target_sat + 1.0) / (source_sat + 1.0) - 1.0
+    sat_observed = sat_ratio.reshape(-1)
+    sat_sample_weight = np.maximum(source_sat, target_sat).reshape(-1) / 255.0
+    sat_solution = _weighted_least_squares(
+        weights,
+        sat_observed,
+        sat_sample_weight,
+    )
+
+    parameters = {'blend': float(blend)}
+    for index, (band_name, _center) in enumerate(_BANDS):
+        hue_name, sat_name = _band_parameter_names(band_name)
+        parameters[hue_name] = _clamp_int(hue_solution[index] * 2.0, -180, 180)
+        parameters[sat_name] = _clamp_int(sat_solution[index] * 100.0, -100, 100)
+    return parameters
+
+
+def _estimate_candidate_parameters(source, target):
+    candidates = []
+    seen = set()
+    for blend in BLEND_CANDIDATES:
+        parameters = _estimate_parameters_from_hsv(source, target, blend)
+        key = tuple(parameters.items())
+        if key not in seen:
+            seen.add(key)
+            candidates.append(parameters)
+    return candidates
 
 
 def tune_hue_bands(
@@ -65,29 +162,28 @@ def tune_hue_bands(
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
     progress_callback=None,
 ):
-    """Tune Hue Bands with per-band coordinate search.
-
-    The search intentionally optimizes one hue band at a time because the node's
-    bands are mostly separated by the hue-weight lookup table. A small joint
-    blend pass and local refinements keep the search tractable while still
-    improving interactions at band boundaries.
-    """
+    """Tune Hue Bands with HSV-domain estimation plus local refinement."""
     if source is None or target is None:
         raise ValueError('source and target images are required')
     current_parameters = current_parameters or {}
-    best_parameters = _initial_parameters(current_parameters)
     work_source, work_target = _resize_pair(source, target)
+
+    best_parameters = _initial_parameters(current_parameters)
     best_image = image_process(work_source, **best_parameters)
-    best_score = _score(best_image, work_target)
+    best_visual_score = _score(best_image, work_target)
+    best_objective = best_visual_score + _parameter_penalty(best_parameters)
     evaluated_count = 1
 
     def evaluate(parameters, phase, band_name=None, candidate_index=0, candidate_count=0):
-        nonlocal best_image, best_parameters, best_score, evaluated_count
+        nonlocal best_image, best_parameters, best_visual_score, best_objective
+        nonlocal evaluated_count
         candidate_image = image_process(work_source, **parameters)
-        candidate_score = _score(candidate_image, work_target)
+        candidate_visual_score = _score(candidate_image, work_target)
+        candidate_objective = candidate_visual_score + _parameter_penalty(parameters)
         evaluated_count += 1
-        if candidate_score < best_score:
-            best_score = candidate_score
+        if candidate_objective < best_objective:
+            best_objective = candidate_objective
+            best_visual_score = candidate_visual_score
             best_parameters = dict(parameters)
             best_image = candidate_image
         if progress_callback is not None:
@@ -98,23 +194,18 @@ def tune_hue_bands(
                 'candidate_count': candidate_count,
                 'total_evaluated': evaluated_count,
                 'parameters': dict(parameters),
-                'score': float(candidate_score),
-                'best_score': float(best_score),
+                'score': float(candidate_visual_score),
+                'best_score': float(best_visual_score),
                 'best_parameters': dict(best_parameters),
             })
 
-    for band_name, _center in _BANDS:
-        hue_name, sat_name = _band_parameter_names(band_name)
-        candidates = [(hue, sat) for hue in HUE_CANDIDATES for sat in SATURATION_CANDIDATES]
-        for index, (hue_value, sat_value) in enumerate(candidates, start=1):
-            candidate = dict(best_parameters)
-            candidate[hue_name] = hue_value
-            candidate[sat_name] = sat_value
-            evaluate(candidate, 'coarse', band_name, index, len(candidates))
+    estimate_candidates = _estimate_candidate_parameters(work_source, work_target)
+    for index, parameters in enumerate(estimate_candidates, start=1):
+        evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
 
     for round_index in range(max(0, int(refinement_iterations))):
-        hue_radius = max(4, 30 // (round_index + 1))
-        sat_radius = max(5, 25 // (round_index + 1))
+        hue_radius = max(2, 12 // (round_index + 1))
+        sat_radius = max(2, 12 // (round_index + 1))
         for band_name, _center in _BANDS:
             hue_name, sat_name = _band_parameter_names(band_name)
             hue_values = _local_values(best_parameters[hue_name], hue_radius, -180, 180)
@@ -124,15 +215,22 @@ def tune_hue_bands(
                 candidate = dict(best_parameters)
                 candidate[hue_name] = hue_value
                 candidate[sat_name] = sat_value
-                evaluate(candidate, f'refine {round_index + 1}', band_name, index, len(candidates))
+                evaluate(
+                    candidate,
+                    f'refine {round_index + 1}',
+                    band_name,
+                    index,
+                    len(candidates),
+                )
 
-    for index, blend in enumerate((0.0, 0.25, 0.5, 0.75, 1.0), start=1):
+    for index, blend in enumerate(BLEND_CANDIDATES, start=1):
         candidate = dict(best_parameters)
         candidate['blend'] = blend
-        evaluate(candidate, 'blend', None, index, 5)
+        evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
 
+    full_target = _match_target_shape(source, target)
     full_best_image = image_process(np.asarray(source), **best_parameters)
-    full_score = _score(full_best_image, np.asarray(target) if np.asarray(target).shape == np.asarray(source).shape else cv2.resize(np.asarray(target), (np.asarray(source).shape[1], np.asarray(source).shape[0])))
+    full_score = _score(full_best_image, full_target)
     return TuneResult(
         best_parameters=best_parameters,
         best_score=float(full_score),

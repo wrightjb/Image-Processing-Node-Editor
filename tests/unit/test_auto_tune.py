@@ -285,6 +285,12 @@ def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
         auto_tune_source,
         {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
     ) is True
+    hue_bands_source = '7:AutoTuneHueBands:Int:Output02'
+    assert node._source_allows_parameter_sync(hue_bands_source, {}) is False
+    assert node._source_allows_parameter_sync(
+        hue_bands_source,
+        {'7:AutoTuneHueBands': {'__auto_tune_ready__': True}},
+    ) is True
     assert node._source_allows_parameter_sync('1:IntValue:Int:Output01', {}) is True
 
 

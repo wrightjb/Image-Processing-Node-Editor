@@ -169,7 +169,6 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
                 default_value=self._serialize_curve_set(self._default_curve_set()),
                 show=False,
             )
-            self.build_curve_points_editor(node_id)
 
         curves_output_port = self._curves_output_port_ref(node_id)
         with dpg.node_attribute(
@@ -181,7 +180,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
                 default_value=self._serialize_curve_set(self._default_curve_set()),
                 show=False,
             )
-            dpg.add_text('curves')
+            self.build_curve_points_editor(node_id)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         node_id = int(str(tag_node_name).split(':', maxsplit=1)[0])

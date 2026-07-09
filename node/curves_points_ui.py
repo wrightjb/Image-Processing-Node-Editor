@@ -516,14 +516,14 @@ class CurvesPointsEditorMixin:
             )
             dpg.add_button(
                 label='Copy Curves',
-                width=92,
+                width=112,
                 callback=self._callback_copy_points,
                 user_data=node_id,
             )
         with dpg.group(horizontal=True):
             dpg.add_button(
                 label='Clear Channel',
-                width=104,
+                width=128,
                 callback=self._callback_clear_channel,
                 user_data=node_id,
             )

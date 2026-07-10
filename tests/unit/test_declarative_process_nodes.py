@@ -968,7 +968,7 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 50
+    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 90
     assert writes['601:HueSaturationAdjustment:Int:Input04Value'] == -100
 
 
@@ -1402,3 +1402,12 @@ def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():
 
     assert np.allclose(np.sum(weights, axis=1), 1.0)
     assert np.all(np.count_nonzero(weights, axis=1) == 1)
+
+
+def test_hue_saturation_adjustment_hue_shift_range_spans_full_circle():
+    assert hue_saturation_adjustment_module.HUE_SHIFT_MIN == -90
+    assert hue_saturation_adjustment_module.HUE_SHIFT_MAX == 90
+    assert (
+        hue_saturation_adjustment_module.HUE_SHIFT_MIN % 180
+        == hue_saturation_adjustment_module.HUE_SHIFT_MAX % 180
+    )

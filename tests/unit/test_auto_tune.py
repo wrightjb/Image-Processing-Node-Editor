@@ -925,7 +925,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
 
     def fake_score(parameters, target):
         del target
-        blue_error = abs(parameters.get('blue_hue_shift', 0) - 50)
+        blue_error = abs(parameters.get('blue_hue_shift', 0) - 90)
         cyan_hue_error = abs(parameters.get('cyan_hue_shift', 0))
         cyan_sat_error = abs(parameters.get('cyan_saturation', 0))
         return float(blue_error + cyan_hue_error + cyan_sat_error)
@@ -935,7 +935,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
 
     polished, score, image, evaluated_count = hue_bands._polish_parameters_full_image(
         {
-            'blue_hue_shift': 49,
+            'blue_hue_shift': 89,
             'cyan_hue_shift': -1,
             'cyan_saturation': 1,
         },
@@ -943,7 +943,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
         target=None,
     )
 
-    assert polished['blue_hue_shift'] == 50
+    assert polished['blue_hue_shift'] == 90
     assert polished['cyan_hue_shift'] == 0
     assert polished['cyan_saturation'] == 0
     assert score == 0.0
@@ -966,7 +966,7 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         hue_bands,
         '_estimate_candidate_parameters',
         lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
-            {'blend': fixed_blend, 'blue_hue_shift': 49}
+            {'blend': fixed_blend, 'blue_hue_shift': 89}
         ],
     )
     monkeypatch.setattr(
@@ -980,7 +980,7 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
 
     def fake_score(image, target_image):
         del target_image
-        preferred_blue = 50 if image['height'] == 2 else 49
+        preferred_blue = 90 if image['height'] == 2 else 89
         return float(abs(image.get('blue_hue_shift', 0) - preferred_blue))
 
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
@@ -994,5 +994,5 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         fixed_blend=0.0,
     )
 
-    assert result.best_parameters['blue_hue_shift'] == 50
+    assert result.best_parameters['blue_hue_shift'] == 90
     assert result.best_score == 0.0

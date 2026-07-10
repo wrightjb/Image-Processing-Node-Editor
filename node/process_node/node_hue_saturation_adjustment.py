@@ -17,8 +17,8 @@ _BANDS = (
 )
 _BAND_HALF_WIDTH = 30.0
 _BAND_NAME_TO_INDEX = {band_name: index for index, (band_name, _) in enumerate(_BANDS)}
-HUE_SHIFT_MIN = -50
-HUE_SHIFT_MAX = 50
+HUE_SHIFT_MIN = -90
+HUE_SHIFT_MAX = 90
 
 
 def _build_band_weight_lut():

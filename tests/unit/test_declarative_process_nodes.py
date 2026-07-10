@@ -1362,3 +1362,36 @@ def test_rgb_channel_swap_node_falls_back_to_rgb_on_invalid_order():
     result = rgb_channel_swap_module.image_process(image, 'invalid')
 
     assert result[0, 0].tolist() == [10, 20, 30]
+
+
+def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+    node._last_touched_slider_tag_by_node = {
+        1: '1:HueSaturationAdjustment:Int:Input03Value',
+        2: '2:HueSaturationAdjustment:Int:Input03Value',
+    }
+    node._last_touched_node_id = 2
+    writes = {}
+
+    class _Dpg:
+        @staticmethod
+        def does_item_exist(tag):
+            return True
+
+        @staticmethod
+        def get_item_configuration(tag):
+            return {'min_value': -180, 'max_value': 180}
+
+        @staticmethod
+        def get_value(tag):
+            return 10 if tag.startswith('2:') else 100
+
+        @staticmethod
+        def set_value(tag, value):
+            writes[tag] = value
+
+    monkeypatch.setattr(hue_saturation_adjustment_module, 'dpg', _Dpg())
+
+    node._nudge_slider(None, None, 1)
+
+    assert writes == {'2:HueSaturationAdjustment:Int:Input03Value': 11}

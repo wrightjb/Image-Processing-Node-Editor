@@ -124,6 +124,7 @@ class Node(DeclarativeImageProcessNodeBase):
     node_tag = 'HueSaturationAdjustment'
 
     _last_touched_slider_tag_by_node = {}
+    _last_touched_node_id = None
 
     parameters = [
         {
@@ -132,7 +133,7 @@ class Node(DeclarativeImageProcessNodeBase):
             'port': 'Input02',
             'widget': 'slider_float',
             'label': 'blend',
-            'default': 1.0,
+            'default': 0.0,
             'min': 0.0,
             'max': 1.0,
             'cast': float,
@@ -205,6 +206,7 @@ class Node(DeclarativeImageProcessNodeBase):
     def _slider_touched_callback(self, sender, app_data, user_data):
         slider_tag = dpg.get_item_alias(sender)
         self._last_touched_slider_tag_by_node[user_data] = slider_tag
+        self._last_touched_node_id = user_data
         if self._ui_callback is not None and slider_tag:
             node_id_name = ':'.join(slider_tag.split(':')[:2])
             before_value = self._last_parameter_values.get(slider_tag, app_data)
@@ -223,31 +225,33 @@ class Node(DeclarativeImageProcessNodeBase):
     def _nudge_slider(self, sender, app_data, user_data):
         del sender, app_data
         step = int(user_data)
-        for slider_tag in self._last_touched_slider_tag_by_node.values():
-            if not slider_tag or not dpg.does_item_exist(slider_tag):
-                continue
-            item_conf = dpg.get_item_configuration(slider_tag)
-            current = dpg.get_value(slider_tag)
-            if isinstance(current, float):
-                next_value = round(current + (0.01 * step), 2)
-            else:
-                next_value = int(current) + step
-            min_value = item_conf.get('min_value', next_value)
-            max_value = item_conf.get('max_value', next_value)
-            updated_value = max(min_value, min(max_value, next_value))
-            dpg.set_value(slider_tag, updated_value)
-            if self._ui_callback is not None:
-                node_id_name = ':'.join(slider_tag.split(':')[:2])
-                self._ui_callback(
-                    'parameter_changed',
-                    {
-                        'node_id_name': node_id_name,
-                        'port_tag': slider_tag[:-5],
-                        'value_tag': slider_tag,
-                        'before_value': current,
-                        'after_value': updated_value,
-                    },
-                )
+        slider_tag = self._last_touched_slider_tag_by_node.get(
+            self._last_touched_node_id
+        )
+        if not slider_tag or not dpg.does_item_exist(slider_tag):
+            return
+        item_conf = dpg.get_item_configuration(slider_tag)
+        current = dpg.get_value(slider_tag)
+        if isinstance(current, float):
+            next_value = round(current + (0.01 * step), 2)
+        else:
+            next_value = int(current) + step
+        min_value = item_conf.get('min_value', next_value)
+        max_value = item_conf.get('max_value', next_value)
+        updated_value = max(min_value, min(max_value, next_value))
+        dpg.set_value(slider_tag, updated_value)
+        if self._ui_callback is not None:
+            node_id_name = ':'.join(slider_tag.split(':')[:2])
+            self._ui_callback(
+                'parameter_changed',
+                {
+                    'node_id_name': node_id_name,
+                    'port_tag': slider_tag[:-5],
+                    'value_tag': slider_tag,
+                    'before_value': current,
+                    'after_value': updated_value,
+                },
+            )
 
     def _add_tuner_callback(self, sender, app_data, user_data):
         del sender, app_data

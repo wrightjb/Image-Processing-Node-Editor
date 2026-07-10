@@ -908,3 +908,9 @@ def test_hue_bands_weighted_score_emphasizes_selected_pixels():
 
     assert hue_bands._weighted_score(candidate, target, left_only) == 0.0
     assert hue_bands._weighted_score(candidate, target, right_only) == 1.0
+
+
+def test_hue_bands_local_values_include_neutral_zero():
+    import auto_tune.hue_bands as hue_bands
+
+    assert 0 in hue_bands._local_values(98, 2, -180, 180)

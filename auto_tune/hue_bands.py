@@ -83,11 +83,13 @@ def _clamp_int(value, minimum, maximum):
     return int(max(minimum, min(maximum, round(float(value)))))
 
 
-def _local_values(center, radius, minimum, maximum):
+def _local_values(center, radius, minimum, maximum, include_zero=True):
     values = {
         _clamp_int(center + offset, minimum, maximum)
         for offset in (-radius, -radius // 2, 0, radius // 2, radius)
     }
+    if include_zero and minimum <= 0 <= maximum:
+        values.add(0)
     return sorted(values)
 
 

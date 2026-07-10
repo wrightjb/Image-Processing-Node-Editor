@@ -57,11 +57,20 @@ class Node(DpgNodeBase):
                     label='Tune Blend',
                     default_value=False,
                 )
+            with dpg.node_attribute(tag=self._fixed_blend_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
+                dpg.add_slider_float(
+                    tag=self._fixed_blend_value_tag(node_id),
+                    label='Fixed Blend',
+                    default_value=0.0,
+                    min_value=0.0,
+                    max_value=1.0,
+                    width=120,
+                )
             with dpg.node_attribute(tag=source_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('source image')
             with dpg.node_attribute(tag=target_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('target image')
-            self._add_float_output(ports.blend, 'blend', 1.0)
+            self._add_float_output(ports.blend, 'blend', 0.0)
             for band_name, _center in _BANDS:
                 self._add_int_output(getattr(ports, f'{band_name}_hue_shift'), f'{band_name[:3]} hue', 0)
                 self._add_int_output(getattr(ports, f'{band_name}_saturation'), f'{band_name[:3]} sat', 0)
@@ -96,6 +105,19 @@ class Node(DpgNodeBase):
 
     def _tune_blend_value(self, node_id):
         return bool(dpg_get_value(self._tune_blend_value_tag(node_id)))
+
+    def _fixed_blend_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_FLOAT, 'FixedBlend')
+
+    def _fixed_blend_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_FLOAT, 'FixedBlend')
+
+    def _fixed_blend_value(self, node_id):
+        value = dpg_get_value(self._fixed_blend_value_tag(node_id))
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            return 0.0
 
     def _set_status(self, node_id, message):
         dpg_set_value(self._status_value_tag(node_id), message)
@@ -157,7 +179,9 @@ class Node(DpgNodeBase):
             self._set_status(node_id, message)
 
         tune_blend = self._tune_blend_value(node_id)
+        fixed_blend = self._fixed_blend_value(node_id)
         dpg_set_value(self._tune_blend_value_tag(node_id), tune_blend)
+        dpg_set_value(self._fixed_blend_value_tag(node_id), fixed_blend)
         result = tune_hue_bands(
             source,
             target,
@@ -165,6 +189,7 @@ class Node(DpgNodeBase):
             refinement_iterations=refinement_iterations,
             progress_callback=_progress,
             tune_blend=tune_blend,
+            fixed_blend=fixed_blend,
         )
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
@@ -187,6 +212,9 @@ class Node(DpgNodeBase):
         setting[self._tune_blend_value_tag(node_id)] = dpg_get_value(
             self._tune_blend_value_tag(node_id)
         )
+        setting[self._fixed_blend_value_tag(node_id)] = dpg_get_value(
+            self._fixed_blend_value_tag(node_id)
+        )
         return setting
 
     def set_setting_dict(self, node_id, setting_dict):
@@ -200,3 +228,6 @@ class Node(DpgNodeBase):
         tune_blend_tag = self._tune_blend_value_tag(node_id)
         if tune_blend_tag in setting_dict:
             dpg_set_value(tune_blend_tag, setting_dict[tune_blend_tag])
+        fixed_blend_tag = self._fixed_blend_value_tag(node_id)
+        if fixed_blend_tag in setting_dict:
+            dpg_set_value(fixed_blend_tag, setting_dict[fixed_blend_tag])

@@ -184,10 +184,16 @@ def _estimate_parameters_from_hsv(source, target, blend):
     return parameters
 
 
-def _estimate_candidate_parameters(source, target, tune_blend=False):
+def _estimate_candidate_parameters(
+    source,
+    target,
+    tune_blend=False,
+    fixed_blend=0.0,
+):
     candidates = []
     seen = set()
-    blend_candidates = BLEND_CANDIDATES if tune_blend else (1.0,)
+    fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
+    blend_candidates = BLEND_CANDIDATES if tune_blend else (fixed_blend,)
     for blend in blend_candidates:
         parameters = _estimate_parameters_from_hsv(source, target, blend)
         key = tuple(parameters.items())
@@ -197,9 +203,9 @@ def _estimate_candidate_parameters(source, target, tune_blend=False):
     return candidates
 
 
-def _neutral_parameter_value(parameter_name):
+def _neutral_parameter_value(parameter_name, neutral_blend=1.0):
     if parameter_name == 'blend':
-        return 1.0
+        return float(neutral_blend)
     return 0
 
 
@@ -218,6 +224,7 @@ def _simplify_parameters(
     original_score,
     best_score,
     score_callback=None,
+    neutral_blend=1.0,
 ):
     """Prune parameters whose visual benefit is too small to justify them."""
     simplified = dict(parameters)
@@ -235,7 +242,7 @@ def _simplify_parameters(
         reverse=True,
     )
     for name in names:
-        neutral_value = _neutral_parameter_value(name)
+        neutral_value = _neutral_parameter_value(name, neutral_blend)
         if simplified.get(name, neutral_value) == neutral_value:
             continue
         candidate = dict(simplified)
@@ -256,11 +263,13 @@ def tune_hue_bands(
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
     progress_callback=None,
     tune_blend=False,
+    fixed_blend=0.0,
 ):
     """Tune Hue Bands with HSV-domain estimation plus local refinement."""
     if source is None or target is None:
         raise ValueError('source and target images are required')
     current_parameters = current_parameters or {}
+    fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
     work_source, work_target = _resize_pair(source, target)
 
     best_parameters = _initial_parameters(current_parameters)
@@ -299,6 +308,7 @@ def tune_hue_bands(
         work_source,
         work_target,
         tune_blend=tune_blend,
+        fixed_blend=fixed_blend,
     )
     for index, parameters in enumerate(estimate_candidates, start=1):
         evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
@@ -367,7 +377,7 @@ def tune_hue_bands(
             candidate['blend'] = blend
             evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
     else:
-        best_parameters['blend'] = 1.0
+        best_parameters['blend'] = fixed_blend
 
     def _progress_simplify(parameter_name, simplified_score):
         if progress_callback is None:
@@ -391,6 +401,7 @@ def tune_hue_bands(
         original_visual_score,
         best_visual_score,
         score_callback=_progress_simplify,
+        neutral_blend=fixed_blend if not tune_blend else 1.0,
     )
 
     full_target = _match_target_shape(source, target)

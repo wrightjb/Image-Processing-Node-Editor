@@ -842,6 +842,17 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
     assert simplified['blend'] == 1.0
     assert simplified_score == 0.0095
 
+    simplified_fixed_zero, _score = hue_bands._simplify_parameters(
+        {'blend': 0.75, 'blue_hue_shift': 70},
+        source=None,
+        target=None,
+        original_score=0.1,
+        best_score=0.009,
+        neutral_blend=0.0,
+    )
+
+    assert simplified_fixed_zero['blend'] == 0.0
+
 
 def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch):
     import auto_tune.hue_bands as hue_bands
@@ -862,11 +873,18 @@ def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch)
         tune_blend=True,
     )
 
-    assert [candidate['blend'] for candidate in default_candidates] == [1.0]
+    assert [candidate['blend'] for candidate in default_candidates] == [0.0]
     assert [candidate['blend'] for candidate in tuned_candidates] == list(
         hue_bands.BLEND_CANDIDATES
     )
-    assert seen_blends == [1.0] + list(hue_bands.BLEND_CANDIDATES)
+    fixed_candidates = hue_bands._estimate_candidate_parameters(
+        None,
+        None,
+        fixed_blend=0.35,
+    )
+
+    assert [candidate['blend'] for candidate in fixed_candidates] == [0.35]
+    assert seen_blends == [0.0] + list(hue_bands.BLEND_CANDIDATES) + [0.35]
 
 
 def test_auto_tune_hue_bands_tune_blend_defaults_false():
@@ -875,6 +893,7 @@ def test_auto_tune_hue_bands_tune_blend_defaults_false():
     node = auto_tune_hue_bands_module.Node()
 
     assert node._tune_blend_value_tag(42) == '42:AutoTuneHueBands:Int:TuneBlendValue'
+    assert node._fixed_blend_value_tag(42) == '42:AutoTuneHueBands:Float:FixedBlendValue'
 
 
 def test_hue_bands_weighted_score_emphasizes_selected_pixels():

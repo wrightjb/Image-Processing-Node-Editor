@@ -933,7 +933,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
     monkeypatch.setattr(hue_bands, '_score', fake_score)
 
-    polished, score, image = hue_bands._polish_parameters_full_image(
+    polished, score, image, evaluated_count = hue_bands._polish_parameters_full_image(
         {
             'blue_hue_shift': 102,
             'cyan_hue_shift': -1,
@@ -948,6 +948,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     assert polished['cyan_saturation'] == 0
     assert score == 0.0
     assert image == polished
+    assert evaluated_count > 0
 
 
 def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeypatch):

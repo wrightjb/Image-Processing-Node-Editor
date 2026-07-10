@@ -176,6 +176,7 @@ class Node(DpgNodeBase):
                 f"total {update['total_evaluated']}\n"
                 f"score={update['score']:.6g} best={update['best_score']:.6g}"
             )
+            print(f'AutoTuneHueBands: {message}')
             self._set_status(node_id, message)
 
         tune_blend = self._tune_blend_value(node_id)

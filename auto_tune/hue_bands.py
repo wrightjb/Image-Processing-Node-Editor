@@ -224,17 +224,21 @@ def _polish_parameters_full_image(
     source,
     target,
     max_passes=8,
+    progress_callback=None,
 ):
     """Greedily polish integer parameters against the full-image score."""
     polished = dict(parameters)
     best_image = image_process(source, **polished)
     best_score = _score(best_image, target)
+    evaluated_count = 0
 
     for _pass_index in range(max(0, int(max_passes))):
         improved = False
-        for name in _tunable_parameter_names():
-            if name == 'blend':
-                continue
+        active_names = [
+            name for name in _tunable_parameter_names()
+            if name != 'blend' and int(polished.get(name, 0)) != 0
+        ]
+        for name in active_names:
             current = int(polished.get(name, 0))
             if name.endswith('_hue_shift'):
                 values = {
@@ -249,13 +253,33 @@ def _polish_parameters_full_image(
                 }
                 values.add(0)
 
-            for value in sorted(values, key=lambda candidate: abs(candidate - current)):
-                if value == current:
-                    continue
+            candidate_values = [value for value in values if value != current]
+            candidate_values = sorted(
+                candidate_values,
+                key=lambda candidate: (
+                    abs(candidate - current),
+                    0 if candidate == 0 else 1,
+                    abs(candidate),
+                ),
+            )
+            for candidate_index, value in enumerate(candidate_values, start=1):
                 candidate = dict(polished)
                 candidate[name] = value
                 candidate_image = image_process(source, **candidate)
                 candidate_score = _score(candidate_image, target)
+                evaluated_count += 1
+                if progress_callback is not None:
+                    progress_callback({
+                        'phase': 'polish',
+                        'band': name,
+                        'candidate_index': candidate_index,
+                        'candidate_count': len(candidate_values),
+                        'total_evaluated': evaluated_count,
+                        'parameters': dict(candidate),
+                        'score': float(candidate_score),
+                        'best_score': float(best_score),
+                        'best_parameters': dict(polished),
+                    })
                 if candidate_score + 1.0e-12 < best_score:
                     polished = candidate
                     best_image = candidate_image
@@ -264,7 +288,7 @@ def _polish_parameters_full_image(
                     break
         if not improved:
             break
-    return polished, best_score, best_image
+    return polished, best_score, best_image, evaluated_count
 
 
 def _simplify_parameters(
@@ -435,11 +459,22 @@ def tune_hue_bands(
         image_process(full_source, **_initial_parameters(current_parameters)),
         full_target,
     )
-    best_parameters, best_visual_score, best_image = _polish_parameters_full_image(
+    def _progress_polish(update):
+        if progress_callback is not None:
+            progress_callback(update)
+
+    (
+        best_parameters,
+        best_visual_score,
+        best_image,
+        polish_evaluated_count,
+    ) = _polish_parameters_full_image(
         best_parameters,
         full_source,
         full_target,
+        progress_callback=_progress_polish,
     )
+    evaluated_count += polish_evaluated_count
 
     def _progress_simplify(parameter_name, simplified_score):
         if progress_callback is None:

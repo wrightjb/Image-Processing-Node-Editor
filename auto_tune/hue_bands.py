@@ -14,6 +14,8 @@ from node.process_node.node_hue_saturation_adjustment import (
 
 DEFAULT_REFINEMENT_ITERATIONS = 2
 BLEND_CANDIDATES = (1.0, 0.75, 0.5, 0.25, 0.0)
+SIMPLIFY_RELATIVE_TOLERANCE = 0.01
+SIMPLIFY_ABSOLUTE_TOLERANCE = 1.0e-6
 
 
 def _resize_pair(source, target, max_size=240):
@@ -95,12 +97,22 @@ def _hsv_pair(source, target):
     )
 
 
-def _weighted_least_squares(matrix, observed, sample_weight):
+def _weighted_least_squares(matrix, observed, sample_weight, ridge=1.0e-3):
     valid = sample_weight > 1.0e-6
     if int(np.count_nonzero(valid)) < matrix.shape[1]:
         return np.zeros(matrix.shape[1], dtype=np.float32)
     weighted_matrix = matrix[valid] * sample_weight[valid, None]
     weighted_observed = observed[valid] * sample_weight[valid]
+    if ridge > 0.0:
+        regularizer = np.sqrt(float(ridge)) * np.eye(
+            matrix.shape[1],
+            dtype=np.float32,
+        )
+        weighted_matrix = np.vstack((weighted_matrix, regularizer))
+        weighted_observed = np.concatenate((
+            weighted_observed,
+            np.zeros(matrix.shape[1], dtype=np.float32),
+        ))
     solution, *_unused = np.linalg.lstsq(
         weighted_matrix,
         weighted_observed,
@@ -155,6 +167,58 @@ def _estimate_candidate_parameters(source, target):
     return candidates
 
 
+def _neutral_parameter_value(parameter_name):
+    if parameter_name == 'blend':
+        return 1.0
+    return 0
+
+
+def _tunable_parameter_names():
+    names = ['blend']
+    for band_name, _center in _BANDS:
+        hue_name, sat_name = _band_parameter_names(band_name)
+        names.extend((hue_name, sat_name))
+    return names
+
+
+def _simplify_parameters(
+    parameters,
+    source,
+    target,
+    original_score,
+    best_score,
+    score_callback=None,
+):
+    """Prune parameters whose visual benefit is too small to justify them."""
+    simplified = dict(parameters)
+    current_score = float(best_score)
+    improvement = max(0.0, float(original_score) - float(best_score))
+    tolerance = max(
+        SIMPLIFY_ABSOLUTE_TOLERANCE,
+        improvement * SIMPLIFY_RELATIVE_TOLERANCE,
+    )
+
+    names = sorted(
+        _tunable_parameter_names(),
+        key=lambda name: abs(float(simplified.get(name, 0.0)))
+        if name != 'blend' else abs(float(simplified.get(name, 1.0)) - 1.0),
+        reverse=True,
+    )
+    for name in names:
+        neutral_value = _neutral_parameter_value(name)
+        if simplified.get(name, neutral_value) == neutral_value:
+            continue
+        candidate = dict(simplified)
+        candidate[name] = neutral_value
+        candidate_score = _score(image_process(source, **candidate), target)
+        if candidate_score <= current_score + tolerance:
+            simplified = candidate
+            current_score = candidate_score
+            if score_callback is not None:
+                score_callback(name, current_score)
+    return simplified, current_score
+
+
 def tune_hue_bands(
     source,
     target,
@@ -171,6 +235,7 @@ def tune_hue_bands(
     best_parameters = _initial_parameters(current_parameters)
     best_image = image_process(work_source, **best_parameters)
     best_visual_score = _score(best_image, work_target)
+    original_visual_score = best_visual_score
     best_objective = best_visual_score + _parameter_penalty(best_parameters)
     evaluated_count = 1
 
@@ -227,6 +292,30 @@ def tune_hue_bands(
         candidate = dict(best_parameters)
         candidate['blend'] = blend
         evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
+
+    def _progress_simplify(parameter_name, simplified_score):
+        if progress_callback is None:
+            return
+        progress_callback({
+            'phase': 'simplify',
+            'band': parameter_name,
+            'candidate_index': 0,
+            'candidate_count': 0,
+            'total_evaluated': evaluated_count,
+            'parameters': dict(best_parameters),
+            'score': float(simplified_score),
+            'best_score': float(simplified_score),
+            'best_parameters': dict(best_parameters),
+        })
+
+    best_parameters, best_visual_score = _simplify_parameters(
+        best_parameters,
+        work_source,
+        work_target,
+        original_visual_score,
+        best_visual_score,
+        score_callback=_progress_simplify,
+    )
 
     full_target = _match_target_shape(source, target)
     full_best_image = image_process(np.asarray(source), **best_parameters)

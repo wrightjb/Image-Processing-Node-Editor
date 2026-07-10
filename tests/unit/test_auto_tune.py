@@ -806,3 +806,38 @@ def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
     assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output02'
     assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output13'
     assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output14'
+
+
+def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    def fake_image_process(source, **parameters):
+        del source
+        return parameters
+
+    def fake_score(parameters, target):
+        del target
+        score = 0.1
+        if parameters.get('blue_hue_shift') == 70:
+            score = 0.0095 if parameters.get('blend') == 1.0 else 0.009
+        return score
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+
+    simplified, simplified_score = hue_bands._simplify_parameters(
+        {
+            'blend': 0.75,
+            'blue_hue_shift': 70,
+            'magenta_hue_shift': 120,
+        },
+        source=None,
+        target=None,
+        original_score=0.1,
+        best_score=0.009,
+    )
+
+    assert simplified['blue_hue_shift'] == 70
+    assert simplified['magenta_hue_shift'] == 0
+    assert simplified['blend'] == 1.0
+    assert simplified_score == 0.0095

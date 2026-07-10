@@ -7,6 +7,8 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error, normalize_image_for_metric
 from node.process_node.node_hue_saturation_adjustment import (
+    HUE_SHIFT_MAX,
+    HUE_SHIFT_MIN,
     _BANDS,
     _get_blend_weight_lut,
     image_process,
@@ -99,8 +101,8 @@ def _initial_parameters(current_parameters):
         hue_name, sat_name = _band_parameter_names(band_name)
         parameters[hue_name] = _clamp_int(
             current_parameters.get(hue_name, 0),
-            -180,
-            180,
+            HUE_SHIFT_MIN,
+            HUE_SHIFT_MAX,
         )
         parameters[sat_name] = _clamp_int(
             current_parameters.get(sat_name, 0),
@@ -181,7 +183,11 @@ def _estimate_parameters_from_hsv(source, target, blend):
     parameters = {'blend': float(blend)}
     for index, (band_name, _center) in enumerate(_BANDS):
         hue_name, sat_name = _band_parameter_names(band_name)
-        parameters[hue_name] = _clamp_int(hue_solution[index] * 2.0, -180, 180)
+        parameters[hue_name] = _clamp_int(
+            hue_solution[index],
+            HUE_SHIFT_MIN,
+            HUE_SHIFT_MAX,
+        )
         parameters[sat_name] = _clamp_int(sat_solution[index] * 100.0, -100, 100)
     return parameters
 
@@ -242,7 +248,7 @@ def _polish_parameters_full_image(
             current = int(polished.get(name, 0))
             if name.endswith('_hue_shift'):
                 values = {
-                    _clamp_int(current + offset, -180, 180)
+                    _clamp_int(current + offset, HUE_SHIFT_MIN, HUE_SHIFT_MAX)
                     for offset in (-2, -1, 0, 1, 2)
                 }
                 values.add(0)
@@ -392,7 +398,12 @@ def tune_hue_bands(
         sat_radius = max(2, 12 // (round_index + 1))
         for band_name, _center in _BANDS:
             hue_name, sat_name = _band_parameter_names(band_name)
-            hue_values = _local_values(best_parameters[hue_name], hue_radius, -180, 180)
+            hue_values = _local_values(
+                best_parameters[hue_name],
+                hue_radius,
+                HUE_SHIFT_MIN,
+                HUE_SHIFT_MAX,
+            )
             sat_values = _local_values(best_parameters[sat_name], sat_radius, -100, 100)
             candidates = [(hue, sat) for hue in hue_values for sat in sat_values]
             band_weights = _band_weight_map(

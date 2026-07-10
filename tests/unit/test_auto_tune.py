@@ -818,7 +818,7 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
     def fake_score(parameters, target):
         del target
         score = 0.1
-        if parameters.get('blue_hue_shift') == 70:
+        if parameters.get('blue_hue_shift') == 35:
             score = 0.0095 if parameters.get('blend') == 1.0 else 0.009
         return score
 
@@ -828,7 +828,7 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
     simplified, simplified_score = hue_bands._simplify_parameters(
         {
             'blend': 0.75,
-            'blue_hue_shift': 70,
+            'blue_hue_shift': 35,
             'magenta_hue_shift': 120,
         },
         source=None,
@@ -837,13 +837,13 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
         best_score=0.009,
     )
 
-    assert simplified['blue_hue_shift'] == 70
+    assert simplified['blue_hue_shift'] == 35
     assert simplified['magenta_hue_shift'] == 0
     assert simplified['blend'] == 1.0
     assert simplified_score == 0.0095
 
     simplified_fixed_zero, _score = hue_bands._simplify_parameters(
-        {'blend': 0.75, 'blue_hue_shift': 70},
+        {'blend': 0.75, 'blue_hue_shift': 35},
         source=None,
         target=None,
         original_score=0.1,
@@ -925,7 +925,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
 
     def fake_score(parameters, target):
         del target
-        blue_error = abs(parameters.get('blue_hue_shift', 0) - 103)
+        blue_error = abs(parameters.get('blue_hue_shift', 0) - 50)
         cyan_hue_error = abs(parameters.get('cyan_hue_shift', 0))
         cyan_sat_error = abs(parameters.get('cyan_saturation', 0))
         return float(blue_error + cyan_hue_error + cyan_sat_error)
@@ -935,7 +935,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
 
     polished, score, image, evaluated_count = hue_bands._polish_parameters_full_image(
         {
-            'blue_hue_shift': 102,
+            'blue_hue_shift': 49,
             'cyan_hue_shift': -1,
             'cyan_saturation': 1,
         },
@@ -943,7 +943,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
         target=None,
     )
 
-    assert polished['blue_hue_shift'] == 103
+    assert polished['blue_hue_shift'] == 50
     assert polished['cyan_hue_shift'] == 0
     assert polished['cyan_saturation'] == 0
     assert score == 0.0
@@ -966,7 +966,7 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         hue_bands,
         '_estimate_candidate_parameters',
         lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
-            {'blend': fixed_blend, 'blue_hue_shift': 102}
+            {'blend': fixed_blend, 'blue_hue_shift': 49}
         ],
     )
     monkeypatch.setattr(
@@ -980,7 +980,7 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
 
     def fake_score(image, target_image):
         del target_image
-        preferred_blue = 103 if image['height'] == 2 else 102
+        preferred_blue = 50 if image['height'] == 2 else 49
         return float(abs(image.get('blue_hue_shift', 0) - preferred_blue))
 
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
@@ -994,5 +994,5 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         fixed_blend=0.0,
     )
 
-    assert result.best_parameters['blue_hue_shift'] == 103
+    assert result.best_parameters['blue_hue_shift'] == 50
     assert result.best_score == 0.0

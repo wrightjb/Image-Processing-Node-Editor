@@ -810,13 +810,13 @@ def test_hue_saturation_adjustment_node_get_set_settings(monkeypatch):
     node.set_setting_dict(111, {
         '111:HueSaturationAdjustment:Float:Input02Value': 0.0,
         '111:HueSaturationAdjustment:Int:Input03Value': -60,
-        '111:HueSaturationAdjustment:Int:Input12Value': 75,
+        '111:HueSaturationAdjustment:Int:Input12Value': 50,
         '111:HueSaturationAdjustment:Int:Input13Value': 55,
     })
 
     assert writes['111:HueSaturationAdjustment:Float:Input02Value'] == 0.0
     assert writes['111:HueSaturationAdjustment:Int:Input03Value'] == -60
-    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 75
+    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 50
     assert writes['111:HueSaturationAdjustment:Int:Input13Value'] == 55
 
 
@@ -839,7 +839,7 @@ def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monk
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['red_hue_shift'] = 60
+    params['red_hue_shift'] = 30
     params['red_saturation'] = 50
 
     bgr_pixel = np.array([[[10, 20, 30]]], dtype=np.uint8)
@@ -899,7 +899,7 @@ def test_hue_saturation_adjustment_uses_only_active_band_weights(monkeypatch):
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['red_hue_shift'] = 60
+    params['red_hue_shift'] = 30
 
     out, _ = node.process(np.array([[[8, 9, 10]]], dtype=np.uint8), **params)
 
@@ -928,8 +928,8 @@ def test_hue_saturation_adjustment_hue_uses_single_band_without_neighbor_bleed(m
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['yellow_hue_shift'] = 120
-    params['magenta_hue_shift'] = -120
+    params['yellow_hue_shift'] = 50
+    params['magenta_hue_shift'] = -50
 
     out, _ = node.process(np.array([[[3, 4, 5]]], dtype=np.uint8), **params)
 
@@ -968,7 +968,7 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 180
+    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 50
     assert writes['601:HueSaturationAdjustment:Int:Input04Value'] == -100
 
 

@@ -17,6 +17,8 @@ _BANDS = (
 )
 _BAND_HALF_WIDTH = 30.0
 _BAND_NAME_TO_INDEX = {band_name: index for index, (band_name, _) in enumerate(_BANDS)}
+HUE_SHIFT_MIN = -50
+HUE_SHIFT_MAX = 50
 
 
 def _build_band_weight_lut():
@@ -64,11 +66,11 @@ def _get_blend_weight_lut(blend):
 def _active_adjustments(adjustments):
     active = []
     for band_name, index in _BAND_NAME_TO_INDEX.items():
-        hue_delta_degrees = float(adjustments.get(f'{band_name}_hue_shift', 0))
+        hue_delta = float(adjustments.get(f'{band_name}_hue_shift', 0))
         saturation_delta = float(adjustments.get(f'{band_name}_saturation', 0))
-        if hue_delta_degrees == 0.0 and saturation_delta == 0.0:
+        if hue_delta == 0.0 and saturation_delta == 0.0:
             continue
-        active.append((index, hue_delta_degrees, saturation_delta))
+        active.append((index, hue_delta, saturation_delta))
     return active
 
 
@@ -94,8 +96,8 @@ def image_process(image, blend=0.0, **adjustments):
     hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
     saturation_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
 
-    for index, hue_delta_degrees, saturation_delta in active_adjustments:
-        hue_delta_by_band[index] = hue_delta_degrees / 2.0
+    for index, hue_delta, saturation_delta in active_adjustments:
+        hue_delta_by_band[index] = hue_delta
         saturation_delta_by_band[index] = saturation_delta / 100.0
 
     blend_weights = _get_blend_weight_lut(blend)[hue_indices]
@@ -156,8 +158,8 @@ class Node(DeclarativeImageProcessNodeBase):
                 'widget': 'slider_int',
                 'label': f'{band_name[:3]} hue',
                 'default': 0,
-                'min': -180,
-                'max': 180,
+                'min': HUE_SHIFT_MIN,
+                'max': HUE_SHIFT_MAX,
                 'cast': int,
             },
             {

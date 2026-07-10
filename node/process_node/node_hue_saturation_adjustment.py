@@ -9,10 +9,12 @@ from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
 
 _BANDS = (
     ('red', 0.0),
+    ('orange', 15.0),
     ('yellow', 30.0),
     ('green', 60.0),
     ('cyan', 90.0),
     ('blue', 120.0),
+    ('purple', 135.0),
     ('magenta', 150.0),
 )
 _BAND_HALF_WIDTH = 30.0

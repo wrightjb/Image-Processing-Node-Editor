@@ -804,8 +804,10 @@ def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
     assert ports.target_image.dpg_tag == '42:AutoTuneHueBands:Image:Input02'
     assert ports.blend.dpg_tag == '42:AutoTuneHueBands:Float:Output01'
     assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output02'
-    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output13'
-    assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output14'
+    assert ports.orange_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output04'
+    assert ports.purple_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output14'
+    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output17'
+    assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output18'
 
 
 def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):

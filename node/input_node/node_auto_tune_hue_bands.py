@@ -22,11 +22,15 @@ class Node(DpgNodeBase):
         'source_image': InputPort(PortDataType.IMAGE, index=1),
         'target_image': InputPort(PortDataType.IMAGE, index=2),
         'blend': OutputPort(PortDataType.FLOAT, index=1),
-        'best_score': OutputPort(PortDataType.FLOAT, index=14),
     }
     for _index, (_band_name, _center) in enumerate(_BANDS):
-        _specs[f'{_band_name}_hue_shift'] = OutputPort(PortDataType.INT, index=(_index * 2) + 2)
-        _specs[f'{_band_name}_saturation'] = OutputPort(PortDataType.INT, index=(_index * 2) + 3)
+        _specs[f'{_band_name}_hue_shift'] = OutputPort(
+            PortDataType.INT, index=(_index * 2) + 2,
+        )
+        _specs[f'{_band_name}_saturation'] = OutputPort(
+            PortDataType.INT, index=(_index * 2) + 3,
+        )
+    _specs['best_score'] = OutputPort(PortDataType.FLOAT, index=(len(_BANDS) * 2) + 2)
     port_specs = PortSpecs(**_specs)
 
     def add_node(self, parent, node_id, pos=[0, 0], opencv_setting_dict=None, callback=None):
@@ -72,8 +76,16 @@ class Node(DpgNodeBase):
                 dpg.add_text('target image')
             self._add_float_output(ports.blend, 'blend', 0.0)
             for band_name, _center in _BANDS:
-                self._add_int_output(getattr(ports, f'{band_name}_hue_shift'), f'{band_name[:3]} hue', 0)
-                self._add_int_output(getattr(ports, f'{band_name}_saturation'), f'{band_name[:3]} sat', 0)
+                self._add_int_output(
+                    getattr(ports, f'{band_name}_hue_shift'),
+                    f'{band_name[:3]} hue',
+                    0,
+                )
+                self._add_int_output(
+                    getattr(ports, f'{band_name}_saturation'),
+                    f'{band_name[:3]} sat',
+                    0,
+                )
             self._add_float_output(ports.best_score, 'score', 0.0)
         return self._node_name(node_id)
 

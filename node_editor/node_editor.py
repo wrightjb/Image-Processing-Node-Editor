@@ -1441,13 +1441,13 @@ class DpgNodeEditor(object):
 
         tuner = self.get_node_instance(tuner_tag)
         tuner_ports = tuner.ports(new_id)
-        hue_node_tag = hue_bands_node_id_name
         link_payloads = []
         parameter_names = ['blend']
+        hue_bands_node = self.get_node_instance('HueSaturationAdjustment')
         parameter_names.extend(
-            f'{band_name}_{suffix}'
-            for band_name in ('red', 'yellow', 'green', 'cyan', 'blue', 'magenta')
-            for suffix in ('hue_shift', 'saturation')
+            parameter['name']
+            for parameter in getattr(hue_bands_node, 'parameters', [])
+            if parameter.get('name') != 'blend'
         )
         for parameter_name in parameter_names:
             source_port = getattr(tuner_ports, parameter_name, None)

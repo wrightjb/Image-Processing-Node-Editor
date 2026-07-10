@@ -1404,6 +1404,19 @@ def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():
     assert np.all(np.count_nonzero(weights, axis=1) == 1)
 
 
+def test_hue_saturation_adjustment_uses_eight_photo_editor_bands():
+    assert hue_saturation_adjustment_module._BANDS == (
+        ('red', 0.0),
+        ('orange', 15.0),
+        ('yellow', 30.0),
+        ('green', 60.0),
+        ('cyan', 90.0),
+        ('blue', 120.0),
+        ('purple', 135.0),
+        ('magenta', 150.0),
+    )
+
+
 def test_hue_saturation_adjustment_hue_shift_range_spans_full_circle():
     assert hue_saturation_adjustment_module.HUE_SHIFT_MIN == -90
     assert hue_saturation_adjustment_module.HUE_SHIFT_MAX == 90

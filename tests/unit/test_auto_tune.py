@@ -841,3 +841,37 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
     assert simplified['magenta_hue_shift'] == 0
     assert simplified['blend'] == 1.0
     assert simplified_score == 0.0095
+
+
+def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    seen_blends = []
+
+    def fake_estimate(source, target, blend):
+        del source, target
+        seen_blends.append(blend)
+        return {'blend': blend, 'blue_hue_shift': int(blend * 10)}
+
+    monkeypatch.setattr(hue_bands, '_estimate_parameters_from_hsv', fake_estimate)
+
+    default_candidates = hue_bands._estimate_candidate_parameters(None, None)
+    tuned_candidates = hue_bands._estimate_candidate_parameters(
+        None,
+        None,
+        tune_blend=True,
+    )
+
+    assert [candidate['blend'] for candidate in default_candidates] == [1.0]
+    assert [candidate['blend'] for candidate in tuned_candidates] == list(
+        hue_bands.BLEND_CANDIDATES
+    )
+    assert seen_blends == [1.0] + list(hue_bands.BLEND_CANDIDATES)
+
+
+def test_auto_tune_hue_bands_tune_blend_defaults_false():
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+
+    assert node._tune_blend_value_tag(42) == '42:AutoTuneHueBands:Int:TuneBlendValue'

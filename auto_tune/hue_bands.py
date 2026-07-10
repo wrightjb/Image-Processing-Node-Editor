@@ -155,10 +155,11 @@ def _estimate_parameters_from_hsv(source, target, blend):
     return parameters
 
 
-def _estimate_candidate_parameters(source, target):
+def _estimate_candidate_parameters(source, target, tune_blend=False):
     candidates = []
     seen = set()
-    for blend in BLEND_CANDIDATES:
+    blend_candidates = BLEND_CANDIDATES if tune_blend else (1.0,)
+    for blend in blend_candidates:
         parameters = _estimate_parameters_from_hsv(source, target, blend)
         key = tuple(parameters.items())
         if key not in seen:
@@ -225,6 +226,7 @@ def tune_hue_bands(
     current_parameters=None,
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
     progress_callback=None,
+    tune_blend=False,
 ):
     """Tune Hue Bands with HSV-domain estimation plus local refinement."""
     if source is None or target is None:
@@ -264,7 +266,11 @@ def tune_hue_bands(
                 'best_parameters': dict(best_parameters),
             })
 
-    estimate_candidates = _estimate_candidate_parameters(work_source, work_target)
+    estimate_candidates = _estimate_candidate_parameters(
+        work_source,
+        work_target,
+        tune_blend=tune_blend,
+    )
     for index, parameters in enumerate(estimate_candidates, start=1):
         evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
 
@@ -288,10 +294,13 @@ def tune_hue_bands(
                     len(candidates),
                 )
 
-    for index, blend in enumerate(BLEND_CANDIDATES, start=1):
-        candidate = dict(best_parameters)
-        candidate['blend'] = blend
-        evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
+    if tune_blend:
+        for index, blend in enumerate(BLEND_CANDIDATES, start=1):
+            candidate = dict(best_parameters)
+            candidate['blend'] = blend
+            evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
+    else:
+        best_parameters['blend'] = 1.0
 
     def _progress_simplify(parameter_name, simplified_score):
         if progress_callback is None:

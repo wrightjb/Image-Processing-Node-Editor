@@ -51,6 +51,12 @@ class Node(DpgNodeBase):
                     tag=self._refinement_iterations_value_tag(node_id), label='Refine Rounds',
                     default_value=DEFAULT_REFINEMENT_ITERATIONS, min_value=0, min_clamped=True, width=120,
                 )
+            with dpg.node_attribute(tag=self._tune_blend_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
+                dpg.add_checkbox(
+                    tag=self._tune_blend_value_tag(node_id),
+                    label='Tune Blend',
+                    default_value=False,
+                )
             with dpg.node_attribute(tag=source_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('source image')
             with dpg.node_attribute(tag=target_image, attribute_type=dpg.mvNode_Attr_Input):
@@ -81,6 +87,15 @@ class Node(DpgNodeBase):
 
     def _refinement_iterations_value_tag(self, node_id):
         return self._node_control_value_tag(node_id, self.TYPE_INT, 'RefineRounds')
+
+    def _tune_blend_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_INT, 'TuneBlend')
+
+    def _tune_blend_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_INT, 'TuneBlend')
+
+    def _tune_blend_value(self, node_id):
+        return bool(dpg_get_value(self._tune_blend_value_tag(node_id)))
 
     def _set_status(self, node_id, message):
         dpg_set_value(self._status_value_tag(node_id), message)
@@ -141,9 +156,15 @@ class Node(DpgNodeBase):
             )
             self._set_status(node_id, message)
 
+        tune_blend = self._tune_blend_value(node_id)
+        dpg_set_value(self._tune_blend_value_tag(node_id), tune_blend)
         result = tune_hue_bands(
-            source, target, current_parameters=self._current_output_parameters(ports),
-            refinement_iterations=refinement_iterations, progress_callback=_progress,
+            source,
+            target,
+            current_parameters=self._current_output_parameters(ports),
+            refinement_iterations=refinement_iterations,
+            progress_callback=_progress,
+            tune_blend=tune_blend,
         )
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
@@ -163,6 +184,9 @@ class Node(DpgNodeBase):
             if getattr(port, 'value_tag', None):
                 setting[port.value_tag] = dpg_get_value(port.value_tag)
         setting[self._refinement_iterations_value_tag(node_id)] = dpg_get_value(self._refinement_iterations_value_tag(node_id))
+        setting[self._tune_blend_value_tag(node_id)] = dpg_get_value(
+            self._tune_blend_value_tag(node_id)
+        )
         return setting
 
     def set_setting_dict(self, node_id, setting_dict):
@@ -173,3 +197,6 @@ class Node(DpgNodeBase):
         refine_tag = self._refinement_iterations_value_tag(node_id)
         if refine_tag in setting_dict:
             dpg_set_value(refine_tag, setting_dict[refine_tag])
+        tune_blend_tag = self._tune_blend_value_tag(node_id)
+        if tune_blend_tag in setting_dict:
+            dpg_set_value(tune_blend_tag, setting_dict[tune_blend_tag])

@@ -42,6 +42,13 @@ def _get_blend_weight_lut(blend):
     if key in _BLEND_WEIGHT_LUT_CACHE:
         return _BLEND_WEIGHT_LUT_CACHE[key]
 
+    if key == 0:
+        weights = np.zeros_like(_BAND_WEIGHT_LUT, dtype=np.float32)
+        dominant_band = np.argmax(_BAND_WEIGHT_LUT, axis=1)
+        weights[np.arange(_BAND_WEIGHT_LUT.shape[0]), dominant_band] = 1.0
+        _BLEND_WEIGHT_LUT_CACHE[key] = weights
+        return weights
+
     blend_quantized = key / 200.0
     hardness = (1.0 - blend_quantized) ** 2
     gamma = 1.0 + (31.0 * hardness)
@@ -65,7 +72,7 @@ def _active_adjustments(adjustments):
     return active
 
 
-def image_process(image, blend=1.0, **adjustments):
+def image_process(image, blend=0.0, **adjustments):
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return image
 

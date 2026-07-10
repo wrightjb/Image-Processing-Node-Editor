@@ -1395,3 +1395,10 @@ def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
     node._nudge_slider(None, None, 1)
 
     assert writes == {'2:HueSaturationAdjustment:Int:Input03Value': 11}
+
+
+def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():
+    weights = hue_saturation_adjustment_module._get_blend_weight_lut(0.0)
+
+    assert np.allclose(np.sum(weights, axis=1), 1.0)
+    assert np.all(np.count_nonzero(weights, axis=1) == 1)

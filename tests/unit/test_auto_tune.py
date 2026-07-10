@@ -948,3 +948,50 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     assert polished['cyan_saturation'] == 0
     assert score == 0.0
     assert image == polished
+
+
+def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    source = np.zeros((2, 1, 3), dtype=np.uint8)
+    target = np.zeros((2, 1, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        hue_bands,
+        '_resize_pair',
+        lambda source_image, target_image: (source_image[:1], target_image[:1]),
+    )
+    monkeypatch.setattr(
+        hue_bands,
+        '_estimate_candidate_parameters',
+        lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
+            {'blend': fixed_blend, 'blue_hue_shift': 102}
+        ],
+    )
+    monkeypatch.setattr(
+        hue_bands,
+        '_band_weight_map',
+        lambda source_image, band_name, blend: np.ones(source_image.shape[:2]),
+    )
+
+    def fake_image_process(source_image, **parameters):
+        return {'height': source_image.shape[0], **parameters}
+
+    def fake_score(image, target_image):
+        del target_image
+        preferred_blue = 103 if image['height'] == 2 else 102
+        return float(abs(image.get('blue_hue_shift', 0) - preferred_blue))
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+    monkeypatch.setattr(hue_bands, '_weighted_score', fake_score)
+
+    result = hue_bands.tune_hue_bands(
+        source,
+        target,
+        refinement_iterations=0,
+        fixed_blend=0.0,
+    )
+
+    assert result.best_parameters['blue_hue_shift'] == 103
+    assert result.best_score == 0.0

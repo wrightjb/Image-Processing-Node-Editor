@@ -429,10 +429,16 @@ def tune_hue_bands(
     else:
         best_parameters['blend'] = fixed_blend
 
+    full_source = np.asarray(source)
+    full_target = _match_target_shape(full_source, target)
+    original_full_score = _score(
+        image_process(full_source, **_initial_parameters(current_parameters)),
+        full_target,
+    )
     best_parameters, best_visual_score, best_image = _polish_parameters_full_image(
         best_parameters,
-        work_source,
-        work_target,
+        full_source,
+        full_target,
     )
 
     def _progress_simplify(parameter_name, simplified_score):
@@ -452,16 +458,15 @@ def tune_hue_bands(
 
     best_parameters, best_visual_score = _simplify_parameters(
         best_parameters,
-        work_source,
-        work_target,
-        original_visual_score,
+        full_source,
+        full_target,
+        original_full_score,
         best_visual_score,
         score_callback=_progress_simplify,
         neutral_blend=fixed_blend if not tune_blend else 1.0,
     )
 
-    full_target = _match_target_shape(source, target)
-    full_best_image = image_process(np.asarray(source), **best_parameters)
+    full_best_image = image_process(full_source, **best_parameters)
     full_score = _score(full_best_image, full_target)
     return TuneResult(
         best_parameters=best_parameters,

@@ -914,3 +914,37 @@ def test_hue_bands_local_values_include_neutral_zero():
     import auto_tune.hue_bands as hue_bands
 
     assert 0 in hue_bands._local_values(98, 2, -180, 180)
+
+
+def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    def fake_image_process(source, **parameters):
+        del source
+        return parameters
+
+    def fake_score(parameters, target):
+        del target
+        blue_error = abs(parameters.get('blue_hue_shift', 0) - 103)
+        cyan_hue_error = abs(parameters.get('cyan_hue_shift', 0))
+        cyan_sat_error = abs(parameters.get('cyan_saturation', 0))
+        return float(blue_error + cyan_hue_error + cyan_sat_error)
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+
+    polished, score, image = hue_bands._polish_parameters_full_image(
+        {
+            'blue_hue_shift': 102,
+            'cyan_hue_shift': -1,
+            'cyan_saturation': 1,
+        },
+        source=None,
+        target=None,
+    )
+
+    assert polished['blue_hue_shift'] == 103
+    assert polished['cyan_hue_shift'] == 0
+    assert polished['cyan_saturation'] == 0
+    assert score == 0.0
+    assert image == polished

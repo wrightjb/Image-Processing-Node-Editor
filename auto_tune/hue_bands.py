@@ -219,6 +219,54 @@ def _tunable_parameter_names():
     return names
 
 
+def _polish_parameters_full_image(
+    parameters,
+    source,
+    target,
+    max_passes=8,
+):
+    """Greedily polish integer parameters against the full-image score."""
+    polished = dict(parameters)
+    best_image = image_process(source, **polished)
+    best_score = _score(best_image, target)
+
+    for _pass_index in range(max(0, int(max_passes))):
+        improved = False
+        for name in _tunable_parameter_names():
+            if name == 'blend':
+                continue
+            current = int(polished.get(name, 0))
+            if name.endswith('_hue_shift'):
+                values = {
+                    _clamp_int(current + offset, -180, 180)
+                    for offset in (-2, -1, 0, 1, 2)
+                }
+                values.add(0)
+            else:
+                values = {
+                    _clamp_int(current + offset, -100, 100)
+                    for offset in (-2, -1, 0, 1, 2)
+                }
+                values.add(0)
+
+            for value in sorted(values, key=lambda candidate: abs(candidate - current)):
+                if value == current:
+                    continue
+                candidate = dict(polished)
+                candidate[name] = value
+                candidate_image = image_process(source, **candidate)
+                candidate_score = _score(candidate_image, target)
+                if candidate_score + 1.0e-12 < best_score:
+                    polished = candidate
+                    best_image = candidate_image
+                    best_score = candidate_score
+                    improved = True
+                    break
+        if not improved:
+            break
+    return polished, best_score, best_image
+
+
 def _simplify_parameters(
     parameters,
     source,
@@ -380,6 +428,12 @@ def tune_hue_bands(
             evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
     else:
         best_parameters['blend'] = fixed_blend
+
+    best_parameters, best_visual_score, best_image = _polish_parameters_full_image(
+        best_parameters,
+        work_source,
+        work_target,
+    )
 
     def _progress_simplify(parameter_name, simplified_score):
         if progress_callback is None:

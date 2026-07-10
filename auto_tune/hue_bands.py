@@ -5,7 +5,7 @@
 import cv2
 import numpy as np
 
-from auto_tune.service import TuneResult, mean_squared_error
+from auto_tune.service import TuneResult, mean_squared_error, normalize_image_for_metric
 from node.process_node.node_hue_saturation_adjustment import (
     _BANDS,
     _get_blend_weight_lut,
@@ -44,6 +44,35 @@ def _match_target_shape(source, target):
 
 def _score(image, target):
     return mean_squared_error(image, target)
+
+
+def _weighted_score(image, target, weight_map):
+    candidate = normalize_image_for_metric(image)
+    normalized_target = normalize_image_for_metric(target)
+    if candidate.shape != normalized_target.shape:
+        raise ValueError(
+            'candidate and target images must have matching shapes: '
+            f'{candidate.shape} != {normalized_target.shape}'
+        )
+    weights = np.asarray(weight_map, dtype=np.float32)
+    if weights.ndim != 2 or weights.shape != candidate.shape[:2]:
+        raise ValueError('weight map must match image height and width')
+    weight_sum = float(np.sum(weights))
+    if weight_sum <= 1.0e-6:
+        return _score(image, target)
+    pixel_error = np.mean((candidate - normalized_target) ** 2, axis=2)
+    return float(np.sum(pixel_error * weights) / weight_sum)
+
+
+def _band_weight_map(source, band_name, blend):
+    band_index = {name: index for index, (name, _center) in enumerate(_BANDS)}[band_name]
+    source_hsv = cv2.cvtColor(
+        np.asarray(source)[:, :, :3],
+        cv2.COLOR_BGR2HSV,
+    ).astype(np.float32)
+    source_hue = np.clip(source_hsv[:, :, 0].astype(np.int16), 0, 179)
+    source_sat = source_hsv[:, :, 1] / 255.0
+    return _get_blend_weight_lut(blend)[source_hue][:, :, band_index] * (source_sat ** 2)
 
 
 def _band_parameter_names(band_name):
@@ -282,17 +311,55 @@ def tune_hue_bands(
             hue_values = _local_values(best_parameters[hue_name], hue_radius, -180, 180)
             sat_values = _local_values(best_parameters[sat_name], sat_radius, -100, 100)
             candidates = [(hue, sat) for hue in hue_values for sat in sat_values]
+            band_weights = _band_weight_map(
+                work_source,
+                band_name,
+                best_parameters.get('blend', 1.0),
+            )
+            local_best_parameters = dict(best_parameters)
+            local_best_image = best_image
+            local_best_visual_score = best_visual_score
+            local_best_score = _weighted_score(best_image, work_target, band_weights)
+            local_best_objective = (
+                local_best_score + _parameter_penalty(local_best_parameters)
+            )
             for index, (hue_value, sat_value) in enumerate(candidates, start=1):
                 candidate = dict(best_parameters)
                 candidate[hue_name] = hue_value
                 candidate[sat_name] = sat_value
-                evaluate(
-                    candidate,
-                    f'refine {round_index + 1}',
-                    band_name,
-                    index,
-                    len(candidates),
+                candidate_image = image_process(work_source, **candidate)
+                candidate_visual_score = _score(candidate_image, work_target)
+                candidate_score = _weighted_score(
+                    candidate_image,
+                    work_target,
+                    band_weights,
                 )
+                candidate_objective = candidate_score + _parameter_penalty(candidate)
+                if candidate_objective < local_best_objective:
+                    local_best_objective = candidate_objective
+                    local_best_score = candidate_score
+                    local_best_parameters = dict(candidate)
+                    local_best_image = candidate_image
+                    local_best_visual_score = candidate_visual_score
+                if progress_callback is not None:
+                    progress_callback({
+                        'phase': f'refine {round_index + 1}',
+                        'band': band_name,
+                        'candidate_index': index,
+                        'candidate_count': len(candidates),
+                        'total_evaluated': evaluated_count,
+                        'parameters': dict(candidate),
+                        'score': float(candidate_visual_score),
+                        'band_score': float(candidate_score),
+                        'best_score': float(best_visual_score),
+                        'best_parameters': dict(best_parameters),
+                    })
+                evaluated_count += 1
+            if local_best_parameters != best_parameters:
+                best_parameters = local_best_parameters
+                best_image = local_best_image
+                best_visual_score = local_best_visual_score
+                best_objective = best_visual_score + _parameter_penalty(best_parameters)
 
     if tune_blend:
         for index, blend in enumerate(BLEND_CANDIDATES, start=1):

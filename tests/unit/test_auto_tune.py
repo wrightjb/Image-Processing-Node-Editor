@@ -875,3 +875,17 @@ def test_auto_tune_hue_bands_tune_blend_defaults_false():
     node = auto_tune_hue_bands_module.Node()
 
     assert node._tune_blend_value_tag(42) == '42:AutoTuneHueBands:Int:TuneBlendValue'
+
+
+def test_hue_bands_weighted_score_emphasizes_selected_pixels():
+    import auto_tune.hue_bands as hue_bands
+
+    target = np.zeros((1, 2, 3), dtype=np.uint8)
+    candidate = np.zeros((1, 2, 3), dtype=np.uint8)
+    candidate[0, 1, :] = 255
+
+    left_only = np.array([[1.0, 0.0]], dtype=np.float32)
+    right_only = np.array([[0.0, 1.0]], dtype=np.float32)
+
+    assert hue_bands._weighted_score(candidate, target, left_only) == 0.0
+    assert hue_bands._weighted_score(candidate, target, right_only) == 1.0

@@ -1451,14 +1451,10 @@ class DpgNodeEditor(object):
         )
         for parameter_name in parameter_names:
             source_port = getattr(tuner_ports, parameter_name, None)
-            dest_port = self._port_registry.get(
-                f'{hue_node_tag}:{source_port.data_type.value}:'
-                f'{source_port.dpg_tag.split(":")[-1].replace("Output", "Input")}'
-            ) if source_port is not None else None
-            if dest_port is None:
-                dest_port = self._cntrl_find_hue_bands_parameter_port(
-                    hue_bands_node_id_name, parameter_name
-                )
+            dest_port = self._cntrl_find_hue_bands_parameter_port(
+                hue_bands_node_id_name,
+                parameter_name,
+            )
             if source_port is None or dest_port is None:
                 continue
             existing_link = self._mdl_get_link_by_destination(dest_port.dpg_tag)

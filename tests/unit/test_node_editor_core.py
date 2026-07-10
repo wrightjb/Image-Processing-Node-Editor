@@ -1582,3 +1582,38 @@ def test_curve_points_output_capability_uses_port_specs(editor_and_dpg, tmp_path
     )
 
     assert 'CurvePoints' in caps['output_types']
+
+
+def test_hue_bands_tuner_spawn_uses_parameter_names_not_port_numbers(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    node_ref = NodeRef('5', 'HueSaturationAdjustment')
+    blue_hue_port = PortRef(
+        node_ref=node_ref,
+        direction='Input',
+        data_type='Int',
+        index=11,
+        port_name='Input11',
+        dpg_tag='5:HueSaturationAdjustment:Int:Input11',
+        value_tag='5:HueSaturationAdjustment:Int:Input11Value',
+        spec_key='blue_hue_shift',
+    )
+    cyan_sat_port = PortRef(
+        node_ref=node_ref,
+        direction='Input',
+        data_type='Int',
+        index=10,
+        port_name='Input10',
+        dpg_tag='5:HueSaturationAdjustment:Int:Input10',
+        value_tag='5:HueSaturationAdjustment:Int:Input10Value',
+        spec_key='cyan_saturation',
+    )
+    editor._mdl_register_port_ref(cyan_sat_port)
+    editor._mdl_register_port_ref(blue_hue_port)
+
+    resolved = editor._cntrl_find_hue_bands_parameter_port(
+        '5:HueSaturationAdjustment',
+        'blue_hue_shift',
+    )
+
+    assert resolved == blue_hue_port
+    assert resolved != cyan_sat_port

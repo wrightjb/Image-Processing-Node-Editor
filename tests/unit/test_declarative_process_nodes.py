@@ -1205,6 +1205,7 @@ def test_slider_parameter_ui_adds_nudge_buttons_and_text_input(monkeypatch):
     assert dpg_recorder.widgets[0][1]['label'] == '-'
     assert dpg_recorder.widgets[1][1]['tag'] == '7:GaussianBlur:Int:Input02Value'
     assert dpg_recorder.widgets[2][1]['tag'] == '7:GaussianBlur:Int:Input02Value:Input'
+    assert dpg_recorder.widgets[2][1]['step'] == 0
     assert dpg_recorder.widgets[3][1]['label'] == '+'
 
 

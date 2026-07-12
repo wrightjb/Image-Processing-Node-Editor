@@ -675,6 +675,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     tag=input_tag,
                     width=input_width,
                     default_value=parameter['default'],
+                    step=0,
                     callback=self._on_parameter_widget_changed,
                     user_data={**callback_payload, 'input_tag': input_tag},
                 )
@@ -684,6 +685,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     tag=input_tag,
                     width=input_width,
                     default_value=parameter['default'],
+                    step=0,
                     callback=self._on_parameter_widget_changed,
                     user_data={**callback_payload, 'input_tag': input_tag},
                 )

@@ -507,7 +507,10 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
     def _source_allows_parameter_sync(self, source_tag, node_result_dict):
         source_node_key = self._extract_source_node_key(source_tag)
-        if source_node_key.endswith(':AutoTuneGaussianBlur'):
+        if source_node_key.endswith((
+            ':AutoTuneGaussianBlur',
+            ':AutoTuneHueBands',
+        )):
             source_result = node_result_dict.get(source_node_key)
             if not isinstance(source_result, dict):
                 return False

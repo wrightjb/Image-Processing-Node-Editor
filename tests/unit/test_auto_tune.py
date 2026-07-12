@@ -285,6 +285,12 @@ def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
         auto_tune_source,
         {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
     ) is True
+    hue_bands_source = '7:AutoTuneHueBands:Int:Output02'
+    assert node._source_allows_parameter_sync(hue_bands_source, {}) is False
+    assert node._source_allows_parameter_sync(
+        hue_bands_source,
+        {'7:AutoTuneHueBands': {'__auto_tune_ready__': True}},
+    ) is True
     assert node._source_allows_parameter_sync('1:IntValue:Int:Output01', {}) is True
 
 
@@ -761,3 +767,234 @@ def test_tune_curves_defaults_to_practical_point_precision():
         for point in result.best_parameters['points']
         for value in point
     )
+
+
+def test_tune_hue_bands_recovers_simple_band_adjustment():
+    import cv2
+    if not hasattr(cv2, 'cvtColor'):
+        pytest.skip('cv2 stub does not implement HSV conversion')
+
+    from auto_tune.hue_bands import tune_hue_bands
+    from node.process_node.node_hue_saturation_adjustment import image_process
+
+    source = np.zeros((24, 24, 3), dtype=np.uint8)
+    source[:, :, 2] = 255
+    target = image_process(source, red_hue_shift=30, red_saturation=25)
+
+    result = tune_hue_bands(
+        source,
+        target,
+        current_parameters={},
+        refinement_iterations=0,
+    )
+
+    assert result.evaluated_count > 1
+    assert result.best_score < 0.01
+    assert result.best_parameters['red_hue_shift'] == 30
+    assert result.best_parameters['red_saturation'] == 25
+
+
+def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+    ports = node.create_ports(42)
+
+    assert ports.source_image.dpg_tag == '42:AutoTuneHueBands:Image:Input01'
+    assert ports.target_image.dpg_tag == '42:AutoTuneHueBands:Image:Input02'
+    assert ports.blend.dpg_tag == '42:AutoTuneHueBands:Float:Output01'
+    assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output02'
+    assert ports.orange_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output04'
+    assert ports.purple_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output14'
+    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output17'
+    assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output18'
+
+
+def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    def fake_image_process(source, **parameters):
+        del source
+        return parameters
+
+    def fake_score(parameters, target):
+        del target
+        score = 0.1
+        if parameters.get('blue_hue_shift') == 35:
+            score = 0.0095 if parameters.get('blend') == 1.0 else 0.009
+        return score
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+
+    simplified, simplified_score = hue_bands._simplify_parameters(
+        {
+            'blend': 0.75,
+            'blue_hue_shift': 35,
+            'magenta_hue_shift': 120,
+        },
+        source=None,
+        target=None,
+        original_score=0.1,
+        best_score=0.009,
+    )
+
+    assert simplified['blue_hue_shift'] == 35
+    assert simplified['magenta_hue_shift'] == 0
+    assert simplified['blend'] == 1.0
+    assert simplified_score == 0.0095
+
+    simplified_fixed_zero, _score = hue_bands._simplify_parameters(
+        {'blend': 0.75, 'blue_hue_shift': 35},
+        source=None,
+        target=None,
+        original_score=0.1,
+        best_score=0.009,
+        neutral_blend=0.0,
+    )
+
+    assert simplified_fixed_zero['blend'] == 0.0
+
+
+def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    seen_blends = []
+
+    def fake_estimate(source, target, blend):
+        del source, target
+        seen_blends.append(blend)
+        return {'blend': blend, 'blue_hue_shift': int(blend * 10)}
+
+    monkeypatch.setattr(hue_bands, '_estimate_parameters_from_hsv', fake_estimate)
+
+    default_candidates = hue_bands._estimate_candidate_parameters(None, None)
+    tuned_candidates = hue_bands._estimate_candidate_parameters(
+        None,
+        None,
+        tune_blend=True,
+    )
+
+    assert [candidate['blend'] for candidate in default_candidates] == [0.0]
+    assert [candidate['blend'] for candidate in tuned_candidates] == list(
+        hue_bands.BLEND_CANDIDATES
+    )
+    fixed_candidates = hue_bands._estimate_candidate_parameters(
+        None,
+        None,
+        fixed_blend=0.35,
+    )
+
+    assert [candidate['blend'] for candidate in fixed_candidates] == [0.35]
+    assert seen_blends == [0.0] + list(hue_bands.BLEND_CANDIDATES) + [0.35]
+
+
+def test_auto_tune_hue_bands_tune_blend_defaults_false():
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+
+    assert node._tune_blend_value_tag(42) == '42:AutoTuneHueBands:Int:TuneBlendValue'
+    assert node._fixed_blend_value_tag(42) == '42:AutoTuneHueBands:Float:FixedBlendValue'
+
+
+def test_hue_bands_weighted_score_emphasizes_selected_pixels():
+    import auto_tune.hue_bands as hue_bands
+
+    target = np.zeros((1, 2, 3), dtype=np.uint8)
+    candidate = np.zeros((1, 2, 3), dtype=np.uint8)
+    candidate[0, 1, :] = 255
+
+    left_only = np.array([[1.0, 0.0]], dtype=np.float32)
+    right_only = np.array([[0.0, 1.0]], dtype=np.float32)
+
+    assert hue_bands._weighted_score(candidate, target, left_only) == 0.0
+    assert hue_bands._weighted_score(candidate, target, right_only) == 1.0
+
+
+def test_hue_bands_local_values_include_neutral_zero():
+    import auto_tune.hue_bands as hue_bands
+
+    assert 0 in hue_bands._local_values(98, 2, -180, 180)
+
+
+def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    def fake_image_process(source, **parameters):
+        del source
+        return parameters
+
+    def fake_score(parameters, target):
+        del target
+        blue_error = abs(parameters.get('blue_hue_shift', 0) - 90)
+        cyan_hue_error = abs(parameters.get('cyan_hue_shift', 0))
+        cyan_sat_error = abs(parameters.get('cyan_saturation', 0))
+        return float(blue_error + cyan_hue_error + cyan_sat_error)
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+
+    polished, score, image, evaluated_count = hue_bands._polish_parameters_full_image(
+        {
+            'blue_hue_shift': 89,
+            'cyan_hue_shift': -1,
+            'cyan_saturation': 1,
+        },
+        source=None,
+        target=None,
+    )
+
+    assert polished['blue_hue_shift'] == 90
+    assert polished['cyan_hue_shift'] == 0
+    assert polished['cyan_saturation'] == 0
+    assert score == 0.0
+    assert image == polished
+    assert evaluated_count > 0
+
+
+def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    source = np.zeros((2, 1, 3), dtype=np.uint8)
+    target = np.zeros((2, 1, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        hue_bands,
+        '_resize_pair',
+        lambda source_image, target_image: (source_image[:1], target_image[:1]),
+    )
+    monkeypatch.setattr(
+        hue_bands,
+        '_estimate_candidate_parameters',
+        lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
+            {'blend': fixed_blend, 'blue_hue_shift': 89}
+        ],
+    )
+    monkeypatch.setattr(
+        hue_bands,
+        '_band_weight_map',
+        lambda source_image, band_name, blend: np.ones(source_image.shape[:2]),
+    )
+
+    def fake_image_process(source_image, **parameters):
+        return {'height': source_image.shape[0], **parameters}
+
+    def fake_score(image, target_image):
+        del target_image
+        preferred_blue = 90 if image['height'] == 2 else 89
+        return float(abs(image.get('blue_hue_shift', 0) - preferred_blue))
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+    monkeypatch.setattr(hue_bands, '_weighted_score', fake_score)
+
+    result = hue_bands.tune_hue_bands(
+        source,
+        target,
+        refinement_iterations=0,
+        fixed_blend=0.0,
+    )
+
+    assert result.best_parameters['blue_hue_shift'] == 90
+    assert result.best_score == 0.0

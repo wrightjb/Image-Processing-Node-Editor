@@ -810,13 +810,13 @@ def test_hue_saturation_adjustment_node_get_set_settings(monkeypatch):
     node.set_setting_dict(111, {
         '111:HueSaturationAdjustment:Float:Input02Value': 0.0,
         '111:HueSaturationAdjustment:Int:Input03Value': -60,
-        '111:HueSaturationAdjustment:Int:Input12Value': 75,
+        '111:HueSaturationAdjustment:Int:Input12Value': 50,
         '111:HueSaturationAdjustment:Int:Input13Value': 55,
     })
 
     assert writes['111:HueSaturationAdjustment:Float:Input02Value'] == 0.0
     assert writes['111:HueSaturationAdjustment:Int:Input03Value'] == -60
-    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 75
+    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 50
     assert writes['111:HueSaturationAdjustment:Int:Input13Value'] == 55
 
 
@@ -839,7 +839,7 @@ def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monk
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['red_hue_shift'] = 60
+    params['red_hue_shift'] = 30
     params['red_saturation'] = 50
 
     bgr_pixel = np.array([[[10, 20, 30]]], dtype=np.uint8)
@@ -899,7 +899,7 @@ def test_hue_saturation_adjustment_uses_only_active_band_weights(monkeypatch):
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['red_hue_shift'] = 60
+    params['red_hue_shift'] = 30
 
     out, _ = node.process(np.array([[[8, 9, 10]]], dtype=np.uint8), **params)
 
@@ -928,8 +928,8 @@ def test_hue_saturation_adjustment_hue_uses_single_band_without_neighbor_bleed(m
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
     params = {parameter['name']: 0 for parameter in node.parameters}
-    params['yellow_hue_shift'] = 120
-    params['magenta_hue_shift'] = -120
+    params['yellow_hue_shift'] = 50
+    params['magenta_hue_shift'] = -50
 
     out, _ = node.process(np.array([[[3, 4, 5]]], dtype=np.uint8), **params)
 
@@ -968,7 +968,7 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 180
+    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 90
     assert writes['601:HueSaturationAdjustment:Int:Input04Value'] == -100
 
 
@@ -1362,3 +1362,65 @@ def test_rgb_channel_swap_node_falls_back_to_rgb_on_invalid_order():
     result = rgb_channel_swap_module.image_process(image, 'invalid')
 
     assert result[0, 0].tolist() == [10, 20, 30]
+
+
+def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+    node._last_touched_slider_tag_by_node = {
+        1: '1:HueSaturationAdjustment:Int:Input03Value',
+        2: '2:HueSaturationAdjustment:Int:Input03Value',
+    }
+    node._last_touched_node_id = 2
+    writes = {}
+
+    class _Dpg:
+        @staticmethod
+        def does_item_exist(tag):
+            return True
+
+        @staticmethod
+        def get_item_configuration(tag):
+            return {'min_value': -180, 'max_value': 180}
+
+        @staticmethod
+        def get_value(tag):
+            return 10 if tag.startswith('2:') else 100
+
+        @staticmethod
+        def set_value(tag, value):
+            writes[tag] = value
+
+    monkeypatch.setattr(hue_saturation_adjustment_module, 'dpg', _Dpg())
+
+    node._nudge_slider(None, None, 1)
+
+    assert writes == {'2:HueSaturationAdjustment:Int:Input03Value': 11}
+
+
+def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():
+    weights = hue_saturation_adjustment_module._get_blend_weight_lut(0.0)
+
+    assert np.allclose(np.sum(weights, axis=1), 1.0)
+    assert np.all(np.count_nonzero(weights, axis=1) == 1)
+
+
+def test_hue_saturation_adjustment_uses_eight_photo_editor_bands():
+    assert hue_saturation_adjustment_module._BANDS == (
+        ('red', 0.0),
+        ('orange', 15.0),
+        ('yellow', 30.0),
+        ('green', 60.0),
+        ('cyan', 90.0),
+        ('blue', 120.0),
+        ('purple', 135.0),
+        ('magenta', 150.0),
+    )
+
+
+def test_hue_saturation_adjustment_hue_shift_range_spans_full_circle():
+    assert hue_saturation_adjustment_module.HUE_SHIFT_MIN == -90
+    assert hue_saturation_adjustment_module.HUE_SHIFT_MAX == 90
+    assert (
+        hue_saturation_adjustment_module.HUE_SHIFT_MIN % 180
+        == hue_saturation_adjustment_module.HUE_SHIFT_MAX % 180
+    )

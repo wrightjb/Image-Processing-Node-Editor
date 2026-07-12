@@ -662,7 +662,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             slider_payload = {**callback_payload, 'input_tag': input_tag}
             slider_kwargs = {
                 'tag': value_tag,
-                'label': parameter['label'],
+                'label': '',
                 'width': slider_width,
                 'default_value': parameter['default'],
                 'min_value': parameter['min'],
@@ -702,6 +702,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     'callback_payload': callback_payload,
                 },
             )
+            dpg.add_text(default_value=parameter['label'])
 
     def _slider_input_tag(self, value_tag):
         return f'{value_tag}:Input'

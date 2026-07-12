@@ -1201,15 +1201,17 @@ def test_slider_parameter_ui_adds_nudge_buttons_and_text_input(monkeypatch):
     node._add_parameter_ui(7, node.parameters[0], 240, callback=None)
 
     widget_types = [widget[0] for widget in dpg_recorder.widgets]
-    assert widget_types == ['button', 'slider_int', 'input_int', 'button']
+    assert widget_types == ['button', 'slider_int', 'input_int', 'button', 'text']
     assert dpg_recorder.widgets[0][1]['label'] == '-'
     assert dpg_recorder.widgets[1][1]['tag'] == '7:GaussianBlur:Int:Input02Value'
+    assert dpg_recorder.widgets[1][1]['label'] == ''
     assert dpg_recorder.widgets[1][1]['user_data']['input_tag'] == (
         '7:GaussianBlur:Int:Input02Value:Input'
     )
     assert dpg_recorder.widgets[2][1]['tag'] == '7:GaussianBlur:Int:Input02Value:Input'
     assert dpg_recorder.widgets[2][1]['step'] == 0
     assert dpg_recorder.widgets[3][1]['label'] == '+'
+    assert dpg_recorder.widgets[4][1]['default_value'] == 'kernel'
 
 
 def test_float_slider_steps_use_nice_range_based_values():

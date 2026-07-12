@@ -1204,10 +1204,23 @@ def test_slider_parameter_ui_adds_nudge_buttons_and_text_input(monkeypatch):
     assert widget_types == ['button', 'slider_int', 'input_int', 'button']
     assert dpg_recorder.widgets[0][1]['label'] == '-'
     assert dpg_recorder.widgets[1][1]['tag'] == '7:GaussianBlur:Int:Input02Value'
+    assert dpg_recorder.widgets[1][1]['user_data']['input_tag'] == (
+        '7:GaussianBlur:Int:Input02Value:Input'
+    )
     assert dpg_recorder.widgets[2][1]['tag'] == '7:GaussianBlur:Int:Input02Value:Input'
     assert dpg_recorder.widgets[2][1]['step'] == 0
     assert dpg_recorder.widgets[3][1]['label'] == '+'
 
+
+def test_float_slider_steps_use_nice_range_based_values():
+    node = GaussianBlurNode()
+
+    assert (
+        node._get_parameter_step(gaussian_blur_module.Node.parameters[2])
+        == 1.0
+    )
+    assert node._get_parameter_step(contrast_module.Node.parameters[0]) == 0.05
+    assert node._get_parameter_step(crop_module.Node.parameters[0]) == 0.01
 
 def test_slider_nudge_uses_parameter_step_and_clamps(monkeypatch):
     node = GaussianBlurNode()
@@ -1265,6 +1278,40 @@ def test_slider_nudge_uses_parameter_step_and_clamps(monkeypatch):
             },
         )
     ]
+
+
+def test_slider_change_syncs_text_input(monkeypatch):
+    node = GaussianBlurNode()
+    node._last_parameter_values = {'7:GaussianBlur:Int:Input02Value': 5}
+    writes = {}
+
+    class _Dpg:
+        @staticmethod
+        def does_item_exist(tag):
+            return True
+
+        @staticmethod
+        def set_value(tag, value):
+            writes[tag] = value
+
+    monkeypatch.setattr(base_module, 'dpg', _Dpg())
+    parameter = node.parameters[0]
+
+    node._on_parameter_widget_changed(
+        '7:GaussianBlur:Int:Input02Value',
+        7,
+        {
+            'node_id_name': '7:GaussianBlur',
+            'port_tag': '7:GaussianBlur:Int:Input02',
+            'value_tag': '7:GaussianBlur:Int:Input02Value',
+            'input_tag': '7:GaussianBlur:Int:Input02Value:Input',
+            'parameter': parameter,
+            'callback': None,
+        },
+    )
+
+    assert writes['7:GaussianBlur:Int:Input02Value'] == 7
+    assert writes['7:GaussianBlur:Int:Input02Value:Input'] == 7
 
 
 def test_slider_text_input_syncs_canonical_slider_and_clamps(monkeypatch):

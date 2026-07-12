@@ -659,6 +659,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     'callback_payload': callback_payload,
                 },
             )
+            slider_payload = {**callback_payload, 'input_tag': input_tag}
             slider_kwargs = {
                 'tag': value_tag,
                 'label': parameter['label'],
@@ -667,7 +668,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 'min_value': parameter['min'],
                 'max_value': parameter['max'],
                 'callback': self._on_parameter_widget_changed,
-                'user_data': callback_payload,
+                'user_data': slider_payload,
             }
             if is_float:
                 dpg.add_slider_float(**slider_kwargs)
@@ -677,7 +678,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     default_value=parameter['default'],
                     step=0,
                     callback=self._on_parameter_widget_changed,
-                    user_data={**callback_payload, 'input_tag': input_tag},
+                    user_data=slider_payload,
                 )
             else:
                 dpg.add_slider_int(**slider_kwargs)
@@ -687,7 +688,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     default_value=parameter['default'],
                     step=0,
                     callback=self._on_parameter_widget_changed,
-                    user_data={**callback_payload, 'input_tag': input_tag},
+                    user_data=slider_payload,
                 )
             dpg.add_button(
                 label='+',
@@ -714,12 +715,30 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         )
         if is_int_slider:
             return 1
-        precision = parameter.get('precision', None)
-        if precision is not None:
-            return 10 ** -precision
         min_value = parameter.get('min', 0.0)
         max_value = parameter.get('max', 100.0)
-        return (max_value - min_value) / 100.0
+        step = self._nice_parameter_step((max_value - min_value) / 100.0)
+        precision = parameter.get('precision', None)
+        if precision is not None:
+            step = round(step, precision)
+            if step == 0:
+                step = 10 ** -precision
+        return step
+
+    def _nice_parameter_step(self, raw_step):
+        if raw_step <= 0:
+            return 1.0
+        magnitude = 10 ** np.floor(np.log10(raw_step))
+        normalized = raw_step / magnitude
+        if normalized <= 1:
+            nice_normalized = 1
+        elif normalized <= 2:
+            nice_normalized = 2
+        elif normalized <= 5:
+            nice_normalized = 5
+        else:
+            nice_normalized = 10
+        return float(nice_normalized * magnitude)
 
     def _set_parameter_widget_values(self, value_tag, input_tag, value):
         tags = [value_tag]

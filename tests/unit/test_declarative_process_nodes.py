@@ -1129,6 +1129,9 @@ class DpgContextRecorder:
     def add_input_int(self, **kwargs):
         self.widgets.append(('input_int', kwargs))
 
+    def add_input_float(self, **kwargs):
+        self.widgets.append(('input_float', kwargs))
+
     def add_combo(self, *args, **kwargs):
         self.widgets.append(('combo', args, kwargs))
 
@@ -1187,6 +1190,118 @@ def test_custom_parameter_ui_defers_attribute_to_node(monkeypatch):
     assert dpg_recorder.node_attributes == []
     assert dpg_recorder.widgets == []
     assert node.ports(7).parameters['curves'].dpg_tag == '7:Curves:CurvePoints:Input02'
+
+
+def test_slider_parameter_ui_adds_nudge_buttons_and_text_input(monkeypatch):
+    node = GaussianBlurNode()
+    dpg_recorder = DpgContextRecorder()
+
+    monkeypatch.setattr(base_module, 'dpg', dpg_recorder)
+
+    node._add_parameter_ui(7, node.parameters[0], 240, callback=None)
+
+    widget_types = [widget[0] for widget in dpg_recorder.widgets]
+    assert widget_types == ['button', 'slider_int', 'input_int', 'button']
+    assert dpg_recorder.widgets[0][1]['label'] == '-'
+    assert dpg_recorder.widgets[1][1]['tag'] == '7:GaussianBlur:Int:Input02Value'
+    assert dpg_recorder.widgets[2][1]['tag'] == '7:GaussianBlur:Int:Input02Value:Input'
+    assert dpg_recorder.widgets[3][1]['label'] == '+'
+
+
+def test_slider_nudge_uses_parameter_step_and_clamps(monkeypatch):
+    node = GaussianBlurNode()
+    node._last_parameter_values = {'7:GaussianBlur:Int:Input02Value': 999}
+    values = {'7:GaussianBlur:Int:Input02Value': 501}
+    writes = {}
+    events = []
+
+    class _Dpg:
+        @staticmethod
+        def does_item_exist(tag):
+            return True
+
+        @staticmethod
+        def set_value(tag, value):
+            writes[tag] = value
+            values[tag] = value
+
+    monkeypatch.setattr(base_module, 'dpg', _Dpg())
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    node._ui_callback = lambda event, payload: events.append((event, payload))
+
+    parameter = node.parameters[0]
+    node._nudge_parameter_widget(
+        None,
+        None,
+        {
+            'value_tag': '7:GaussianBlur:Int:Input02Value',
+            'input_tag': '7:GaussianBlur:Int:Input02Value:Input',
+            'parameter': parameter,
+            'direction': 1,
+            'callback_payload': {
+                'node_id_name': '7:GaussianBlur',
+                'port_tag': '7:GaussianBlur:Int:Input02',
+                'value_tag': '7:GaussianBlur:Int:Input02Value',
+                'parameter': parameter,
+                'callback': None,
+            },
+        },
+    )
+
+    assert writes == {
+        '7:GaussianBlur:Int:Input02Value': 501,
+        '7:GaussianBlur:Int:Input02Value:Input': 501,
+    }
+    assert events == [
+        (
+            'parameter_changed',
+            {
+                'node_id_name': '7:GaussianBlur',
+                'port_tag': '7:GaussianBlur:Int:Input02',
+                'value_tag': '7:GaussianBlur:Int:Input02Value',
+                'before_value': 999,
+                'after_value': 501,
+            },
+        )
+    ]
+
+
+def test_slider_text_input_syncs_canonical_slider_and_clamps(monkeypatch):
+    node = GaussianBlurNode()
+    node._last_parameter_values = {'7:GaussianBlur:Int:Input02Value': 5}
+    writes = {}
+    events = []
+
+    class _Dpg:
+        @staticmethod
+        def does_item_exist(tag):
+            return True
+
+        @staticmethod
+        def set_value(tag, value):
+            writes[tag] = value
+
+    monkeypatch.setattr(base_module, 'dpg', _Dpg())
+    node._ui_callback = lambda event, payload: events.append((event, payload))
+    parameter = node.parameters[0]
+
+    node._on_parameter_widget_changed(
+        '7:GaussianBlur:Int:Input02Value:Input',
+        999,
+        {
+            'node_id_name': '7:GaussianBlur',
+            'port_tag': '7:GaussianBlur:Int:Input02',
+            'value_tag': '7:GaussianBlur:Int:Input02Value',
+            'input_tag': '7:GaussianBlur:Int:Input02Value:Input',
+            'parameter': parameter,
+            'callback': None,
+        },
+    )
+
+    assert writes['7:GaussianBlur:Int:Input02Value'] == 501
+    assert writes['7:GaussianBlur:Int:Input02Value:Input'] == 501
+    assert events[0][1]['value_tag'] == '7:GaussianBlur:Int:Input02Value'
+    assert events[0][1]['after_value'] == 501
 
 
 def test_curves_node_uses_linked_points_parameter(monkeypatch):

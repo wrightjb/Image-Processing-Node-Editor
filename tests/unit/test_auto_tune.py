@@ -1113,3 +1113,47 @@ def test_auto_tune_node_auto_kernel_control_overrides_stale_output(monkeypatch):
     )
 
     assert result['tune_result'].best_parameters['auto_kernel'] is True
+
+
+def test_auto_tune_node_auto_controls_update_display_values(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    values = {
+        ports.kernel_size.value_tag: 5,
+        ports.sigma.value_tag: 2.0,
+        ports.auto_kernel.value_tag: False,
+        ports.kernel_factor.value_tag: 3.0,
+        node._auto_sigma_value_tag(6): True,
+        node._auto_kernel_value_tag(6): False,
+        node._kernel_factor_value_tag(6): 2.5,
+    }
+    callbacks = {}
+
+    class _Dpg:
+        @staticmethod
+        def configure_item(tag, **kwargs):
+            if 'callback' in kwargs:
+                callbacks[tag] = kwargs['callback']
+
+    def _set_value(tag, value):
+        values[tag] = value
+
+    monkeypatch.setattr(auto_tune_node_module, 'dpg', _Dpg())
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', _set_value)
+
+    node._configure_auto_display_callbacks(6, ports)
+    callbacks[node._auto_kernel_value_tag(6)](node._auto_kernel_value_tag(6), True, None)
+
+    assert values[node._auto_sigma_value_tag(6)] is False
+    assert values[ports.kernel_size.value_tag] == 11
+    assert values[ports.auto_kernel.value_tag] is True
+    assert values[ports.kernel_factor.value_tag] == 2.5
+
+    callbacks[node._auto_sigma_value_tag(6)](node._auto_sigma_value_tag(6), True, None)
+
+    assert values[node._auto_kernel_value_tag(6)] is False
+    assert values[ports.sigma.value_tag] == 2.0
+    assert values[ports.auto_kernel.value_tag] is False

@@ -5,6 +5,7 @@ import dearpygui.dearpygui as dpg
 from auto_tune.gaussian_blur import DEFAULT_KERNEL_MAX, DEFAULT_KERNEL_MIN
 from auto_tune.gaussian_blur import DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.gaussian_blur import tuning_plan, tune_gaussian_blur
+from node.process_node.node_gaussian_blur import auto_kernel_size, auto_sigma_value
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import dpg_get_value, dpg_set_value
@@ -203,7 +204,66 @@ class Node(DpgNodeBase):
                     readonly=True,
                 )
 
+        self._configure_auto_display_callbacks(node_id, ports)
         return tag_node_name
+
+    def _configure_auto_display_callbacks(self, node_id, ports):
+        if not hasattr(dpg, 'configure_item'):
+            return
+
+        def _refresh_auto_kernel():
+            sigma = dpg_get_value(ports.sigma.value_tag)
+            kernel_factor = dpg_get_value(self._kernel_factor_value_tag(node_id))
+            dpg_set_value(
+                ports.kernel_size.value_tag,
+                auto_kernel_size(sigma or 0.0, kernel_factor or 3.0),
+            )
+            dpg_set_value(ports.auto_kernel.value_tag, True)
+            dpg_set_value(
+                ports.kernel_factor.value_tag,
+                float(kernel_factor or 3.0),
+            )
+
+        def _refresh_auto_sigma():
+            kernel = dpg_get_value(ports.kernel_size.value_tag)
+            dpg_set_value(
+                ports.sigma.value_tag,
+                round(auto_sigma_value(kernel or 1), 3),
+            )
+            dpg_set_value(ports.auto_kernel.value_tag, False)
+
+        def _toggle_auto_kernel(_sender, app_data, _user_data):
+            if app_data:
+                dpg_set_value(self._auto_sigma_value_tag(node_id), False)
+                _refresh_auto_kernel()
+            else:
+                dpg_set_value(ports.auto_kernel.value_tag, False)
+
+        def _toggle_auto_sigma(_sender, app_data, _user_data):
+            if app_data:
+                dpg_set_value(self._auto_kernel_value_tag(node_id), False)
+                _refresh_auto_sigma()
+
+        def _kernel_factor_changed(_sender, _app_data, _user_data):
+            dpg_set_value(
+                ports.kernel_factor.value_tag,
+                float(dpg_get_value(self._kernel_factor_value_tag(node_id)) or 3.0),
+            )
+            if dpg_get_value(self._auto_kernel_value_tag(node_id)):
+                _refresh_auto_kernel()
+
+        dpg.configure_item(
+            self._auto_kernel_value_tag(node_id),
+            callback=_toggle_auto_kernel,
+        )
+        dpg.configure_item(
+            self._auto_sigma_value_tag(node_id),
+            callback=_toggle_auto_sigma,
+        )
+        dpg.configure_item(
+            self._kernel_factor_value_tag(node_id),
+            callback=_kernel_factor_changed,
+        )
 
     def _metric_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Metric')

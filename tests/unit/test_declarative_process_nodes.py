@@ -1631,3 +1631,124 @@ def test_gaussian_blur_auto_kernel_overrides_auto_sigma():
 
     assert normalized['auto_sigma'] is False
     assert normalized['sigma'] == 1.5
+
+
+def test_gaussian_blur_auto_kernel_toggle_updates_kernel_display(monkeypatch):
+    node = GaussianBlurNode()
+    values = {
+        '8:GaussianBlur:Int:Input02Value': 5,
+        '8:GaussianBlur:Int:Input02Value:Input': 5,
+        '8:GaussianBlur:Float:Input03Value': 2.0,
+        '8:GaussianBlur:Float:Input03Value:Input': 2.0,
+        '8:GaussianBlur:Int:Input04Value': False,
+        '8:GaussianBlur:Int:Input05Value': False,
+        '8:GaussianBlur:Float:Input06Value': 2.5,
+        '8:GaussianBlur:Float:Input06Value:Input': 2.5,
+    }
+    callbacks = {}
+    configured = {}
+    previous_calls = []
+
+    class _Dpg:
+        @staticmethod
+        def get_value(tag):
+            return values[tag]
+
+        @staticmethod
+        def set_value(tag, value):
+            values[tag] = value
+
+        @staticmethod
+        def configure_item(tag, **kwargs):
+            configured.setdefault(tag, {}).update(kwargs)
+            if 'callback' in kwargs:
+                callbacks[tag] = kwargs['callback']
+
+        @staticmethod
+        def does_item_exist(tag):
+            return tag in values
+
+        @staticmethod
+        def get_item_callback(tag):
+            return lambda sender, app_data, user_data: previous_calls.append(
+                (tag, sender, app_data, user_data)
+            )
+
+        @staticmethod
+        def get_item_user_data(tag):
+            return {'tag': tag}
+
+    monkeypatch.setattr(gaussian_blur_module, 'dpg', _Dpg())
+
+    node.on_node_added('8:GaussianBlur')
+    callbacks['8:GaussianBlur:Int:Input05Value'](
+        '8:GaussianBlur:Int:Input05Value',
+        True,
+        None,
+    )
+
+    assert values['8:GaussianBlur:Int:Input02Value'] == 11
+    assert values['8:GaussianBlur:Int:Input02Value:Input'] == 11
+    assert configured['8:GaussianBlur:Int:Input02Value']['enabled'] is False
+    assert configured['8:GaussianBlur:Float:Input03Value']['enabled'] is True
+    assert previous_calls[-1][0] == '8:GaussianBlur:Int:Input05Value'
+
+
+def test_gaussian_blur_auto_sigma_toggle_updates_sigma_display(monkeypatch):
+    node = GaussianBlurNode()
+    values = {
+        '8:GaussianBlur:Int:Input02Value': 5,
+        '8:GaussianBlur:Int:Input02Value:Input': 5,
+        '8:GaussianBlur:Float:Input03Value': 2.0,
+        '8:GaussianBlur:Float:Input03Value:Input': 2.0,
+        '8:GaussianBlur:Int:Input04Value': False,
+        '8:GaussianBlur:Int:Input05Value': False,
+        '8:GaussianBlur:Float:Input06Value': 2.5,
+        '8:GaussianBlur:Float:Input06Value:Input': 2.5,
+    }
+    callbacks = {}
+    configured = {}
+
+    class _Dpg:
+        @staticmethod
+        def get_value(tag):
+            return values[tag]
+
+        @staticmethod
+        def set_value(tag, value):
+            values[tag] = value
+
+        @staticmethod
+        def configure_item(tag, **kwargs):
+            configured.setdefault(tag, {}).update(kwargs)
+            if 'callback' in kwargs:
+                callbacks[tag] = kwargs['callback']
+
+        @staticmethod
+        def does_item_exist(tag):
+            return tag in values
+
+        @staticmethod
+        def get_item_callback(tag):
+            del tag
+            return None
+
+        @staticmethod
+        def get_item_user_data(tag):
+            del tag
+            return None
+
+    monkeypatch.setattr(gaussian_blur_module, 'dpg', _Dpg())
+
+    node.on_node_added('8:GaussianBlur')
+    callbacks['8:GaussianBlur:Int:Input04Value'](
+        '8:GaussianBlur:Int:Input04Value',
+        True,
+        None,
+    )
+
+    assert values['8:GaussianBlur:Int:Input05Value'] is False
+    assert values['8:GaussianBlur:Float:Input03Value'] == 1.1
+    assert values['8:GaussianBlur:Float:Input03Value:Input'] == 1.1
+    assert configured['8:GaussianBlur:Float:Input03Value']['enabled'] is False
+    assert configured['8:GaussianBlur:Int:Input02Value']['enabled'] is True

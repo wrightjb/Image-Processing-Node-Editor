@@ -12,6 +12,12 @@ def auto_kernel_size(sigma, kernel_factor=3.0):
     return max(1, kernel_size)
 
 
+def auto_sigma_value(kernel_size):
+    if int(kernel_size) % 2 == 0:
+        kernel_size = int(kernel_size) + 1
+    return ((int(kernel_size) - 1) * 0.5 - 1) * 0.3 + 0.8
+
+
 def image_process(image, kernel_size, sigma, auto_kernel=False, kernel_factor=3.0):
     if auto_kernel:
         kernel_size = auto_kernel_size(sigma, kernel_factor)
@@ -83,63 +89,121 @@ class Node(DeclarativeImageProcessNodeBase):
         },
     ]
 
-    def on_node_added(self, tag_node_name):
-        sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
-        )
-        auto_sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input04')
-        )
-        kernel_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')
-        )
-        auto_kernel_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input05')
+    def _set_parameter_value(self, value_tag, value):
+        dpg.set_value(value_tag, value)
+        input_tag = self._slider_input_tag(value_tag)
+        if dpg.does_item_exist(input_tag):
+            dpg.set_value(input_tag, value)
+
+    def _refresh_auto_kernel_value(self, kernel_tag, sigma_tag, kernel_factor_tag):
+        sigma = dpg.get_value(sigma_tag)
+        kernel_factor = dpg.get_value(kernel_factor_tag)
+        self._set_parameter_value(
+            kernel_tag,
+            auto_kernel_size(sigma, kernel_factor),
         )
 
-        def _toggle_sigma(_sender, app_data, user_data):
-            dpg.configure_item(user_data, enabled=not app_data)
-            if self._ui_callback is not None:
-                before_value = self._last_parameter_values.get(auto_sigma_tag, bool(app_data))
-                self._last_parameter_values[auto_sigma_tag] = bool(app_data)
-                self._ui_callback(
-                    'parameter_changed',
-                    {
-                        'node_id_name': tag_node_name,
-                        'port_tag': self._port_tag(tag_node_name, self.TYPE_INT, 'Input04'),
-                        'value_tag': auto_sigma_tag,
-                        'before_value': bool(before_value),
-                        'after_value': bool(app_data),
-                    },
+    def _refresh_auto_sigma_value(self, kernel_tag, sigma_tag):
+        self._set_parameter_value(
+            sigma_tag,
+            round(auto_sigma_value(dpg.get_value(kernel_tag)), 3),
+        )
+
+    def _chain_parameter_callback(self, value_tag, callback):
+        previous_callback = dpg.get_item_callback(value_tag)
+        previous_user_data = dpg.get_item_user_data(value_tag)
+
+        def _callback(sender, app_data, user_data):
+            if callable(previous_callback):
+                previous_callback(sender, app_data, previous_user_data)
+            callback(sender, app_data, user_data)
+
+        dpg.configure_item(value_tag, callback=_callback)
+
+    def _chain_slider_callbacks(self, value_tag, callback):
+        self._chain_parameter_callback(value_tag, callback)
+        input_tag = self._slider_input_tag(value_tag)
+        if dpg.does_item_exist(input_tag):
+            self._chain_parameter_callback(input_tag, callback)
+
+    def _gaussian_tags(self, tag_node_name):
+        return {
+            'kernel': self._value_tag(
+                self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')
+            ),
+            'sigma': self._value_tag(
+                self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
+            ),
+            'auto_sigma': self._value_tag(
+                self._port_tag(tag_node_name, self.TYPE_INT, 'Input04')
+            ),
+            'auto_kernel': self._value_tag(
+                self._port_tag(tag_node_name, self.TYPE_INT, 'Input05')
+            ),
+            'kernel_factor': self._value_tag(
+                self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input06')
+            ),
+        }
+
+    def _refresh_auto_parameter_display(self, tag_node_name):
+        tags = self._gaussian_tags(tag_node_name)
+        auto_kernel = bool(dpg.get_value(tags['auto_kernel']))
+        auto_sigma = bool(dpg.get_value(tags['auto_sigma'])) and not auto_kernel
+        if auto_kernel:
+            self._refresh_auto_kernel_value(
+                tags['kernel'],
+                tags['sigma'],
+                tags['kernel_factor'],
+            )
+        elif auto_sigma:
+            self._refresh_auto_sigma_value(tags['kernel'], tags['sigma'])
+        dpg.configure_item(tags['sigma'], enabled=not auto_sigma)
+        dpg.configure_item(tags['kernel'], enabled=not auto_kernel)
+
+    def on_node_added(self, tag_node_name):
+        tags = self._gaussian_tags(tag_node_name)
+
+        def _toggle_sigma(_sender, app_data, _user_data):
+            auto_sigma = bool(app_data)
+            if auto_sigma and dpg.get_value(tags['auto_kernel']):
+                dpg.set_value(tags['auto_kernel'], False)
+            dpg.configure_item(tags['sigma'], enabled=not auto_sigma)
+            dpg.configure_item(tags['kernel'], enabled=True)
+            if auto_sigma:
+                self._refresh_auto_sigma_value(tags['kernel'], tags['sigma'])
+
+        def _toggle_kernel(_sender, app_data, _user_data):
+            auto_kernel = bool(app_data)
+            if auto_kernel and dpg.get_value(tags['auto_sigma']):
+                dpg.set_value(tags['auto_sigma'], False)
+            dpg.configure_item(tags['kernel'], enabled=not auto_kernel)
+            dpg.configure_item(tags['sigma'], enabled=True)
+            if auto_kernel:
+                self._refresh_auto_kernel_value(
+                    tags['kernel'],
+                    tags['sigma'],
+                    tags['kernel_factor'],
                 )
 
-        def _toggle_kernel(_sender, app_data, user_data):
-            dpg.configure_item(user_data, enabled=not app_data)
+        def _source_changed(_sender, _app_data, _user_data):
+            self._refresh_auto_parameter_display(tag_node_name)
 
-        dpg.configure_item(auto_sigma_tag, callback=_toggle_sigma, user_data=sigma_tag)
-        dpg.configure_item(auto_kernel_tag, callback=_toggle_kernel, user_data=kernel_tag)
-        auto_sigma = bool(dpg.get_value(auto_sigma_tag))
-        auto_kernel = bool(dpg.get_value(auto_kernel_tag))
-        dpg.configure_item(sigma_tag, enabled=not auto_sigma)
-        dpg.configure_item(kernel_tag, enabled=not auto_kernel)
+        self._chain_parameter_callback(tags['auto_sigma'], _toggle_sigma)
+        self._chain_parameter_callback(tags['auto_kernel'], _toggle_kernel)
+        self._chain_slider_callbacks(tags['kernel'], _source_changed)
+        self._chain_slider_callbacks(tags['sigma'], _source_changed)
+        self._chain_slider_callbacks(tags['kernel_factor'], _source_changed)
+        self._refresh_auto_parameter_display(tag_node_name)
 
     def on_settings_applied(self, tag_node_name):
-        sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_FLOAT, 'Input03')
-        )
-        auto_sigma_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input04')
-        )
-        kernel_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')
-        )
-        auto_kernel_tag = self._value_tag(
-            self._port_tag(tag_node_name, self.TYPE_INT, 'Input05')
-        )
-        auto_sigma = bool(dpg.get_value(auto_sigma_tag))
-        auto_kernel = bool(dpg.get_value(auto_kernel_tag))
-        dpg.configure_item(sigma_tag, enabled=not auto_sigma)
-        dpg.configure_item(kernel_tag, enabled=not auto_kernel)
+        tags = self._gaussian_tags(tag_node_name)
+        auto_kernel = bool(dpg.get_value(tags['auto_kernel']))
+        auto_sigma = bool(dpg.get_value(tags['auto_sigma'])) and not auto_kernel
+        if auto_kernel and dpg.get_value(tags['auto_sigma']):
+            dpg.set_value(tags['auto_sigma'], False)
+        dpg.configure_item(tags['sigma'], enabled=not auto_sigma)
+        dpg.configure_item(tags['kernel'], enabled=not auto_kernel)
+        self._refresh_auto_parameter_display(tag_node_name)
 
     def normalize_parameter_values(self, tag_node_name, parameter_values):
         del tag_node_name

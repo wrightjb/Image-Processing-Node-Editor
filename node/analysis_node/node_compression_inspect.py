@@ -3,7 +3,13 @@
 import dearpygui.dearpygui as dpg
 
 from node.node_abc import DpgNodeBase
-from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node.port_model import (
+    InputPort,
+    OutputPort,
+    PortDataType,
+    PortSpecs,
+    enum_value,
+)
 from node_editor.image_metadata import format_metadata_report, summarize_metadata
 from node_editor.util import dpg_set_value
 
@@ -75,7 +81,7 @@ class Node(DpgNodeBase):
         for connection_info, source_tag, _, connection_type in self._iter_connection_infos(
             connection_list
         ):
-            if str(connection_type) != self.TYPE_METADATA:
+            if enum_value(connection_type) != self.TYPE_METADATA:
                 continue
             source_node_key = self._connection_source_node_key(
                 connection_info,

@@ -1071,6 +1071,9 @@ class DpgNodeEditor(object):
     def _cntrl_set_parameter_value(self, value_tag, value):
         if dpg.does_item_exist(value_tag):
             dpg.set_value(value_tag, value)
+            input_tag = f'{value_tag}:Input'
+            if dpg.does_item_exist(input_tag):
+                dpg.set_value(input_tag, value)
             self._parameter_last_values[value_tag] = value
             self._cntrl_apply_parameter_side_effects(value_tag, value)
             return

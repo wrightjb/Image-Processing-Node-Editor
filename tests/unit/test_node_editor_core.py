@@ -855,7 +855,8 @@ def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True
     param_tag = '1:TestNode:Int:Input01Value'
-    value_state = {param_tag: 5}
+    input_tag = f'{param_tag}:Input'
+    value_state = {param_tag: 5, input_tag: 5}
 
     def set_value_side_effect(tag, value):
         value_state[tag] = value
@@ -895,8 +896,10 @@ def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
 
     editor._cntrl_undo(None, None)
     assert value_state[param_tag] == 5
+    assert value_state[input_tag] == 5
     editor._cntrl_redo(None, None)
     assert value_state[param_tag] == 7
+    assert value_state[input_tag] == 7
 
 
 def test_raw_widget_callback_uses_primed_add_node_defaults(editor_and_dpg):

@@ -3,8 +3,9 @@
 This project is an image processing application built with DearPyGui. It allows users to build pipelines by connecting nodes. Each node is placed under `node/` and is implemented using the interface defined in `node/node_abc.py`. The GUI logic resides in `node_editor/` and the entry point is `main.py`.
 
 ## Current project goal and product direction
-- The near-term project goal is to help recreate image-editing workflows originally made on phone editors such as Polish, Image Editor, Snapseed, and Google Photos editor.
-- A typical target workflow may combine blur, curves, hue adjustment, and other tools in sequence, sometimes repeated many times. The original intermediate images may be available, but the exact settings often were not saved.
+- The near-term project goal is to help recreate image-editing workflows originally made on Android phone editors such as Polish, Image Editor, Snapseed, and Google Photos editor.
+- A typical target workflow may combine blur, curves, hue adjustment, and other tools in sequence, sometimes repeated a dozen or more times. The original intermediate images may be available, but the exact settings often were not saved.
+- Because many recreated workflows have a dozen or more steps, small method or parameter mismatches can accumulate across the graph and produce large final-image differences. Favor exact tool semantics, parameter ranges, and tuner accuracy over merely approximate matches when the goal is faithful recreation.
 - Prioritize non-destructive node workflows that can recreate favorite edited images at higher resolution and make the recovered workflow easy to apply to other images or videos.
 - Tuner nodes are important because they help discover likely original parameters, or practical equivalents, for missing settings from earlier mobile-editor workflows.
 - Expect future work to add niche or rarely used editing tools when needed to replicate specific images, not only broadly common filters.

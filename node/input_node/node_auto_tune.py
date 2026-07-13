@@ -280,16 +280,10 @@ class Node(DpgNodeBase):
         parameters = {}
         kernel = dpg_get_value(ports.kernel_size.value_tag)
         sigma = dpg_get_value(ports.sigma.value_tag)
-        auto_kernel = dpg_get_value(ports.auto_kernel.value_tag)
-        kernel_factor = dpg_get_value(ports.kernel_factor.value_tag)
         if kernel is not None:
             parameters['kernel_size'] = int(kernel)
         if sigma is not None:
             parameters['sigma'] = float(sigma)
-        if auto_kernel is not None:
-            parameters['auto_kernel'] = bool(auto_kernel)
-        if kernel_factor is not None:
-            parameters['kernel_factor'] = float(kernel_factor)
         return parameters
 
     def update(

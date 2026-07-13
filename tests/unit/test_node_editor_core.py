@@ -166,6 +166,45 @@ def test_add_node_increments_id(editor_and_dpg):
     assert editor._node_list == ['1:TestNode']
 
 
+def test_import_suppresses_result_node_toggle_callbacks(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._suspend_result_node_toggle_events = True
+    editor._cntrl_toggle_result_node = Mock()
+
+    editor._cntrl_node_callback(
+        'toggle_result_node',
+        {
+            'source_node_id_name': '1:TestNode',
+            'result_node_tag': 'ResultImage',
+            'enabled': True,
+        },
+    )
+
+    editor._cntrl_toggle_result_node.assert_not_called()
+
+
+def test_result_node_toggle_callbacks_run_after_import(editor_and_dpg):
+    editor, _ = editor_and_dpg
+    editor._suspend_result_node_toggle_events = True
+    with pytest.raises(KeyError):
+        editor._cntrl_import_setting_dict({})
+    editor._cntrl_toggle_result_node = Mock()
+
+    editor._cntrl_node_callback(
+        'toggle_result_node',
+        {
+            'source_node_id_name': '1:TestNode',
+            'result_node_tag': 'ResultImage',
+            'enabled': True,
+        },
+    )
+
+    editor._cntrl_toggle_result_node.assert_called_once_with(
+        '1:TestNode',
+        'ResultImage',
+        True,
+    )
+
 def test_add_node_uses_last_position(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.get_selected_nodes.return_value = ['1:TestNode']

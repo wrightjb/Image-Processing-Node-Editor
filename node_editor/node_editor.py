@@ -582,6 +582,7 @@ class DpgNodeEditor(object):
                     'Text',
                     'TimeMS',
                     'CurvePoints',
+                    'Metadata',
                 ):
                     capabilities['input_types'].add(port_type)
 
@@ -614,6 +615,7 @@ class DpgNodeEditor(object):
             'TYPE_TIME_MS': 'TimeMS',
             'TYPE_TEXT': 'Text',
             'TYPE_CURVE_POINTS': 'CurvePoints',
+            'TYPE_METADATA': 'Metadata',
         }
         for type_token, port_name in pattern.findall(source_text):
             mapped = type_map.get(type_token)

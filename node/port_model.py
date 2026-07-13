@@ -15,6 +15,7 @@ class PortDataType(str, Enum):
     TIME_MS = 'TimeMS'
     TEXT = 'Text'
     CURVE_POINTS = 'CurvePoints'
+    METADATA = 'Metadata'
 
 
 def enum_value(value):

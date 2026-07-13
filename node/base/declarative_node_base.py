@@ -595,26 +595,20 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             attribute_type=attribute_type,
         ):
             if parameter['widget'] == 'slider_int':
-                dpg.add_slider_int(
-                    tag=value_tag,
-                    label=parameter['label'],
-                    width=width - 80,
-                    default_value=parameter['default'],
-                    min_value=parameter['min'],
-                    max_value=parameter['max'],
-                    callback=self._on_parameter_widget_changed,
-                    user_data=callback_payload,
+                self._add_slider_parameter_ui(
+                    parameter,
+                    value_tag,
+                    width,
+                    callback_payload,
+                    is_float=False,
                 )
             elif parameter['widget'] == 'slider_float':
-                dpg.add_slider_float(
-                    tag=value_tag,
-                    label=parameter['label'],
-                    width=width - 80,
-                    default_value=parameter['default'],
-                    min_value=parameter['min'],
-                    max_value=parameter['max'],
-                    callback=self._on_parameter_widget_changed,
-                    user_data=callback_payload,
+                self._add_slider_parameter_ui(
+                    parameter,
+                    value_tag,
+                    width,
+                    callback_payload,
+                    is_float=True,
                 )
             elif parameter['widget'] == 'input_int':
                 dpg.add_input_int(
@@ -645,9 +639,146 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                     user_data=callback_payload,
                 )
 
+    def _add_slider_parameter_ui(
+        self, parameter, value_tag, width, callback_payload, is_float
+    ):
+        input_tag = self._slider_input_tag(value_tag)
+        button_width = 24
+        input_width = 72 if is_float else 56
+        slider_width = max(80, width - input_width - (button_width * 2) - 96)
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='-',
+                width=button_width,
+                callback=self._nudge_parameter_widget,
+                user_data={
+                    'value_tag': value_tag,
+                    'input_tag': input_tag,
+                    'parameter': parameter,
+                    'direction': -1,
+                    'callback_payload': callback_payload,
+                },
+            )
+            slider_payload = {**callback_payload, 'input_tag': input_tag}
+            slider_kwargs = {
+                'tag': value_tag,
+                'label': '',
+                'width': slider_width,
+                'default_value': parameter['default'],
+                'min_value': parameter['min'],
+                'max_value': parameter['max'],
+                'callback': self._on_parameter_widget_changed,
+                'user_data': slider_payload,
+            }
+            if is_float:
+                dpg.add_slider_float(**slider_kwargs)
+                dpg.add_input_float(
+                    tag=input_tag,
+                    width=input_width,
+                    default_value=parameter['default'],
+                    step=0,
+                    callback=self._on_parameter_widget_changed,
+                    user_data=slider_payload,
+                )
+            else:
+                dpg.add_slider_int(**slider_kwargs)
+                dpg.add_input_int(
+                    tag=input_tag,
+                    width=input_width,
+                    default_value=parameter['default'],
+                    step=0,
+                    callback=self._on_parameter_widget_changed,
+                    user_data=slider_payload,
+                )
+            dpg.add_button(
+                label='+',
+                width=button_width,
+                callback=self._nudge_parameter_widget,
+                user_data={
+                    'value_tag': value_tag,
+                    'input_tag': input_tag,
+                    'parameter': parameter,
+                    'direction': 1,
+                    'callback_payload': callback_payload,
+                },
+            )
+            dpg.add_text(default_value=parameter['label'])
+
+    def _slider_input_tag(self, value_tag):
+        return f'{value_tag}:Input'
+
+    def _get_parameter_step(self, parameter):
+        if 'step' in parameter:
+            return parameter['step']
+        is_int_slider = (
+            parameter.get('cast') is int
+            or parameter.get('widget') == 'slider_int'
+        )
+        if is_int_slider:
+            return 1
+        min_value = parameter.get('min', 0.0)
+        max_value = parameter.get('max', 100.0)
+        step = self._nice_parameter_step((max_value - min_value) / 100.0)
+        precision = parameter.get('precision', None)
+        if precision is not None:
+            step = round(step, precision)
+            if step == 0:
+                step = 10 ** -precision
+        return step
+
+    def _nice_parameter_step(self, raw_step):
+        if raw_step <= 0:
+            return 1.0
+        magnitude = 10 ** np.floor(np.log10(raw_step))
+        normalized = raw_step / magnitude
+        if normalized <= 1:
+            nice_normalized = 1
+        elif normalized <= 2:
+            nice_normalized = 2
+        elif normalized <= 5:
+            nice_normalized = 5
+        else:
+            nice_normalized = 10
+        return float(nice_normalized * magnitude)
+
+    def _set_parameter_widget_values(self, value_tag, input_tag, value):
+        tags = [value_tag]
+        if input_tag:
+            tags.append(input_tag)
+        for tag in tags:
+            if not tag or not dpg.does_item_exist(tag):
+                continue
+            self._suspend_parameter_event_tags.add(tag)
+            try:
+                dpg.set_value(tag, value)
+            finally:
+                self._suspend_parameter_event_tags.discard(tag)
+
+    def _nudge_parameter_widget(self, sender, app_data, user_data):
+        del sender, app_data
+        parameter = user_data['parameter']
+        value_tag = user_data['value_tag']
+        input_tag = user_data.get('input_tag')
+        current = dpg_get_value(value_tag)
+        current = self._cast_parameter_value(parameter, current)
+        step = self._get_parameter_step(parameter) * user_data['direction']
+        updated_value = self._cast_parameter_value(parameter, current + step)
+        updated_value = self._clamp_parameter_value(parameter, updated_value)
+        self._set_parameter_widget_values(value_tag, input_tag, updated_value)
+        payload = user_data['callback_payload']
+        self._on_parameter_widget_changed(value_tag, updated_value, payload)
+
     def _on_parameter_widget_changed(self, sender, app_data, user_data):
         if sender in self._suspend_parameter_event_tags:
             return
+        if isinstance(user_data, dict):
+            parameter = user_data.get('parameter')
+            value_tag = str(user_data.get('value_tag'))
+            input_tag = user_data.get('input_tag')
+            if parameter is not None and value_tag:
+                app_data = self._cast_parameter_value(parameter, app_data)
+                app_data = self._clamp_parameter_value(parameter, app_data)
+                self._set_parameter_widget_values(value_tag, input_tag, app_data)
         parameter_callback = None
         if isinstance(user_data, dict):
             parameter_callback = user_data.get('callback', None)
@@ -662,7 +793,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 {
                     'node_id_name': user_data.get('node_id_name'),
                     'port_tag': user_data.get('port_tag'),
-                    'value_tag': sender,
+                    'value_tag': value_tag,
                     'before_value': before_value,
                     'after_value': app_data,
                 },

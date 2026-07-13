@@ -2,6 +2,22 @@
 
 This project is an image processing application built with DearPyGui. It allows users to build pipelines by connecting nodes. Each node is placed under `node/` and is implemented using the interface defined in `node/node_abc.py`. The GUI logic resides in `node_editor/` and the entry point is `main.py`.
 
+## Current project goal and product direction
+- The near-term project goal is to help recreate image-editing workflows originally made on phone editors such as Polish, Image Editor, Snapseed, and Google Photos editor.
+- A typical target workflow may combine blur, curves, hue adjustment, and other tools in sequence, sometimes repeated many times. The original intermediate images may be available, but the exact settings often were not saved.
+- Prioritize non-destructive node workflows that can recreate favorite edited images at higher resolution and make the recovered workflow easy to apply to other images or videos.
+- Tuner nodes are important because they help discover likely original parameters, or practical equivalents, for missing settings from earlier mobile-editor workflows.
+- Expect future work to add niche or rarely used editing tools when needed to replicate specific images, not only broadly common filters.
+- Creative generation of new images and workflows is also a goal, but workflow recreation is the current focus.
+
+## JPEG and compression-aware recreation direction
+- Many target/reference images were saved as JPEGs, so pixel diffs against fresh recreations may retain unavoidable compression error even when editing parameters are correct.
+- It is useful to expose available metadata from image inputs, including JPEG-related metadata when present. However, note that the exact JPEG quality/compression level is not always stored directly or reliably in the file; estimating it may require heuristics or encoder-specific analysis.
+- Consider adding either image-input metadata display or a dedicated metadata/inspection node for compression-related information such as file format, EXIF fields, quantization tables, chroma subsampling, dimensions, and any quality estimate we can infer.
+- A JPEG compression process node is desirable both for matching saved references during tuning and as a creative effect, especially for intentionally heavy compression artifacts.
+- Compression-aware tuning is tenable and likely useful: tuners could compare against a target after applying matching or estimated compression to the transformed source before scoring error. Prefer explicit graph data flow or metadata outputs over hidden peeking between nodes when practical, but pragmatic tuner access to image-input metadata is acceptable if it keeps workflows simple.
+- Longer term, image export/save functionality should expose JPEG and other format-specific compression settings so recreated workflows can be saved consistently.
+
 ## Directory overview
 - `main.py` – Application entry point creating the node editor; runs the main event loop asynchronously of GUI callbacks.
 - `node_editor/` – GUI and common utilities.

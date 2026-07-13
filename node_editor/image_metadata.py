@@ -375,6 +375,73 @@ def webp_roundtrip(image, quality=90, generation=1):
     }
 
 
+def compression_parameters_from_metadata(metadata):
+    """Return codec round-trip parameters inferred from metadata, if available."""
+    if not isinstance(metadata, dict):
+        return None
+
+    compression = metadata.get('compression')
+    if compression is None and metadata.get('codec') is not None:
+        compression = metadata
+    if isinstance(compression, dict):
+        codec = str(compression.get('codec') or metadata.get('format') or '').upper()
+        if codec == 'JPEG':
+            jpeg = compression.get('jpeg') or metadata.get('jpeg') or {}
+            return {
+                'codec': 'JPEG',
+                'quality': compression.get(
+                    'quality',
+                    jpeg.get('estimated_quality', 90),
+                ),
+                'subsampling': compression.get(
+                    'subsampling',
+                    jpeg.get('subsampling', 'Auto'),
+                ) or 'Auto',
+                'progressive': compression.get(
+                    'progressive',
+                    bool(jpeg.get('progressive', False)),
+                ),
+                'optimize': compression.get('optimize', False),
+                'generation': 1,
+            }
+        if codec == 'PNG':
+            return {
+                'codec': 'PNG',
+                'png_compression': compression.get('compression', 3),
+                'generation': 1,
+            }
+        if codec == 'WEBP':
+            return {
+                'codec': 'WEBP',
+                'quality': compression.get('quality', 90),
+                'generation': 1,
+            }
+
+    image_format = str(metadata.get('format') or '').upper()
+    jpeg = metadata.get('jpeg') or {}
+    if image_format == 'JPEG' and jpeg:
+        return {
+            'codec': 'JPEG',
+            'quality': jpeg.get('estimated_quality', 90),
+            'subsampling': jpeg.get('subsampling') or 'Auto',
+            'progressive': bool(jpeg.get('progressive', False)),
+            'optimize': False,
+            'generation': 1,
+        }
+    return None
+
+
+def match_metadata_compression(image, metadata):
+    """Round-trip an image using compression settings inferred from metadata."""
+    parameters = compression_parameters_from_metadata(metadata)
+    if parameters is None:
+        return image, None
+    parameters = dict(parameters)
+    codec = parameters.pop('codec')
+    output, result = compression_roundtrip(image, codec, **parameters)
+    return output, result
+
+
 def compression_roundtrip(image, codec, **params):
     codec_normalized = str(codec or 'JPEG').upper()
     if codec_normalized == 'JPEG':

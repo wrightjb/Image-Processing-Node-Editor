@@ -56,3 +56,20 @@ def test_compression_roundtrip_filters_jpeg_only_parameters(monkeypatch):
         'optimize': True,
         'generation': 2,
     }
+
+
+def test_compression_parameters_accept_direct_compression_metadata():
+    assert image_metadata.compression_parameters_from_metadata({
+        'codec': 'JPEG',
+        'quality': 77,
+        'subsampling': '4:4:4',
+        'progressive': True,
+        'optimize': False,
+    }) == {
+        'codec': 'JPEG',
+        'quality': 77,
+        'subsampling': '4:4:4',
+        'progressive': True,
+        'optimize': False,
+        'generation': 1,
+    }

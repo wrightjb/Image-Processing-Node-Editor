@@ -490,6 +490,7 @@ def tune_curves(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     point_precision=DEFAULT_POINT_PRECISION,
     channel='White',
+    score_image_transform=None,
 ):
     """Recover Curves-node points from source/target images."""
     channel = _normalize_channel(channel)
@@ -566,7 +567,11 @@ def tune_curves(
     except AttributeError:
         lut = points_to_lut(pruned_points, quantize=True).astype(np.uint8)
         best_image = lut[source_uint8]
-    image_score = mean_squared_error(best_image, target_image)
+    scored_image = best_image
+    compression_metadata = None
+    if score_image_transform is not None:
+        scored_image, compression_metadata = score_image_transform(best_image)
+    image_score = mean_squared_error(scored_image, target_image)
     if progress_callback is not None:
         progress_callback({
             'candidate_index': 3,
@@ -584,10 +589,11 @@ def tune_curves(
             'points': pruned_points,
             'lut_score': float(lut_score),
             'image_score': float(image_score),
+            'compression_metadata': compression_metadata,
             'observed_bins': int(np.count_nonzero(observed.counts)),
         },
         best_score=float(lut_score),
-        best_image=best_image,
+        best_image=scored_image,
         evaluated_count=3,
     )
 
@@ -601,6 +607,7 @@ def tune_curve_set(
     progress_callback=None,
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     point_precision=DEFAULT_POINT_PRECISION,
+    score_image_transform=None,
 ):
     """Recover a White-first, then RGB, Curves-node curve set."""
 
@@ -645,15 +652,20 @@ def tune_curve_set(
         channel_results[channel] = result
 
     best_image = image_process(source_image, curve_set)
-    image_score = mean_squared_error(best_image, target_image)
+    scored_image = best_image
+    compression_metadata = None
+    if score_image_transform is not None:
+        scored_image, compression_metadata = score_image_transform(best_image)
+    image_score = mean_squared_error(scored_image, target_image)
     best_score = float(np.mean([result.best_score for result in channel_results.values()]))
     return TuneResult(
         best_parameters={
             'curves': curve_set,
             'channel_results': channel_results,
             'image_score': float(image_score),
+            'compression_metadata': compression_metadata,
         },
         best_score=best_score,
-        best_image=best_image,
+        best_image=scored_image,
         evaluated_count=sum(result.evaluated_count for result in channel_results.values()),
     )

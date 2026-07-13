@@ -221,17 +221,32 @@ def estimate_jpeg_quality(quantization_tables):
     return int(max(1, min(100, round(quality))))
 
 
-def summarize_metadata(metadata):
+def summarize_metadata(metadata, multiline=False):
     if not isinstance(metadata, dict) or not metadata.get('exists', True):
-        return 'No metadata'
-    parts = []
+        return 'Status: No metadata' if multiline else 'No metadata'
+
     image_format = metadata.get('format') or 'Unknown'
-    parts.append(str(image_format))
     jpeg = metadata.get('jpeg') or {}
     width = jpeg.get('width') or metadata.get('width')
     height = jpeg.get('height') or metadata.get('height')
-    if width and height:
-        parts.append(f'{width}x{height}')
+    dimensions = f'{width}x{height}' if width and height else None
+
+    if multiline:
+        lines = [f'Format: {image_format}']
+        if dimensions:
+            lines.append(f'Dim: {dimensions}')
+        if image_format == 'JPEG':
+            subsampling = jpeg.get('subsampling') or 'unknown'
+            quality = jpeg.get('estimated_quality')
+            jpeg_type = 'progressive' if jpeg.get('progressive') else 'baseline'
+            quality_text = f'Q≈{quality}' if quality is not None else 'Q≈unknown'
+            lines.append(f'JPEG: {quality_text}, {subsampling}')
+            lines.append(f'Type: {jpeg_type}')
+        return '\n'.join(lines)
+
+    parts = [str(image_format)]
+    if dimensions:
+        parts.append(dimensions)
     if image_format == 'JPEG':
         subsampling = jpeg.get('subsampling')
         quality = jpeg.get('estimated_quality')
@@ -363,7 +378,14 @@ def webp_roundtrip(image, quality=90, generation=1):
 def compression_roundtrip(image, codec, **params):
     codec_normalized = str(codec or 'JPEG').upper()
     if codec_normalized == 'JPEG':
-        return jpeg_roundtrip(image, **params)
+        return jpeg_roundtrip(
+            image,
+            quality=params.get('quality', 90),
+            subsampling=params.get('subsampling', 'Auto'),
+            progressive=params.get('progressive', False),
+            optimize=params.get('optimize', False),
+            generation=params.get('generation', 1),
+        )
     if codec_normalized == 'PNG':
         return png_roundtrip(
             image,

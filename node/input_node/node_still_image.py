@@ -146,7 +146,8 @@ class Node(DpgNodeBase):
             ):
                 dpg.add_text(
                     tag=tag_node_output02_value_name,
-                    default_value='metadata',
+                    default_value='Metadata: none',
+                    wrap=small_window_w,
                 )
 
         return tag_node_name
@@ -173,7 +174,10 @@ class Node(DpgNodeBase):
             self._image[str(node_id)] = cv2.imread(image_path)
             metadata = inspect_image_file(image_path)
             self._metadata[str(node_id)] = metadata
-            dpg_set_value(output_metadata_tag, summarize_metadata(metadata))
+            dpg_set_value(
+                output_metadata_tag,
+                summarize_metadata(metadata, multiline=True),
+            )
             self._prev_image_filepath[str(node_id)] = image_path
 
         # Get image
@@ -222,7 +226,10 @@ class Node(DpgNodeBase):
 
         metadata = self._metadata.get(str(node_id), None)
         if metadata is not None:
-            dpg_set_value(output_metadata_tag, summarize_metadata(metadata))
+            dpg_set_value(
+                output_metadata_tag,
+                summarize_metadata(metadata, multiline=True),
+            )
 
         return frame, {'metadata': metadata}
 

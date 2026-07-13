@@ -107,6 +107,7 @@ class DpgNodeEditor(object):
         self._parameter_last_coalesce_hint = {}
         self._parameter_drag_stream_active = set()
         self._suspend_parameter_history = False
+        self._suspend_result_node_toggle_events = False
         self._history_node_id_remap = {}
 
     def _mdl_add_node(self, node_tag):
@@ -990,6 +991,8 @@ class DpgNodeEditor(object):
 
     def _cntrl_node_callback(self, event_name, data):
         if event_name == 'toggle_result_node':
+            if self._suspend_result_node_toggle_events:
+                return
             if not isinstance(data, dict):
                 return
             self._cntrl_toggle_result_node(
@@ -1866,10 +1869,12 @@ class DpgNodeEditor(object):
         if setting_dict is None:
             return
         self._suspend_parameter_history = True
+        self._suspend_result_node_toggle_events = True
         try:
             import_payload = self._cntrl_import_setting_dict_body(setting_dict)
         finally:
             self._suspend_parameter_history = False
+            self._suspend_result_node_toggle_events = False
         if import_payload and import_payload['nodes']:
             self._cntrl_push_undo_command(
                 ImportGraphCommand(

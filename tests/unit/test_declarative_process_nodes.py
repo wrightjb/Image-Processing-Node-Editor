@@ -1589,3 +1589,45 @@ def test_hue_saturation_adjustment_hue_shift_range_spans_full_circle():
         hue_saturation_adjustment_module.HUE_SHIFT_MIN % 180
         == hue_saturation_adjustment_module.HUE_SHIFT_MAX % 180
     )
+
+
+def test_gaussian_blur_auto_kernel_uses_configurable_factor(monkeypatch):
+    node = GaussianBlurNode()
+    calls = {}
+
+    def _gaussian_stub(image, kernel, sigma):
+        calls['kernel'] = kernel
+        calls['sigma'] = sigma
+        return image
+
+    monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
+
+    frame = np.zeros((3, 3), dtype=np.uint8)
+    result, _ = node.process(
+        frame,
+        kernel_size=5,
+        auto_sigma=True,
+        auto_kernel=True,
+        kernel_factor=2.5,
+        sigma=2.0,
+    )
+
+    assert result is frame
+    assert calls['kernel'] == (11, 11)
+    assert calls['sigma'] == 2.0
+
+
+def test_gaussian_blur_auto_kernel_overrides_auto_sigma():
+    node = GaussianBlurNode()
+    values = {
+        'kernel_size': 5,
+        'auto_sigma': True,
+        'auto_kernel': True,
+        'kernel_factor': 3.0,
+        'sigma': 1.5,
+    }
+
+    normalized = node.normalize_parameter_values('1:GaussianBlur', values)
+
+    assert normalized['auto_sigma'] is False
+    assert normalized['sigma'] == 1.5

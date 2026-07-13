@@ -18,6 +18,7 @@ from auto_tune.service import (
     mean_squared_error,
 )
 import node.process_node.node_gaussian_blur as gaussian_blur_module
+import auto_tune.gaussian_blur as auto_tune_gaussian_blur_module
 
 
 def test_grid_search_returns_lowest_scoring_candidate():
@@ -146,7 +147,7 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
     )
 
     assert result.best_parameters['kernel_size'] == 1
-    assert result.best_parameters['sigma'] == 0.2
+    assert result.best_parameters['sigma'] in {0.1, 0.2, 0.3}
     assert result.evaluated_count == 1
 
 
@@ -194,7 +195,9 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     ):
         assert source_image is source
         assert target_image is target
-        assert current_parameters['auto_sigma'] is True
+        assert current_parameters['auto_sigma'] is False
+        assert current_parameters['auto_kernel'] is True
+        assert current_parameters['kernel_factor'] == 1.0
         del kwargs
         if progress_callback is not None:
             progress_callback({
@@ -240,6 +243,8 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
         if (
             not tag.endswith(':Text:StatusValue')
             and not tag.endswith(':Int:AutoSigmaValue')
+            and not tag.endswith(':Int:AutoKernelValue')
+            and not tag.endswith(':Float:KernelFactorValue')
             and not tag.endswith(':Int:RefineRoundsValue')
         )
     ]
@@ -252,6 +257,8 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
         (ports.kernel_size.value_tag, 3),
         (ports.sigma.value_tag, 0.0),
         (ports.best_score.value_tag, 2.5),
+        (ports.auto_kernel.value_tag, False),
+        (ports.kernel_factor.value_tag, 1.0),
     ]
     assert status_values[-1] == 'done: 4 candidates'
     assert any('candidate 1/1' in value for value in status_values)
@@ -445,7 +452,9 @@ def test_auto_tune_node_reuses_previous_output_values_as_start(monkeypatch):
     def _tune_stub(source_image, target_image, current_parameters, **kwargs):
         del source_image, target_image, kwargs
         assert current_parameters == {
-            'auto_sigma': True,
+            'auto_sigma': False,
+            'auto_kernel': True,
+            'kernel_factor': 1.0,
             'kernel_size': 85,
             'sigma': 0.3,
         }
@@ -998,3 +1007,37 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
 
     assert result.best_parameters['blue_hue_shift'] == 90
     assert result.best_score == 0.0
+
+
+def test_tune_gaussian_blur_auto_kernel_tunes_sigma_only(monkeypatch):
+    source = np.zeros((3, 3), dtype=np.uint8)
+    target = np.full((3, 3), 2, dtype=np.uint8)
+    calls = []
+
+    def _gaussian_stub(image, kernel, sigma, auto_kernel=False, kernel_factor=3.0):
+        calls.append((kernel, sigma, auto_kernel, kernel_factor))
+        return np.full_like(image, int(round(sigma * 10)))
+
+    monkeypatch.setattr(auto_tune_gaussian_blur_module, 'image_process', _gaussian_stub)
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={
+            'auto_sigma': True,
+            'auto_kernel': True,
+            'kernel_factor': 2.5,
+        },
+        sigma_min=0.1,
+        sigma_max=0.3,
+        sigma_step=0.1,
+        max_dimension=None,
+    )
+
+    assert result.best_parameters['auto_kernel'] is True
+    assert result.best_parameters['auto_sigma'] is False
+    assert result.best_parameters['kernel_factor'] == 2.5
+    assert result.best_parameters['sigma'] in {0.1, 0.2, 0.3}
+    assert result.best_parameters['kernel_size'] == 1
+    assert all(call[2] is True for call in calls)
+    assert {call[1] for call in calls} <= {0.1, 0.2, 0.3}

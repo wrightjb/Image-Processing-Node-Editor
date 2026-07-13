@@ -9,7 +9,7 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
 from node.process_node.node_gaussian_blur import Node as GaussianBlurNode
-from node.process_node.node_gaussian_blur import image_process
+from node.process_node.node_gaussian_blur import auto_kernel_size, image_process
 
 
 def _luminance_float(image):
@@ -221,6 +221,8 @@ def _ternary_kernel_search(
             source_for_score.copy(),
             int(parameters['kernel_size']),
             float(parameters['sigma']),
+            bool(parameters.get('auto_kernel', False)),
+            float(parameters.get('kernel_factor', 3.0)),
         )
         score = metric(image, target)
         evaluated_count += 1
@@ -301,10 +303,17 @@ def _ternary_sigma_search(
 
         parameters = dict(fixed_parameters)
         parameters['sigma'] = sigma
+        if parameters.get('auto_kernel', False):
+            parameters['kernel_size'] = auto_kernel_size(
+                sigma,
+                parameters.get('kernel_factor', 3.0),
+            )
         image = image_process(
             source_for_score.copy(),
             int(parameters['kernel_size']),
             float(parameters['sigma']),
+            bool(parameters.get('auto_kernel', False)),
+            float(parameters.get('kernel_factor', 3.0)),
         )
         score = metric(image, target)
         evaluated_count += 1
@@ -364,6 +373,8 @@ def _tune_gaussian_blur_pass(
     source_image,
     target_image,
     auto_sigma,
+    auto_kernel,
+    kernel_factor,
     kernel_min,
     kernel_max,
     sigma_min,
@@ -389,8 +400,12 @@ def _tune_gaussian_blur_pass(
         downscale_step,
     )
 
-    fixed = {'auto_sigma': auto_sigma}
-    if auto_sigma:
+    fixed = {
+        'auto_sigma': auto_sigma,
+        'auto_kernel': auto_kernel,
+        'kernel_factor': kernel_factor,
+    }
+    if auto_sigma and not auto_kernel:
         fixed['sigma'] = 0.0
 
     def _progress(update):
@@ -408,7 +423,19 @@ def _tune_gaussian_blur_pass(
         })
         progress_callback(update)
 
-    if auto_sigma:
+    if auto_kernel:
+        fixed['kernel_size'] = auto_kernel_size(starting_sigma, kernel_factor)
+        sigma_candidates = sigma_values(sigma_min, sigma_max, sigma_step)
+        result = _ternary_sigma_search(
+            source_for_score,
+            target_for_score,
+            sigma_candidates,
+            fixed,
+            progress_callback=_progress,
+            metric=metric,
+            metric_diagnostics=metric_diagnostics,
+        )
+    elif auto_sigma:
         result = _ternary_kernel_search(
             source_for_score,
             target_for_score,
@@ -449,14 +476,20 @@ def _tune_gaussian_blur_pass(
                     kernel_result.evaluated_count + result.evaluated_count
                 ),
             )
-    original_kernel = _unscale_odd_kernel(
-        result.best_parameters['kernel_size'],
-        downscale_step,
-        kernel_min,
-        kernel_max,
-    )
     best_parameters = dict(result.best_parameters)
-    best_parameters['kernel_size'] = original_kernel
+    if auto_kernel:
+        best_parameters['kernel_size'] = auto_kernel_size(
+            best_parameters['sigma'],
+            kernel_factor,
+        )
+    else:
+        original_kernel = _unscale_odd_kernel(
+            result.best_parameters['kernel_size'],
+            downscale_step,
+            kernel_min,
+            kernel_max,
+        )
+        best_parameters['kernel_size'] = original_kernel
     return replace(result, best_parameters=best_parameters), downscale_step
 
 
@@ -496,7 +529,9 @@ def tune_gaussian_blur(
     metric = objective_metric(metric_name)
     metric_diagnostics = objective_metric_diagnostics(metric_name)
     current_parameters = dict(current_parameters or {})
-    auto_sigma = bool(current_parameters.get('auto_sigma', True))
+    auto_kernel = bool(current_parameters.get('auto_kernel', False))
+    auto_sigma = bool(current_parameters.get('auto_sigma', True)) and not auto_kernel
+    kernel_factor = float(current_parameters.get('kernel_factor', 3.0))
     refinement_dimensions = _refinement_dimensions_for_image(
         source_image,
         max_dimension,
@@ -519,6 +554,8 @@ def tune_gaussian_blur(
                 source_image,
                 target_image,
                 auto_sigma,
+                auto_kernel,
+                kernel_factor,
                 current_kernel_min,
                 current_kernel_max,
                 sigma_min,
@@ -535,12 +572,13 @@ def tune_gaussian_blur(
             )
             total_evaluated_count += result.evaluated_count
             current_sigma = float(result.best_parameters.get('sigma', current_sigma))
-            current_kernel_min, current_kernel_max = _refined_kernel_bounds(
-                result.best_parameters['kernel_size'],
-                downscale_step,
-                kernel_min,
-                kernel_max,
-            )
+            if not auto_kernel:
+                current_kernel_min, current_kernel_max = _refined_kernel_bounds(
+                    result.best_parameters['kernel_size'],
+                    downscale_step,
+                    kernel_min,
+                    kernel_max,
+                )
             if result.best_score <= 0.0:
                 break
         if result is not None and result.best_score <= 0.0:
@@ -551,6 +589,8 @@ def tune_gaussian_blur(
         source_image.copy(),
         int(best_parameters['kernel_size']),
         float(best_parameters['sigma']),
+        bool(best_parameters.get('auto_kernel', False)),
+        float(best_parameters.get('kernel_factor', 3.0)),
     )
     return replace(
         result,

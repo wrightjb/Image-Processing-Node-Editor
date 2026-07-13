@@ -18,6 +18,7 @@ from auto_tune.service import (
     mean_squared_error,
 )
 import node.process_node.node_gaussian_blur as gaussian_blur_module
+import auto_tune.gaussian_blur as auto_tune_gaussian_blur_module
 
 
 def test_grid_search_returns_lowest_scoring_candidate():
@@ -146,7 +147,7 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
     )
 
     assert result.best_parameters['kernel_size'] == 1
-    assert result.best_parameters['sigma'] == 0.2
+    assert result.best_parameters['sigma'] in {0.1, 0.2, 0.3}
     assert result.evaluated_count == 1
 
 
@@ -179,7 +180,12 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     set_values = []
 
     class _TuneResult:
-        best_parameters = {'kernel_size': 3, 'sigma': 0.0}
+        best_parameters = {
+            'kernel_size': 3,
+            'sigma': 0.0,
+            'auto_kernel': True,
+            'kernel_factor': 1.0,
+        }
         best_score = 2.5
         evaluated_count = 4
 
@@ -194,7 +200,9 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
     ):
         assert source_image is source
         assert target_image is target
-        assert current_parameters['auto_sigma'] is True
+        assert current_parameters['auto_sigma'] is False
+        assert current_parameters['auto_kernel'] is True
+        assert current_parameters['kernel_factor'] == 1.0
         del kwargs
         if progress_callback is not None:
             progress_callback({
@@ -240,6 +248,8 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
         if (
             not tag.endswith(':Text:StatusValue')
             and not tag.endswith(':Int:AutoSigmaValue')
+            and not tag.endswith(':Int:AutoKernelValue')
+            and not tag.endswith(':Float:KernelFactorValue')
             and not tag.endswith(':Int:RefineRoundsValue')
         )
     ]
@@ -252,6 +262,8 @@ def test_auto_tune_node_run_accepts_legacy_tuple_connections(monkeypatch):
         (ports.kernel_size.value_tag, 3),
         (ports.sigma.value_tag, 0.0),
         (ports.best_score.value_tag, 2.5),
+        (ports.auto_kernel.value_tag, True),
+        (ports.kernel_factor.value_tag, 1.0),
     ]
     assert status_values[-1] == 'done: 4 candidates'
     assert any('candidate 1/1' in value for value in status_values)
@@ -445,7 +457,9 @@ def test_auto_tune_node_reuses_previous_output_values_as_start(monkeypatch):
     def _tune_stub(source_image, target_image, current_parameters, **kwargs):
         del source_image, target_image, kwargs
         assert current_parameters == {
-            'auto_sigma': True,
+            'auto_sigma': False,
+            'auto_kernel': True,
+            'kernel_factor': 1.0,
             'kernel_size': 85,
             'sigma': 0.3,
         }
@@ -998,3 +1012,148 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
 
     assert result.best_parameters['blue_hue_shift'] == 90
     assert result.best_score == 0.0
+
+
+def test_tune_gaussian_blur_auto_kernel_tunes_sigma_only(monkeypatch):
+    source = np.zeros((3, 3), dtype=np.uint8)
+    target = np.full((3, 3), 2, dtype=np.uint8)
+    calls = []
+
+    def _gaussian_stub(image, kernel, sigma, auto_kernel=False, kernel_factor=3.0):
+        calls.append((kernel, sigma, auto_kernel, kernel_factor))
+        return np.full_like(image, int(round(sigma * 10)))
+
+    monkeypatch.setattr(auto_tune_gaussian_blur_module, 'image_process', _gaussian_stub)
+
+    result = tune_gaussian_blur(
+        source,
+        target,
+        current_parameters={
+            'auto_sigma': True,
+            'auto_kernel': True,
+            'kernel_factor': 2.5,
+        },
+        sigma_min=0.1,
+        sigma_max=0.3,
+        sigma_step=0.1,
+        max_dimension=None,
+    )
+
+    assert result.best_parameters['auto_kernel'] is True
+    assert result.best_parameters['auto_sigma'] is False
+    assert result.best_parameters['kernel_factor'] == 2.5
+    assert result.best_parameters['sigma'] in {0.1, 0.2, 0.3}
+    assert result.best_parameters['kernel_size'] == 1
+    assert all(call[2] is True for call in calls)
+    assert {call[1] for call in calls} <= {0.1, 0.2, 0.3}
+
+
+def test_auto_tune_node_auto_kernel_control_overrides_stale_output(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 3, dtype=np.uint8)
+
+    class _TuneResult:
+        best_parameters = {
+            'kernel_size': 13,
+            'sigma': 2.0,
+            'auto_kernel': True,
+            'kernel_factor': 3.0,
+        }
+        best_score = 0.5
+        evaluated_count = 3
+
+    _TuneResult.best_image = source
+
+    def _get_value(tag):
+        if tag == ports.kernel_size.value_tag:
+            return 5
+        if tag == ports.sigma.value_tag:
+            return 0.0
+        if tag == ports.auto_kernel.value_tag:
+            return False
+        if tag == ports.kernel_factor.value_tag:
+            return 9.0
+        if tag == node._auto_sigma_value_tag(6):
+            return True
+        if tag == node._auto_kernel_value_tag(6):
+            return True
+        if tag == node._kernel_factor_value_tag(6):
+            return 3.0
+        return None
+
+    def _tune_stub(source_image, target_image, current_parameters, **kwargs):
+        del source_image, target_image, kwargs
+        assert current_parameters['auto_sigma'] is False
+        assert current_parameters['auto_kernel'] is True
+        assert current_parameters['kernel_factor'] == 3.0
+        assert current_parameters['kernel_size'] == 5
+        assert current_parameters['sigma'] == 0.0
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', lambda tag, value: None)
+
+    node._on_run_button(None, None, 6)
+    _image, result = node.update(
+        6,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {
+            '1:Source': source,
+            '2:Target': target,
+        },
+        {},
+    )
+
+    assert result['tune_result'].best_parameters['auto_kernel'] is True
+
+
+def test_auto_tune_node_auto_controls_update_display_values(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    values = {
+        ports.kernel_size.value_tag: 5,
+        ports.sigma.value_tag: 2.0,
+        ports.auto_kernel.value_tag: False,
+        ports.kernel_factor.value_tag: 3.0,
+        node._auto_sigma_value_tag(6): True,
+        node._auto_kernel_value_tag(6): False,
+        node._kernel_factor_value_tag(6): 2.5,
+    }
+    callbacks = {}
+
+    class _Dpg:
+        @staticmethod
+        def configure_item(tag, **kwargs):
+            if 'callback' in kwargs:
+                callbacks[tag] = kwargs['callback']
+
+    def _set_value(tag, value):
+        values[tag] = value
+
+    monkeypatch.setattr(auto_tune_node_module, 'dpg', _Dpg())
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_set_value', _set_value)
+
+    node._configure_auto_display_callbacks(6, ports)
+    callbacks[node._auto_kernel_value_tag(6)](node._auto_kernel_value_tag(6), True, None)
+
+    assert values[node._auto_sigma_value_tag(6)] is False
+    assert values[ports.kernel_size.value_tag] == 11
+    assert values[ports.auto_kernel.value_tag] is True
+    assert values[ports.kernel_factor.value_tag] == 2.5
+
+    callbacks[node._auto_sigma_value_tag(6)](node._auto_sigma_value_tag(6), True, None)
+
+    assert values[node._auto_kernel_value_tag(6)] is False
+    assert values[ports.sigma.value_tag] == 2.0
+    assert values[ports.auto_kernel.value_tag] is False

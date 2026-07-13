@@ -5,13 +5,14 @@ import dearpygui.dearpygui as dpg
 from auto_tune.gaussian_blur import DEFAULT_KERNEL_MAX, DEFAULT_KERNEL_MIN
 from auto_tune.gaussian_blur import DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.gaussian_blur import tuning_plan, tune_gaussian_blur
+from node.process_node.node_gaussian_blur import auto_kernel_size, auto_sigma_value
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.3'
+    _ver = '0.0.4'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -25,6 +26,8 @@ class Node(DpgNodeBase):
         kernel_size=OutputPort(PortDataType.INT, index=1),
         sigma=OutputPort(PortDataType.FLOAT, index=2),
         best_score=OutputPort(PortDataType.FLOAT, index=3),
+        auto_kernel=OutputPort(PortDataType.INT, index=4),
+        kernel_factor=OutputPort(PortDataType.FLOAT, index=5),
     )
 
     def add_node(
@@ -42,13 +45,19 @@ class Node(DpgNodeBase):
         kernel_size_port = ports.kernel_size
         sigma_port = ports.sigma
         best_score_port = ports.best_score
+        auto_kernel_port = ports.auto_kernel
+        kernel_factor_port = ports.kernel_factor
         source_image = source_image_port.dpg_tag
         target_image = target_image_port.dpg_tag
         kernel_size = kernel_size_port.dpg_tag
         sigma = sigma_port.dpg_tag
         best_score = best_score_port.dpg_tag
+        auto_kernel = auto_kernel_port.dpg_tag
+        kernel_factor = kernel_factor_port.dpg_tag
         status_value_tag = self._status_value_tag(node_id)
         auto_sigma_value_tag = self._auto_sigma_value_tag(node_id)
+        auto_kernel_value_tag = self._auto_kernel_value_tag(node_id)
+        kernel_factor_value_tag = self._kernel_factor_value_tag(node_id)
         metric_value_tag = self._metric_value_tag(node_id)
         refinement_iterations_value_tag = self._refinement_iterations_value_tag(node_id)
         self._opencv_setting_dict = opencv_setting_dict
@@ -85,6 +94,27 @@ class Node(DpgNodeBase):
                     label='Auto Sigma',
                     tag=auto_sigma_value_tag,
                     default_value=True,
+                )
+            with dpg.node_attribute(
+                tag=self._auto_kernel_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Auto Kernel',
+                    tag=auto_kernel_value_tag,
+                    default_value=False,
+                )
+            with dpg.node_attribute(
+                tag=self._kernel_factor_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_input_float(
+                    tag=kernel_factor_value_tag,
+                    label='kernel factor',
+                    default_value=3.0,
+                    min_value=0.1,
+                    min_clamped=True,
+                    width=120,
                 )
             with dpg.node_attribute(
                 tag=self._metric_attr_tag(node_id),
@@ -152,8 +182,88 @@ class Node(DpgNodeBase):
                     width=120,
                     readonly=True,
                 )
+            with dpg.node_attribute(
+                tag=auto_kernel,
+                attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                dpg.add_checkbox(
+                    tag=auto_kernel_port.value_tag,
+                    label='auto kernel',
+                    default_value=False,
+                    enabled=False,
+                )
+            with dpg.node_attribute(
+                tag=kernel_factor,
+                attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                dpg.add_input_float(
+                    tag=kernel_factor_port.value_tag,
+                    label='kernel factor',
+                    default_value=3.0,
+                    width=120,
+                    readonly=True,
+                )
 
+        self._configure_auto_display_callbacks(node_id, ports)
         return tag_node_name
+
+    def _configure_auto_display_callbacks(self, node_id, ports):
+        if not hasattr(dpg, 'configure_item'):
+            return
+
+        def _refresh_auto_kernel():
+            sigma = dpg_get_value(ports.sigma.value_tag)
+            kernel_factor = dpg_get_value(self._kernel_factor_value_tag(node_id))
+            dpg_set_value(
+                ports.kernel_size.value_tag,
+                auto_kernel_size(sigma or 0.0, kernel_factor or 3.0),
+            )
+            dpg_set_value(ports.auto_kernel.value_tag, True)
+            dpg_set_value(
+                ports.kernel_factor.value_tag,
+                float(kernel_factor or 3.0),
+            )
+
+        def _refresh_auto_sigma():
+            kernel = dpg_get_value(ports.kernel_size.value_tag)
+            dpg_set_value(
+                ports.sigma.value_tag,
+                round(auto_sigma_value(kernel or 1), 3),
+            )
+            dpg_set_value(ports.auto_kernel.value_tag, False)
+
+        def _toggle_auto_kernel(_sender, app_data, _user_data):
+            if app_data:
+                dpg_set_value(self._auto_sigma_value_tag(node_id), False)
+                _refresh_auto_kernel()
+            else:
+                dpg_set_value(ports.auto_kernel.value_tag, False)
+
+        def _toggle_auto_sigma(_sender, app_data, _user_data):
+            if app_data:
+                dpg_set_value(self._auto_kernel_value_tag(node_id), False)
+                _refresh_auto_sigma()
+
+        def _kernel_factor_changed(_sender, _app_data, _user_data):
+            dpg_set_value(
+                ports.kernel_factor.value_tag,
+                float(dpg_get_value(self._kernel_factor_value_tag(node_id)) or 3.0),
+            )
+            if dpg_get_value(self._auto_kernel_value_tag(node_id)):
+                _refresh_auto_kernel()
+
+        dpg.configure_item(
+            self._auto_kernel_value_tag(node_id),
+            callback=_toggle_auto_kernel,
+        )
+        dpg.configure_item(
+            self._auto_sigma_value_tag(node_id),
+            callback=_toggle_auto_sigma,
+        )
+        dpg.configure_item(
+            self._kernel_factor_value_tag(node_id),
+            callback=_kernel_factor_changed,
+        )
 
     def _metric_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Metric')
@@ -172,6 +282,18 @@ class Node(DpgNodeBase):
 
     def _auto_sigma_value_tag(self, node_id):
         return self._node_control_value_tag(node_id, self.TYPE_INT, 'AutoSigma')
+
+    def _auto_kernel_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_INT, 'AutoKernel')
+
+    def _auto_kernel_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_INT, 'AutoKernel')
+
+    def _kernel_factor_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_FLOAT, 'KernelFactor')
+
+    def _kernel_factor_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_FLOAT, 'KernelFactor')
 
     def _status_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
@@ -258,13 +380,32 @@ class Node(DpgNodeBase):
 
         output_parameters = self._current_output_parameters(ports)
         auto_sigma_value = dpg_get_value(self._auto_sigma_value_tag(node_id))
+        auto_kernel_value = dpg_get_value(self._auto_kernel_value_tag(node_id))
+        kernel_factor_value = dpg_get_value(self._kernel_factor_value_tag(node_id))
         fallback_auto_sigma = (
             True if auto_sigma_value is None else bool(auto_sigma_value)
         )
-        current_parameters = {'auto_sigma': fallback_auto_sigma}
+        fallback_auto_kernel = (
+            False if auto_kernel_value is None else bool(auto_kernel_value)
+        )
+        fallback_kernel_factor = (
+            3.0 if kernel_factor_value is None else float(kernel_factor_value)
+        )
+        current_parameters = {
+            'auto_sigma': fallback_auto_sigma,
+            'auto_kernel': fallback_auto_kernel,
+            'kernel_factor': fallback_kernel_factor,
+        }
         current_parameters.update(output_parameters)
-        auto_sigma = bool(current_parameters.get('auto_sigma', True))
+        auto_kernel = bool(current_parameters.get('auto_kernel', False))
+        auto_sigma = bool(current_parameters.get('auto_sigma', True)) and not auto_kernel
+        kernel_factor = float(current_parameters.get('kernel_factor', 3.0))
+        current_parameters['auto_sigma'] = auto_sigma
+        current_parameters['auto_kernel'] = auto_kernel
+        current_parameters['kernel_factor'] = kernel_factor
         dpg_set_value(self._auto_sigma_value_tag(node_id), auto_sigma)
+        dpg_set_value(self._auto_kernel_value_tag(node_id), auto_kernel)
+        dpg_set_value(self._kernel_factor_value_tag(node_id), kernel_factor)
         metric_name = dpg_get_value(self._metric_value_tag(node_id)) or 'local_smoothness'
         refinement_iterations = self._refinement_iterations(node_id)
         dpg_set_value(
@@ -284,6 +425,8 @@ class Node(DpgNodeBase):
             f'({DEFAULT_KERNEL_MIN}..{DEFAULT_KERNEL_MAX}), '
             f'downscale step={plan["downscale_step"]}, '
             f'auto_sigma={auto_sigma}, '
+            f'auto_kernel={auto_kernel}, '
+            f'kernel_factor={kernel_factor}, '
             f'metric={metric_name}, '
             f'refine_rounds={refinement_iterations}, '
             f'planned_passes={plan["planned_passes"]}, '
@@ -329,6 +472,14 @@ class Node(DpgNodeBase):
             float(result.best_parameters['sigma']),
         )
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
+        dpg_set_value(
+            ports.auto_kernel.value_tag,
+            bool(result.best_parameters.get('auto_kernel', False)),
+        )
+        dpg_set_value(
+            ports.kernel_factor.value_tag,
+            float(result.best_parameters.get('kernel_factor', kernel_factor)),
+        )
         self._set_status(
             node_id,
             f'done: {result.evaluated_count} candidates',
@@ -357,8 +508,16 @@ class Node(DpgNodeBase):
             ports.kernel_size.value_tag: dpg_get_value(ports.kernel_size.value_tag),
             ports.sigma.value_tag: dpg_get_value(ports.sigma.value_tag),
             ports.best_score.value_tag: dpg_get_value(ports.best_score.value_tag),
+            ports.auto_kernel.value_tag: dpg_get_value(ports.auto_kernel.value_tag),
+            ports.kernel_factor.value_tag: dpg_get_value(ports.kernel_factor.value_tag),
             self._auto_sigma_value_tag(node_id): dpg_get_value(
                 self._auto_sigma_value_tag(node_id),
+            ),
+            self._auto_kernel_value_tag(node_id): dpg_get_value(
+                self._auto_kernel_value_tag(node_id),
+            ),
+            self._kernel_factor_value_tag(node_id): dpg_get_value(
+                self._kernel_factor_value_tag(node_id),
             ),
             self._metric_value_tag(node_id): dpg_get_value(
                 self._metric_value_tag(node_id),
@@ -376,7 +535,11 @@ class Node(DpgNodeBase):
             ports.kernel_size.value_tag,
             ports.sigma.value_tag,
             ports.best_score.value_tag,
+            ports.auto_kernel.value_tag,
+            ports.kernel_factor.value_tag,
             self._auto_sigma_value_tag(node_id),
+            self._auto_kernel_value_tag(node_id),
+            self._kernel_factor_value_tag(node_id),
             self._metric_value_tag(node_id),
             self._refinement_iterations_value_tag(node_id),
         ):

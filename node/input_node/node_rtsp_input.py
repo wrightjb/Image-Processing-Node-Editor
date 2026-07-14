@@ -142,6 +142,7 @@ class Node(DpgNodeBase):
                     tag=tag_node_input01_value_name,
                     label='URL',
                     width=small_window_w - 30,
+                    callback=callback,
                 )
             # Camera image
             with dpg.node_attribute(

@@ -109,6 +109,7 @@ class Node(DpgNodeBase):
                     width=small_window_w - 100,
                     label="Device No",
                     tag=tag_node_input01_value_name,
+                    callback=callback,
                 )
             # Camera image
             with dpg.node_attribute(

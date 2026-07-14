@@ -1,6 +1,8 @@
 # tests/test_node_editor_core.py
 # Standard library imports
+import ast
 from collections import OrderedDict
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 # Third-party imports
@@ -1659,3 +1661,63 @@ def test_hue_bands_tuner_spawn_uses_parameter_names_not_port_numbers(editor_and_
 
     assert resolved == blue_hue_port
     assert resolved != cyan_sat_port
+
+
+def test_node_editable_controls_notify_parameter_history():
+    """All editable node controls must either be read-only or emit history.
+
+    Custom nodes frequently build DearPyGui controls by hand instead of using
+    the declarative parameter helpers.  A missing callback means the value can
+    change in the UI without creating a SetParameterCommand, so undo/redo will
+    silently miss the edit.  This repository-wide guard catches new nodes and
+    edits to existing nodes, not just a fixed list of known regressions.
+    """
+    editable_widget_names = {
+        'add_checkbox',
+        'add_combo',
+        'add_input_float',
+        'add_input_int',
+        'add_input_text',
+        'add_slider_float',
+        'add_slider_int',
+    }
+
+    missing_callbacks = []
+    for path in Path('node').rglob('node_*.py'):
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        for function in (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == 'add_node'
+        ):
+            for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
+                if not (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr in editable_widget_names
+                ):
+                    continue
+
+                keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+                if 'tag' not in keywords:
+                    continue
+                if _ast_constant_value(keywords.get('readonly')) is True:
+                    continue
+                if _ast_constant_value(keywords.get('show')) is False:
+                    continue
+                if _ast_constant_value(keywords.get('enabled')) is False:
+                    continue
+                if 'callback' in keywords:
+                    continue
+
+                missing_callbacks.append(
+                    f'{path}:{call.lineno} {call.func.attr} '
+                    f'tag={ast.unparse(keywords["tag"])}'
+                )
+
+    assert missing_callbacks == []
+
+
+def _ast_constant_value(node):
+    if isinstance(node, ast.Constant):
+        return node.value
+    return None

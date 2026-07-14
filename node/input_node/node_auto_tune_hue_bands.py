@@ -55,12 +55,14 @@ class Node(DpgNodeBase):
                 dpg.add_input_int(
                     tag=self._refinement_iterations_value_tag(node_id), label='Refine Rounds',
                     default_value=DEFAULT_REFINEMENT_ITERATIONS, min_value=0, min_clamped=True, width=120,
+                    callback=callback,
                 )
             with dpg.node_attribute(tag=self._tune_blend_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_checkbox(
                     tag=self._tune_blend_value_tag(node_id),
                     label='Tune Blend',
                     default_value=False,
+                    callback=callback,
                 )
             with dpg.node_attribute(tag=self._fixed_blend_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_slider_float(
@@ -70,12 +72,14 @@ class Node(DpgNodeBase):
                     min_value=0.0,
                     max_value=1.0,
                     width=120,
+                    callback=callback,
                 )
             with dpg.node_attribute(tag=self._match_compression_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_checkbox(
                     label='Match target compression',
                     tag=self._match_compression_value_tag(node_id),
                     default_value=False,
+                    callback=callback,
                 )
             with dpg.node_attribute(tag=source_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('source image')

@@ -144,6 +144,7 @@ class Node(DpgNodeBase):
                     tag=invert_mask_value,
                     label='invert mask',
                     default_value=False,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=image,

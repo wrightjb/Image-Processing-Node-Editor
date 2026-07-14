@@ -61,3 +61,64 @@ def test_run_editor_main_loop_sync_mode(monkeypatch):
     assert runtime.step.call_count == 2
     runtime.step.assert_called_with(node_editor, mode_async=False)
     assert fake_dpg.render_dearpygui_frame.call_count == 2
+
+
+def test_run_editor_main_loop_async_mode_with_render_fps_cap(monkeypatch):
+    fake_loop = Mock()
+    fake_asyncio = Mock()
+    fake_asyncio.get_event_loop.return_value = fake_loop
+    fake_dpg = Mock()
+    fake_dpg.is_dearpygui_running.side_effect = [True, True, False]
+    fake_time = Mock()
+    fake_time.perf_counter.side_effect = [0.0, 0.01, 0.02, 0.03]
+
+    monkeypatch.setattr(runtime_controller, 'asyncio', fake_asyncio)
+    monkeypatch.setattr(runtime_controller, 'dpg', fake_dpg)
+    monkeypatch.setattr(runtime_controller, 'time', fake_time)
+
+    node_editor = Mock()
+    runtime = Mock()
+
+    event_loop = runtime_controller.run_editor_main_loop(
+        node_editor,
+        runtime,
+        unuse_async_draw=False,
+        render_fps=20,
+    )
+
+    fake_loop.run_in_executor.assert_called_once_with(
+        None,
+        runtime_controller.async_runtime_worker,
+        node_editor,
+        runtime,
+    )
+    fake_dpg.start_dearpygui.assert_not_called()
+    assert fake_dpg.render_dearpygui_frame.call_count == 2
+    runtime.step.assert_not_called()
+    fake_time.sleep.assert_any_call(0.04)
+    assert event_loop is fake_loop
+
+
+def test_run_editor_main_loop_sync_mode_with_render_fps_cap(monkeypatch):
+    fake_dpg = Mock()
+    fake_dpg.is_dearpygui_running.side_effect = [True, False]
+    fake_time = Mock()
+    fake_time.perf_counter.side_effect = [0.0, 0.005]
+
+    monkeypatch.setattr(runtime_controller, 'dpg', fake_dpg)
+    monkeypatch.setattr(runtime_controller, 'time', fake_time)
+
+    node_editor = Mock()
+    runtime = Mock()
+
+    event_loop = runtime_controller.run_editor_main_loop(
+        node_editor,
+        runtime,
+        unuse_async_draw=True,
+        render_fps=10,
+    )
+
+    assert event_loop is None
+    runtime.step.assert_called_once_with(node_editor, mode_async=False)
+    fake_dpg.render_dearpygui_frame.assert_called_once()
+    fake_time.sleep.assert_called_once_with(0.095)

@@ -51,6 +51,15 @@ def get_args():
     parser.add_argument('--unuse_async_draw', action='store_true')
     parser.add_argument('--use_debug_print', action='store_true')
     parser.add_argument(
+        '--render_fps',
+        type=float,
+        default=0.0,
+        help=(
+            'Optional maximum GUI render FPS. Values <= 0 use DearPyGui '
+            'default rendering.'
+        ),
+    )
+    parser.add_argument(
         '-i',
         '--import_json',
         type=str,
@@ -67,6 +76,7 @@ def main():
     unuse_async_draw = args.unuse_async_draw
     use_debug_print = args.use_debug_print
     import_json = args.import_json
+    render_fps = args.render_fps if args.render_fps > 0 else None
 
     print('**** Load Config ********')
     opencv_setting_dict = load_opencv_settings(setting)
@@ -106,6 +116,7 @@ def main():
         node_editor,
         runtime,
         unuse_async_draw=unuse_async_draw,
+        render_fps=render_fps,
     )
 
     shutdown_runtime(

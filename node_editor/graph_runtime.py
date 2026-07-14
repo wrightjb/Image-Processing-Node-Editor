@@ -14,6 +14,7 @@ class GraphRuntime:
         self.node_image_dict = {}
         self.node_result_dict = {}
         self.node_cache_dict = {}
+        self.node_version_dict = {}
         self.cache_enabled = cache_enabled
         self.cache_source_nodes = cache_source_nodes
 
@@ -23,6 +24,7 @@ class GraphRuntime:
             self.node_image_dict,
             self.node_result_dict,
             node_cache_dict=self.node_cache_dict,
+            node_version_dict=self.node_version_dict,
             mode_async=mode_async,
             cache_enabled=self.cache_enabled,
             cache_source_nodes=self.cache_source_nodes,
@@ -77,7 +79,10 @@ def _build_node_signature(
     node_image_dict,
     node_result_dict,
     node_setting,
+    node_version_dict=None,
 ):
+    if node_version_dict is None:
+        node_version_dict = {}
     upstream_values = []
     upstream_frame_tokens = []
     for source_tag, _ in connection_list:
@@ -86,9 +91,16 @@ def _build_node_signature(
         frame_token = _extract_frame_token(source_result)
         if frame_token is not None:
             upstream_frame_tokens.append((source_tag, frame_token))
+        source_version = node_version_dict.get(source_node_id_name)
+        if source_version is not None:
+            upstream_image_value = ('version', _freeze_cache_value(source_version))
+        else:
+            upstream_image_value = _freeze_cache_value(
+                node_image_dict.get(source_node_id_name)
+            )
         upstream_values.append((
             source_tag,
-            _freeze_cache_value(node_image_dict.get(source_node_id_name)),
+            upstream_image_value,
             _freeze_cache_value(_strip_cache_meta(source_result)),
         ))
 
@@ -185,11 +197,13 @@ def _connection_info_node_names(connection_info):
     source_tag, dest_tag = connection_info
     return ':'.join(source_tag.split(':')[:2]), ':'.join(dest_tag.split(':')[:2])
 
+
 def update_node_info(
     node_editor,
     node_image_dict,
     node_result_dict,
     node_cache_dict=None,
+    node_version_dict=None,
     mode_async=True,
     cache_enabled=True,
     cache_source_nodes=False,
@@ -206,6 +220,8 @@ def update_node_info(
     """
     if node_cache_dict is None:
         node_cache_dict = {}
+    if node_version_dict is None:
+        node_version_dict = {}
 
     if not cache_enabled and node_cache_dict:
         node_cache_dict.clear()
@@ -240,6 +256,7 @@ def update_node_info(
     ]
     for deleted_node_id_name in deleted_result_node_id_name_list:
         del node_result_dict[deleted_node_id_name]
+        node_version_dict.pop(deleted_node_id_name, None)
 
     if hasattr(node_editor, 'get_sorted_node_connection_refs'):
         sorted_node_connection_dict = node_editor.get_sorted_node_connection_refs()
@@ -281,7 +298,7 @@ def update_node_info(
             len(connection_list) > 0 or cache_source_nodes
         )
         node_setting = {}
-        if use_cache and hasattr(node_instance, 'get_setting_dict'):
+        if cache_enabled and hasattr(node_instance, 'get_setting_dict'):
             if mode_async:
                 try:
                     node_setting = node_instance.get_setting_dict(node_id)
@@ -322,6 +339,7 @@ def update_node_info(
                 node_image_dict,
                 node_result_dict,
                 node_setting,
+                node_version_dict=node_version_dict,
             )
             cached_result = node_cache_dict.get(node_id_name)
             if upstream_frame_tokens:
@@ -346,14 +364,26 @@ def update_node_info(
                         node_result_dict[node_id_name] = copy.deepcopy(
                             frame_cached_result['result']
                         )
-                        if hasattr(node_instance, 'render_cached_output'):
+                        rendered_frame_keys = cached_result.setdefault(
+                            'rendered_frame_keys', set()
+                        )
+                        if (
+                            frame_key not in rendered_frame_keys and
+                            hasattr(node_instance, 'render_cached_output')
+                        ):
                             try:
                                 node_instance.render_cached_output(
                                     node_id,
                                     node_image_dict[node_id_name],
                                 )
+                                rendered_frame_keys.add(frame_key)
                             except Exception:
                                 pass
+                        node_version_dict[node_id_name] = (
+                            'video_frame',
+                            pipeline_signature,
+                            frame_key,
+                        )
                         continue
             elif (
                 cached_result is not None and
@@ -365,14 +395,19 @@ def update_node_info(
                 node_result_dict[node_id_name] = copy.deepcopy(
                     cached_result['result']
                 )
-                if hasattr(node_instance, 'render_cached_output'):
+                if (
+                    cached_result.get('rendered_signature') != cache_signature and
+                    hasattr(node_instance, 'render_cached_output')
+                ):
                     try:
                         node_instance.render_cached_output(
                             node_id,
                             node_image_dict[node_id_name],
                         )
+                        cached_result['rendered_signature'] = cache_signature
                     except Exception:
                         pass
+                node_version_dict[node_id_name] = cache_signature
                 continue
 
         if mode_async:
@@ -421,15 +456,34 @@ def update_node_info(
                     'image': copy.deepcopy(image),
                     'result': copy.deepcopy(result),
                 }
+                rendered_frame_keys = cache_entry.setdefault(
+                    'rendered_frame_keys', set()
+                )
+                rendered_frame_keys.add(frame_key)
                 node_cache_dict[node_id_name] = cache_entry
+                node_version_dict[node_id_name] = (
+                    'video_frame',
+                    pipeline_signature,
+                    frame_key,
+                )
             else:
                 node_cache_dict[node_id_name] = {
                     'signature': cache_signature,
                     'image': copy.deepcopy(image),
                     'result': copy.deepcopy(result),
+                    'rendered_signature': cache_signature,
                 }
+                node_version_dict[node_id_name] = cache_signature
         elif node_id_name in node_cache_dict:
             del node_cache_dict[node_id_name]
+            node_version_dict.pop(node_id_name, None)
+
+        if not use_cache:
+            frame_token = _extract_frame_token(result)
+            if frame_token is not None:
+                node_version_dict[node_id_name] = ('frame', frame_token)
+            else:
+                node_version_dict.pop(node_id_name, None)
 
     deleted_node_id_name_list = [
         node_id_name for node_id_name in node_cache_dict.keys()
@@ -437,5 +491,6 @@ def update_node_info(
     ]
     for deleted_node_id_name in deleted_node_id_name_list:
         del node_cache_dict[deleted_node_id_name]
+        node_version_dict.pop(deleted_node_id_name, None)
 
     return

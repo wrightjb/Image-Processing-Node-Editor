@@ -37,7 +37,6 @@ from node.preview_release_node.node_screen_capture import (
     Node as ScreenCaptureNode,
 )
 from node.process_node.node_brightness import Node as BrightnessNode
-from node.process_node.node_image_compression import Node as ImageCompressionNode
 from node.port_serialization import port_ref_from_tag
 from node.port_model import (
     InputPort,
@@ -535,22 +534,10 @@ def test_expanded_migrated_nodes_expose_expected_port_handles():
                 'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
             },
         ),
-        (
-            ImageCompressionNode,
-            'ImageCompression',
-            {
-                'image_input': (PortDirection.INPUT, PortDataType.IMAGE, 'Input01'),
-                'image': (PortDirection.OUTPUT, PortDataType.IMAGE, 'Output01'),
-            },
-        ),
     )
 
     for node_class, node_tag, expectations in cases:
-        node = node_class()
-        if node_class is ImageCompressionNode:
-            ports = node._ensure_declarative_port_handles(41)
-        else:
-            ports = node.create_ports(41)
+        ports = node_class().create_ports(41)
 
         for handle_name, (direction, data_type, port_name) in expectations.items():
             port = getattr(ports, handle_name)

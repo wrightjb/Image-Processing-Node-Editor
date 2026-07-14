@@ -1899,7 +1899,13 @@ class DpgNodeEditor(object):
 
         for node_id_name in setting_dict['node_list']:
             old_id, node_name = node_id_name.split(':')
-            node = self._node_instance_list[node_name]
+            node = self._node_instance_list.get(node_name)
+            if node is None:
+                print(
+                    'WARNING : Skip missing node while importing '
+                    f'({node_id_name})'
+                )
+                continue
 
             new_id, _ = self._mdl_add_node(node_name)
             self._mdl_register_node_ref(NodeRef(str(new_id), node_name))

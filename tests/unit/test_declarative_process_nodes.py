@@ -20,7 +20,6 @@ import node.process_node.node_hue_rotation as hue_rotation_module
 import node.process_node.node_hue_saturation_adjustment as hue_saturation_adjustment_module
 import node.process_node.node_warmth_tint as warmth_tint_module
 import node.process_node.node_rgb_channel_swap as rgb_channel_swap_module
-import node.process_node.node_image_compression as image_compression_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -49,7 +48,6 @@ HueRotationNode = hue_rotation_module.Node
 HueSaturationAdjustmentNode = hue_saturation_adjustment_module.Node
 WarmthTintNode = warmth_tint_module.Node
 RGBChannelSwapNode = rgb_channel_swap_module.Node
-ImageCompressionNode = image_compression_module.Node
 
 
 class DpgStub:
@@ -1754,49 +1752,3 @@ def test_gaussian_blur_auto_sigma_toggle_updates_sigma_display(monkeypatch):
     assert values['8:GaussianBlur:Float:Input03Value:Input'] == 1.1
     assert configured['8:GaussianBlur:Float:Input03Value']['enabled'] is False
     assert configured['8:GaussianBlur:Int:Input02Value']['enabled'] is True
-
-
-def test_image_compression_node_round_trips_with_jpeg_quality(monkeypatch):
-    image = np.array([[[1, 2, 3]]], dtype=np.uint8)
-    decoded = np.array([[[4, 5, 6]]], dtype=np.uint8)
-    calls = {}
-
-    def fake_imencode(ext, frame, params):
-        calls['imencode'] = (ext, frame, params)
-        return True, b'encoded'
-
-    def fake_imdecode(encoded, flag):
-        calls['imdecode'] = (encoded, flag)
-        return decoded
-
-    monkeypatch.setattr(
-        image_compression_module.cv2,
-        'IMWRITE_JPEG_QUALITY',
-        1,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        image_compression_module.cv2,
-        'IMREAD_COLOR',
-        1,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        image_compression_module.cv2,
-        'imencode',
-        fake_imencode,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        image_compression_module.cv2,
-        'imdecode',
-        fake_imdecode,
-        raising=False,
-    )
-
-    result = image_compression_module.image_process(image, 150)
-
-    assert result is decoded
-    assert calls['imencode'] == ('.jpg', image, [1, 100])
-    assert calls['imdecode'] == (b'encoded', 1)
-    assert ImageCompressionNode.node_tag == 'ImageCompression'

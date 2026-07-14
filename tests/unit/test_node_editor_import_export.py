@@ -762,6 +762,49 @@ class TestDpgNodeEditorImportExport:
 
         assert node_editor._node_id >= highest_assigned
 
+
+    def test_import_skips_missing_node_tags_and_their_links(
+        self,
+        node_editor,
+        mock_dpg,
+        mock_node_instance,
+        capsys,
+        tmp_path,
+    ):
+        test_data = {
+            'node_list': ['1:test_node', '2:MissingNode'],
+            'link_refs': _typed_link_refs([
+                [
+                    '1:test_node:Image:Output01',
+                    '2:MissingNode:Image:Input01',
+                ],
+            ]),
+            '1:test_node': {
+                'id': '1',
+                'name': 'test_node',
+                'setting': {'ver': '1.0.0', 'pos': [100, 200]},
+            },
+            '2:MissingNode': {
+                'id': '2',
+                'name': 'MissingNode',
+                'setting': {'ver': '1.0.0', 'pos': [300, 400]},
+            },
+        }
+        temp_path = tmp_path / 'missing_node_tag.json'
+        temp_path.write_text(json.dumps(test_data))
+
+        node_editor._cntrl_file_import(
+            None,
+            {'file_name': temp_path.name, 'file_path_name': str(temp_path)},
+        )
+
+        captured = capsys.readouterr()
+        assert 'Skip missing node while importing (2:MissingNode)' in captured.out
+        assert len(node_editor._node_list) == 1
+        assert node_editor._node_list[0].endswith(':test_node')
+        assert node_editor._link_refs == []
+        mock_node_instance.set_setting_dict.assert_called_once()
+
     def test_import_missing_key_raises(self, node_editor, mock_dpg, tmp_path):
         """Test that importing JSON missing mandatory keys raises
            KeyError"""

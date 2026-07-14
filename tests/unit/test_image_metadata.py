@@ -73,3 +73,21 @@ def test_compression_parameters_accept_direct_compression_metadata():
         'optimize': False,
         'generation': 1,
     }
+
+
+def test_format_metadata_report_explains_progressive_and_optimize():
+    report = image_metadata.format_metadata_report({
+        'format': 'JPEG',
+        'jpeg': {
+            'width': 640,
+            'height': 480,
+            'progressive': True,
+            'subsampling': '4:2:0',
+            'estimated_quality': 82,
+            'quality_confidence': 'heuristic',
+            'quantization_tables': {'0': {}},
+        },
+    })
+
+    assert 'Progressive JPEG: yes' in report
+    assert 'Optimize JPEG: not stored in JPEG metadata' in report

@@ -267,10 +267,17 @@ def format_metadata_report(metadata):
     if metadata.get('file_size_bytes') is not None:
         lines.append(f"Size: {metadata['file_size_bytes']} bytes")
     jpeg = metadata.get('jpeg') or {}
+    compression = metadata.get('compression') or {}
     if jpeg:
+        optimize_value = compression.get('optimize', None)
+        if optimize_value is None:
+            optimize_text = 'not stored in JPEG metadata'
+        else:
+            optimize_text = 'yes' if optimize_value else 'no'
         lines.extend([
             f"Dimensions: {jpeg.get('width', '?')}x{jpeg.get('height', '?')}",
-            f"JPEG type: {'progressive' if jpeg.get('progressive') else 'baseline'}",
+            f"Progressive JPEG: {'yes' if jpeg.get('progressive') else 'no'}",
+            f"Optimize JPEG: {optimize_text}",
             f"Subsampling: {jpeg.get('subsampling') or 'unknown'}",
             f"Estimated quality: {jpeg.get('estimated_quality') or 'unknown'}",
             f"Quality confidence: {jpeg.get('quality_confidence', 'unknown')}",

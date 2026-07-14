@@ -10,6 +10,7 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 from node.node_abc import DpgNodeBase
 from node.port_model import OutputPort, PortDataType, PortSpecs
+from node_editor.image_metadata import inspect_image_file, summarize_metadata
 from node_editor.util import convert_cv_to_dpg
 
 
@@ -24,9 +25,11 @@ class Node(DpgNodeBase):
     _image = {}
     _image_filepath = {}
     _prev_image_filepath = {}
+    _metadata = {}
 
     port_specs = PortSpecs(
-        image=OutputPort(PortDataType.IMAGE),
+        image=OutputPort(PortDataType.IMAGE, index=1),
+        metadata=OutputPort(PortDataType.METADATA, index=2),
     )
 
     def __init__(self):
@@ -76,6 +79,9 @@ class Node(DpgNodeBase):
         tag_node_output01_name_port = ports.image
         tag_node_output01_name = tag_node_output01_name_port.dpg_tag
         tag_node_output01_image_name = tag_node_output01_name_port.value_tag
+        tag_node_output02_name_port = ports.metadata
+        tag_node_output02_name = tag_node_output02_name_port.dpg_tag
+        tag_node_output02_value_name = tag_node_output02_name_port.value_tag
 
         # OpenCV settings
         self._opencv_setting_dict = opencv_setting_dict
@@ -124,6 +130,7 @@ class Node(DpgNodeBase):
                 label=self.node_label,
                 pos=pos,
         ):
+            self.add_editor_toolbar(node_id, callback=callback)
             # File selection
             with dpg.node_attribute(
                     tag=tag_node_input01_name,
@@ -146,6 +153,15 @@ class Node(DpgNodeBase):
                     width=small_window_w,
                     height=small_window_h,
                 )
+            with dpg.node_attribute(
+                    tag=tag_node_output02_name,
+                    attribute_type=dpg.mvNode_Attr_Output,
+            ):
+                dpg.add_text(
+                    tag=tag_node_output02_value_name,
+                    default_value='Metadata: none',
+                    wrap=small_window_w,
+                )
 
         return tag_node_name
 
@@ -156,7 +172,9 @@ class Node(DpgNodeBase):
         node_image_dict,
         node_result_dict,
     ):
-        output_image_tag = self.ports(node_id).image.value_tag
+        ports = self.ports(node_id)
+        output_image_tag = ports.image.value_tag
+        output_metadata_tag = ports.metadata.value_tag
         texture_tag = self._current_texture_tag_dict.get(node_id, None)
 
         small_window_w = self._opencv_setting_dict['input_window_width']
@@ -167,6 +185,12 @@ class Node(DpgNodeBase):
         prev_image_path = self._prev_image_filepath.get(str(node_id), None)
         if prev_image_path != image_path:
             self._image[str(node_id)] = cv2.imread(image_path)
+            metadata = inspect_image_file(image_path)
+            self._metadata[str(node_id)] = metadata
+            dpg_set_value(
+                output_metadata_tag,
+                summarize_metadata(metadata, multiline=True),
+            )
             self._prev_image_filepath[str(node_id)] = image_path
 
         # Get image
@@ -213,7 +237,15 @@ class Node(DpgNodeBase):
             )
             dpg_set_value(texture_tag, texture)
 
+        metadata = self._metadata.get(str(node_id), None)
+        if metadata is not None:
+            dpg_set_value(
+                output_metadata_tag,
+                summarize_metadata(metadata, multiline=True),
+            )
+            
         result = {
+            'metadata': metadata,
             '__cache_kind__': 'still_image',
             '__cache_source__': image_path,
             '__cache_file_signature__': self._get_image_file_signature(image_path),
@@ -263,6 +295,7 @@ class Node(DpgNodeBase):
         self._image_filepath.pop(node_id, None)
         self._prev_image_filepath.pop(node_id, None)
         self._image.pop(node_id, None)
+        self._metadata.pop(node_id, None)
         print(f'WARNING : Image file not found ({image_path})')
 
     def _callback_file_select(self, sender, data):

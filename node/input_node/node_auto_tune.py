@@ -8,6 +8,7 @@ from auto_tune.gaussian_blur import tuning_plan, tune_gaussian_blur
 from node.process_node.node_gaussian_blur import auto_kernel_size, auto_sigma_value
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node_editor.image_metadata import match_metadata_compression
 from node_editor.util import dpg_get_value, dpg_set_value
 
 
@@ -138,6 +139,15 @@ class Node(DpgNodeBase):
                     min_value=1,
                     min_clamped=True,
                     width=120,
+                )
+            with dpg.node_attribute(
+                tag=self._match_compression_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Match target compression',
+                    tag=self._match_compression_value_tag(node_id),
+                    default_value=False,
                 )
             with dpg.node_attribute(
                 tag=source_image,
@@ -295,6 +305,16 @@ class Node(DpgNodeBase):
     def _kernel_factor_value_tag(self, node_id):
         return self._node_control_value_tag(node_id, self.TYPE_FLOAT, 'KernelFactor')
 
+    def _match_compression_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'MatchCompression')
+
+    def _match_compression_value_tag(self, node_id):
+        return self._node_control_value_tag(
+            node_id,
+            self.TYPE_TEXT,
+            'MatchCompression',
+        )
+
     def _status_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
 
@@ -312,6 +332,31 @@ class Node(DpgNodeBase):
         )
         self._run_requested_node_ids.add(str(user_data))
         self._set_status(user_data, 'queued')
+
+    def _linked_image_result(
+        self,
+        port_ref,
+        connection_list,
+        node_image_dict,
+        node_result_dict,
+    ):
+        for (
+            connection_info,
+            source_tag,
+            destination_tag,
+            _connection_type,
+        ) in self._iter_connection_infos(connection_list):
+            if destination_tag != port_ref.dpg_tag:
+                continue
+            source_node_key = self._connection_source_node_key(
+                connection_info,
+                source_tag,
+            )
+            return (
+                node_image_dict.get(source_node_key),
+                node_result_dict.get(source_node_key),
+            )
+        return None, None
 
     def _linked_image(self, port_ref, connection_list, node_image_dict):
         for (
@@ -353,7 +398,6 @@ class Node(DpgNodeBase):
         node_image_dict,
         node_result_dict,
     ):
-        del node_result_dict
         node_id_key = str(node_id)
         if node_id_key not in self._run_requested_node_ids:
             return None, {'__auto_tune_ready__': False}
@@ -365,10 +409,11 @@ class Node(DpgNodeBase):
             connection_list,
             node_image_dict,
         )
-        target = self._linked_image(
+        target, target_result = self._linked_image_result(
             ports.target_image,
             connection_list,
             node_image_dict,
+            node_result_dict,
         )
         if source is None or target is None:
             print(
@@ -454,6 +499,25 @@ class Node(DpgNodeBase):
             print(f'AutoTuneGaussianBlur: {message}')
             self._set_status(node_id, message)
 
+        match_target_compression = (
+            dpg_get_value(self._match_compression_value_tag(node_id)) is True
+        )
+        target_metadata = None
+        if isinstance(target_result, dict):
+            target_metadata = target_result.get('metadata') or target_result.get(
+                'compression_metadata',
+            )
+
+        def _score_image_transform(image):
+            return match_metadata_compression(image, target_metadata)
+
+        score_image_transform = None
+        if match_target_compression:
+            if target_metadata is None:
+                self._set_status(node_id, 'running: no target compression metadata')
+            else:
+                score_image_transform = _score_image_transform
+
         self._set_status(node_id, 'running')
         result = tune_gaussian_blur(
             source,
@@ -462,6 +526,7 @@ class Node(DpgNodeBase):
             progress_callback=_progress,
             metric_name=metric_name,
             refinement_iterations=refinement_iterations,
+            score_image_transform=score_image_transform,
         )
         dpg_set_value(
             ports.kernel_size.value_tag,
@@ -480,10 +545,11 @@ class Node(DpgNodeBase):
             ports.kernel_factor.value_tag,
             float(result.best_parameters.get('kernel_factor', kernel_factor)),
         )
-        self._set_status(
-            node_id,
-            f'done: {result.evaluated_count} candidates',
-        )
+        status_detail = f'done: {result.evaluated_count} candidates'
+        compression_metadata = result.best_parameters.get('compression_metadata')
+        if match_target_compression and compression_metadata is not None:
+            status_detail = f'{status_detail}, target compression matched'
+        self._set_status(node_id, status_detail)
         print(
             'AutoTuneGaussianBlur: tuning finished; '
             f'evaluated {result.evaluated_count} candidates, '
@@ -494,6 +560,8 @@ class Node(DpgNodeBase):
         return result.best_image, {
             '__auto_tune_ready__': True,
             'tune_result': result,
+            'compression_metadata': result.best_parameters.get('compression_metadata'),
+            'match_target_compression': match_target_compression,
         }
 
     def close(self, node_id):
@@ -525,6 +593,9 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id): dpg_get_value(
                 self._refinement_iterations_value_tag(node_id),
             ),
+            self._match_compression_value_tag(node_id): dpg_get_value(
+                self._match_compression_value_tag(node_id),
+            ),
             '__cache_enabled__': False,
         }
         return setting_dict
@@ -542,6 +613,7 @@ class Node(DpgNodeBase):
             self._kernel_factor_value_tag(node_id),
             self._metric_value_tag(node_id),
             self._refinement_iterations_value_tag(node_id),
+            self._match_compression_value_tag(node_id),
         ):
             if value_tag in setting_dict:
                 dpg_set_value(value_tag, setting_dict[value_tag])

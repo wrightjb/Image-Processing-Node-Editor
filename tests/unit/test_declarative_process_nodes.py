@@ -20,6 +20,7 @@ import node.process_node.node_hue_rotation as hue_rotation_module
 import node.process_node.node_hue_saturation_adjustment as hue_saturation_adjustment_module
 import node.process_node.node_warmth_tint as warmth_tint_module
 import node.process_node.node_rgb_channel_swap as rgb_channel_swap_module
+import node.process_node.node_image_compression as image_compression_module
 
 BlurNode = blur_module.Node
 BrightnessNode = brightness_module.Node
@@ -48,6 +49,7 @@ HueRotationNode = hue_rotation_module.Node
 HueSaturationAdjustmentNode = hue_saturation_adjustment_module.Node
 WarmthTintNode = warmth_tint_module.Node
 RGBChannelSwapNode = rgb_channel_swap_module.Node
+ImageCompressionNode = image_compression_module.Node
 
 
 class DpgStub:
@@ -82,6 +84,81 @@ def _prepare_node(node):
         'use_pref_counter': False,
     }
 
+
+def test_image_compression_metadata_input_overrides_parameter_values(monkeypatch):
+    node = ImageCompressionNode()
+    _prepare_node(node)
+    ports = node._ensure_declarative_port_handles(5)
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    metadata = {
+        'format': 'JPEG',
+        'jpeg': {
+            'estimated_quality': 72,
+            'subsampling': '4:2:0',
+            'progressive': True,
+        },
+    }
+    values = {}
+    captured = {}
+
+    def _set_widget_values(value_tag, input_tag, value):
+        del input_tag
+        values[value_tag] = value
+
+    def _roundtrip_stub(image, codec, **kwargs):
+        captured['image'] = image
+        captured['codec'] = codec
+        captured['kwargs'] = kwargs
+        return image, {
+            'codec': codec,
+            'quality': kwargs['quality'],
+            'subsampling': kwargs['subsampling'],
+            'progressive': kwargs['progressive'],
+            'optimize': kwargs['optimize'],
+            'jpeg': {
+                'estimated_quality': kwargs['quality'],
+                'subsampling': kwargs['subsampling'],
+                'progressive': kwargs['progressive'],
+            },
+        }
+
+    monkeypatch.setattr(node, '_set_parameter_widget_values', _set_widget_values)
+    monkeypatch.setattr(base_module, 'dpg_get_value', lambda tag: values.get(tag))
+    monkeypatch.setattr(
+        image_compression_module,
+        'dpg_set_value',
+        lambda tag, value: values.setdefault(tag, value),
+    )
+    monkeypatch.setattr(
+        image_compression_module,
+        'convert_cv_to_dpg',
+        lambda image, width, height: ('texture', image.shape, width, height),
+    )
+    monkeypatch.setattr(
+        image_compression_module,
+        'compression_roundtrip',
+        _roundtrip_stub,
+    )
+
+    image_source = _port_ref(1, 'Image', 'Output', 'Image', 'Output01')
+    metadata_source = _port_ref(1, 'Image', 'Output', 'Metadata', 'Output02')
+    frame_out, result = node.update(
+        5,
+        [
+            _link_adapter(image_source, ports.image_input),
+            _link_adapter(metadata_source, ports.metadata_input),
+        ],
+        {image_source.node_ref.node_id_name: frame},
+        {metadata_source.node_ref.node_id_name: {'metadata': metadata}},
+    )
+
+    assert frame_out is frame
+    assert captured['codec'] == 'JPEG'
+    assert captured['kwargs']['quality'] == 72
+    assert captured['kwargs']['subsampling'] == '4:2:0'
+    assert captured['kwargs']['progressive'] is True
+    assert captured['kwargs']['optimize'] is False
+    assert result['compression_metadata']['quality'] == 72
 
 def test_blur_node_update_with_parameter_link(monkeypatch):
     node = BlurNode()

@@ -783,6 +783,265 @@ def test_tune_curves_defaults_to_practical_point_precision():
     )
 
 
+def test_tune_curves_score_image_transform_affects_image_score_and_preview():
+    from auto_tune.curves import tune_curves
+
+    source = np.zeros((4, 4), dtype=np.uint8)
+    target = np.full((4, 4), 10, dtype=np.uint8)
+
+    def _score_transform(image):
+        return np.full_like(image, 10), {'codec': 'JPEG', 'quality': 80}
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=2,
+        refinement_iterations=0,
+        score_image_transform=_score_transform,
+    )
+
+    assert result.best_parameters['image_score'] == 0.0
+    assert result.best_parameters['compression_metadata'] == {
+        'codec': 'JPEG',
+        'quality': 80,
+    }
+    assert np.array_equal(result.best_image, target)
+
+
+def test_auto_tune_curves_node_can_match_target_compression(monkeypatch):
+    import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
+
+    node = auto_tune_curves_node_module.Node()
+    ports = node.create_ports(7)
+    source = np.zeros((2, 2), dtype=np.uint8)
+    target = np.full((2, 2), 5, dtype=np.uint8)
+    metadata = {'format': 'JPEG', 'jpeg': {'estimated_quality': 80}}
+    transformed = np.full((2, 2), 5, dtype=np.uint8)
+    set_values = []
+    transform_seen = {'called': False}
+
+    class _TuneResult:
+        best_parameters = {
+            'points': [[0, 0], [255, 255]],
+            'compression_metadata': {'codec': 'JPEG', 'quality': 80},
+        }
+        best_score = 0.25
+        best_image = transformed
+
+    def _get_value(tag):
+        if tag == node._max_points_value_tag(7):
+            return 2
+        if tag == node._refinement_iterations_value_tag(7):
+            return 0
+        if tag == node._metric_value_tag(7):
+            return 'mse'
+        if tag == node._channel_value_tag(7):
+            return 'White'
+        if tag == node._match_compression_value_tag(7):
+            return True
+        return None
+
+    def _match_stub(image, target_metadata):
+        assert image is source
+        assert target_metadata == metadata
+        transform_seen['called'] = True
+        return transformed, {'codec': 'JPEG', 'quality': 80}
+
+    def _tune_stub(*args, **kwargs):
+        assert args[0] is source
+        assert args[1] is target
+        scored_image, compression_metadata = kwargs['score_image_transform'](source)
+        assert scored_image is transformed
+        assert compression_metadata == {'codec': 'JPEG', 'quality': 80}
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_curves_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(
+        auto_tune_curves_node_module,
+        'dpg_set_value',
+        lambda tag, value: set_values.append((tag, value)),
+    )
+    monkeypatch.setattr(auto_tune_curves_node_module, 'match_metadata_compression', _match_stub)
+    monkeypatch.setattr(auto_tune_curves_node_module, 'tune_curves', _tune_stub)
+
+    node._on_run_button(None, None, 7)
+    image, result = node.update(
+        7,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {'1:Source': source, '2:Target': target},
+        {'2:Target': {'metadata': metadata}},
+    )
+
+    assert transform_seen['called'] is True
+    assert image is transformed
+    assert result['match_target_compression'] is True
+    assert result['compression_metadata'] == {'codec': 'JPEG', 'quality': 80}
+    assert any(
+        value == 'done: 2 points, target compression matched'
+        for _tag, value in set_values
+    )
+
+
+def test_auto_tune_gaussian_blur_node_can_match_target_compression(monkeypatch):
+    import node.input_node.node_auto_tune as auto_tune_node_module
+
+    node = auto_tune_node_module.Node()
+    ports = node.create_ports(6)
+    source = np.zeros((2, 2, 1), dtype=np.uint8)
+    target = np.full((2, 2, 1), 3, dtype=np.uint8)
+    metadata = {'format': 'JPEG', 'jpeg': {'estimated_quality': 75}}
+    transformed = np.full((2, 2, 1), 3, dtype=np.uint8)
+    set_values = []
+    transform_seen = {'called': False}
+
+    class _TuneResult:
+        best_parameters = {
+            'kernel_size': 3,
+            'sigma': 0.0,
+            'compression_metadata': {'codec': 'JPEG', 'quality': 75},
+        }
+        best_score = 0.25
+        evaluated_count = 2
+        best_image = transformed
+
+    def _get_value(tag):
+        if tag == node._match_compression_value_tag(6):
+            return True
+        if tag == node._metric_value_tag(6):
+            return 'mse'
+        if tag == node._refinement_iterations_value_tag(6):
+            return 1
+        if tag == node._auto_sigma_value_tag(6):
+            return True
+        if tag == node._auto_kernel_value_tag(6):
+            return False
+        if tag == node._kernel_factor_value_tag(6):
+            return 3.0
+        return None
+
+    def _match_stub(image, target_metadata):
+        assert image is source
+        assert target_metadata == metadata
+        transform_seen['called'] = True
+        return transformed, {'codec': 'JPEG', 'quality': 75}
+
+    def _tune_stub(*args, **kwargs):
+        assert args[0] is source
+        assert args[1] is target
+        scored_image, compression_metadata = kwargs['score_image_transform'](source)
+        assert scored_image is transformed
+        assert compression_metadata == {'codec': 'JPEG', 'quality': 75}
+        return _TuneResult()
+
+    monkeypatch.setattr(auto_tune_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(
+        auto_tune_node_module,
+        'dpg_set_value',
+        lambda tag, value: set_values.append((tag, value)),
+    )
+    monkeypatch.setattr(auto_tune_node_module, 'match_metadata_compression', _match_stub)
+    monkeypatch.setattr(auto_tune_node_module, 'tune_gaussian_blur', _tune_stub)
+
+    node._on_run_button(None, None, 6)
+    image, result = node.update(
+        6,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {'1:Source': source, '2:Target': target},
+        {'2:Target': {'metadata': metadata}},
+    )
+
+    assert transform_seen['called'] is True
+    assert image is transformed
+    assert result['match_target_compression'] is True
+    assert result['compression_metadata'] == {'codec': 'JPEG', 'quality': 75}
+    assert any(
+        value == 'done: 2 candidates, target compression matched'
+        for _tag, value in set_values
+    )
+
+
+def test_auto_tune_hue_bands_node_can_match_target_compression(monkeypatch):
+    import node.input_node.node_auto_tune_hue_bands as hue_node_module
+
+    node = hue_node_module.Node()
+    ports = node.create_ports(9)
+    source = np.zeros((2, 2, 3), dtype=np.uint8)
+    target = np.full((2, 2, 3), 3, dtype=np.uint8)
+    metadata = {'format': 'JPEG', 'jpeg': {'estimated_quality': 70}}
+    transformed = np.full((2, 2, 3), 3, dtype=np.uint8)
+    set_values = []
+    transform_seen = {'called': False}
+
+    class _TuneResult:
+        best_parameters = {
+            'blend': 0.0,
+            'compression_metadata': {'codec': 'JPEG', 'quality': 70},
+        }
+        best_score = 0.25
+        evaluated_count = 2
+        best_image = transformed
+
+    def _get_value(tag):
+        if tag == node._match_compression_value_tag(9):
+            return True
+        if tag == node._refinement_iterations_value_tag(9):
+            return 0
+        if tag == node._tune_blend_value_tag(9):
+            return False
+        if tag == node._fixed_blend_value_tag(9):
+            return 0.0
+        return None
+
+    def _match_stub(image, target_metadata):
+        assert image is source
+        assert target_metadata == metadata
+        transform_seen['called'] = True
+        return transformed, {'codec': 'JPEG', 'quality': 70}
+
+    def _tune_stub(*args, **kwargs):
+        assert args[0] is source
+        assert args[1] is target
+        scored_image, compression_metadata = kwargs['score_image_transform'](source)
+        assert scored_image is transformed
+        assert compression_metadata == {'codec': 'JPEG', 'quality': 70}
+        return _TuneResult()
+
+    monkeypatch.setattr(hue_node_module, 'dpg_get_value', _get_value)
+    monkeypatch.setattr(
+        hue_node_module,
+        'dpg_set_value',
+        lambda tag, value: set_values.append((tag, value)),
+    )
+    monkeypatch.setattr(hue_node_module, 'match_metadata_compression', _match_stub)
+    monkeypatch.setattr(hue_node_module, 'tune_hue_bands', _tune_stub)
+
+    node._on_run_button(None, None, 9)
+    image, result = node.update(
+        9,
+        [
+            ('1:Source:Image:Output01', ports.source_image.dpg_tag),
+            ('2:Target:Image:Output01', ports.target_image.dpg_tag),
+        ],
+        {'1:Source': source, '2:Target': target},
+        {'2:Target': {'metadata': metadata}},
+    )
+
+    assert transform_seen['called'] is True
+    assert image is transformed
+    assert result['match_target_compression'] is True
+    assert result['compression_metadata'] == {'codec': 'JPEG', 'quality': 70}
+    assert any(
+        value == 'done: 2 candidates, target compression matched'
+        for _tag, value in set_values
+    )
+
+
 def test_tune_hue_bands_recovers_simple_band_adjustment():
     import cv2
     if not hasattr(cv2, 'cvtColor'):

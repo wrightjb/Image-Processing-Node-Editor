@@ -48,6 +48,14 @@ def _score(image, target):
     return mean_squared_error(image, target)
 
 
+def _score_with_transform(image, target, score_image_transform=None):
+    scored_image = image
+    compression_metadata = None
+    if score_image_transform is not None:
+        scored_image, compression_metadata = score_image_transform(image)
+    return _score(scored_image, target), scored_image, compression_metadata
+
+
 def _weighted_score(image, target, weight_map):
     candidate = normalize_image_for_metric(image)
     normalized_target = normalize_image_for_metric(target)
@@ -231,11 +239,17 @@ def _polish_parameters_full_image(
     target,
     max_passes=8,
     progress_callback=None,
+    score_image_transform=None,
 ):
     """Greedily polish integer parameters against the full-image score."""
     polished = dict(parameters)
     best_image = image_process(source, **polished)
-    best_score = _score(best_image, target)
+    best_score, best_scored_image, _compression_metadata = _score_with_transform(
+        best_image,
+        target,
+        score_image_transform,
+    )
+    best_image = best_scored_image
     evaluated_count = 0
 
     for _pass_index in range(max(0, int(max_passes))):
@@ -272,7 +286,13 @@ def _polish_parameters_full_image(
                 candidate = dict(polished)
                 candidate[name] = value
                 candidate_image = image_process(source, **candidate)
-                candidate_score = _score(candidate_image, target)
+                candidate_score, candidate_scored_image, _compression_metadata = (
+                    _score_with_transform(
+                        candidate_image,
+                        target,
+                        score_image_transform,
+                    )
+                )
                 evaluated_count += 1
                 if progress_callback is not None:
                     progress_callback({
@@ -288,7 +308,7 @@ def _polish_parameters_full_image(
                     })
                 if candidate_score + 1.0e-12 < best_score:
                     polished = candidate
-                    best_image = candidate_image
+                    best_image = candidate_scored_image
                     best_score = candidate_score
                     improved = True
                     break
@@ -305,6 +325,7 @@ def _simplify_parameters(
     best_score,
     score_callback=None,
     neutral_blend=1.0,
+    score_image_transform=None,
 ):
     """Prune parameters whose visual benefit is too small to justify them."""
     simplified = dict(parameters)
@@ -327,7 +348,12 @@ def _simplify_parameters(
             continue
         candidate = dict(simplified)
         candidate[name] = neutral_value
-        candidate_score = _score(image_process(source, **candidate), target)
+        candidate_image = image_process(source, **candidate)
+        candidate_score, _scored_image, _compression_metadata = _score_with_transform(
+            candidate_image,
+            target,
+            score_image_transform,
+        )
         if candidate_score <= current_score + tolerance:
             simplified = candidate
             current_score = candidate_score
@@ -344,6 +370,7 @@ def tune_hue_bands(
     progress_callback=None,
     tune_blend=False,
     fixed_blend=0.0,
+    score_image_transform=None,
 ):
     """Tune Hue Bands with HSV-domain estimation plus local refinement."""
     if source is None or target is None:
@@ -354,7 +381,10 @@ def tune_hue_bands(
 
     best_parameters = _initial_parameters(current_parameters)
     best_image = image_process(work_source, **best_parameters)
-    best_visual_score = _score(best_image, work_target)
+    best_visual_score, best_scored_image, _compression_metadata = (
+        _score_with_transform(best_image, work_target, score_image_transform)
+    )
+    best_image = best_scored_image
     original_visual_score = best_visual_score
     best_objective = best_visual_score + _parameter_penalty(best_parameters)
     evaluated_count = 1
@@ -363,14 +393,20 @@ def tune_hue_bands(
         nonlocal best_image, best_parameters, best_visual_score, best_objective
         nonlocal evaluated_count
         candidate_image = image_process(work_source, **parameters)
-        candidate_visual_score = _score(candidate_image, work_target)
+        candidate_visual_score, candidate_scored_image, _compression_metadata = (
+            _score_with_transform(
+                candidate_image,
+                work_target,
+                score_image_transform,
+            )
+        )
         candidate_objective = candidate_visual_score + _parameter_penalty(parameters)
         evaluated_count += 1
         if candidate_objective < best_objective:
             best_objective = candidate_objective
             best_visual_score = candidate_visual_score
             best_parameters = dict(parameters)
-            best_image = candidate_image
+            best_image = candidate_scored_image
         if progress_callback is not None:
             progress_callback({
                 'phase': phase,
@@ -423,9 +459,15 @@ def tune_hue_bands(
                 candidate[hue_name] = hue_value
                 candidate[sat_name] = sat_value
                 candidate_image = image_process(work_source, **candidate)
-                candidate_visual_score = _score(candidate_image, work_target)
+                candidate_visual_score, candidate_scored_image, _compression_metadata = (
+                    _score_with_transform(
+                        candidate_image,
+                        work_target,
+                        score_image_transform,
+                    )
+                )
                 candidate_score = _weighted_score(
-                    candidate_image,
+                    candidate_scored_image,
                     work_target,
                     band_weights,
                 )
@@ -434,7 +476,7 @@ def tune_hue_bands(
                     local_best_objective = candidate_objective
                     local_best_score = candidate_score
                     local_best_parameters = dict(candidate)
-                    local_best_image = candidate_image
+                    local_best_image = candidate_scored_image
                     local_best_visual_score = candidate_visual_score
                 if progress_callback is not None:
                     progress_callback({
@@ -466,9 +508,14 @@ def tune_hue_bands(
 
     full_source = np.asarray(source)
     full_target = _match_target_shape(full_source, target)
-    original_full_score = _score(
-        image_process(full_source, **_initial_parameters(current_parameters)),
+    original_full_image = image_process(
+        full_source,
+        **_initial_parameters(current_parameters),
+    )
+    original_full_score, _scored_image, _compression_metadata = _score_with_transform(
+        original_full_image,
         full_target,
+        score_image_transform,
     )
     def _progress_polish(update):
         if progress_callback is not None:
@@ -484,6 +531,7 @@ def tune_hue_bands(
         full_source,
         full_target,
         progress_callback=_progress_polish,
+        score_image_transform=score_image_transform,
     )
     evaluated_count += polish_evaluated_count
 
@@ -510,13 +558,20 @@ def tune_hue_bands(
         best_visual_score,
         score_callback=_progress_simplify,
         neutral_blend=fixed_blend if not tune_blend else 1.0,
+        score_image_transform=score_image_transform,
     )
 
     full_best_image = image_process(full_source, **best_parameters)
-    full_score = _score(full_best_image, full_target)
+    full_score, full_scored_image, compression_metadata = _score_with_transform(
+        full_best_image,
+        full_target,
+        score_image_transform,
+    )
+    best_parameters = dict(best_parameters)
+    best_parameters['compression_metadata'] = compression_metadata
     return TuneResult(
         best_parameters=best_parameters,
         best_score=float(full_score),
-        best_image=full_best_image,
+        best_image=full_scored_image,
         evaluated_count=evaluated_count,
     )

@@ -113,7 +113,15 @@ def image_process(image, blend=0.0, **adjustments):
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)
 
-    adjusted_bgr = cv2.cvtColor(hsv_image.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    hsv_for_bgr = hsv_image.astype(np.float32, copy=True)
+    hsv_for_bgr[:, :, 0] *= 2.0
+    hsv_for_bgr[:, :, 1:] /= 255.0
+    adjusted_bgr_float = cv2.cvtColor(hsv_for_bgr, cv2.COLOR_HSV2BGR)
+    adjusted_bgr = np.clip(
+        np.rint(adjusted_bgr_float * 255.0),
+        0,
+        255,
+    ).astype(np.uint8)
 
     if alpha_channel is not None:
         return cv2.merge(
@@ -129,7 +137,7 @@ def image_process(image, blend=0.0, **adjustments):
 
 
 class Node(DeclarativeImageProcessNodeBase):
-    _ver = '0.0.2'
+    _ver = '0.0.3'
 
     node_label = 'Hue Bands'
     node_tag = 'HueSaturationAdjustment'
@@ -155,25 +163,31 @@ class Node(DeclarativeImageProcessNodeBase):
         parameters.extend([
             {
                 'name': f'{band_name}_hue_shift',
-                'type': DeclarativeImageProcessNodeBase.TYPE_INT,
+                'type': DeclarativeImageProcessNodeBase.TYPE_FLOAT,
                 'port': f'Input{(index * 2) + 3:02d}',
-                'widget': 'slider_int',
+                'widget': 'slider_float',
                 'label': f'{band_name[:3]} hue',
-                'default': 0,
+                'default': 0.0,
                 'min': HUE_SHIFT_MIN,
                 'max': HUE_SHIFT_MAX,
-                'cast': int,
+                'cast': float,
+                'precision': 1,
+                'quantize': 0.5,
+                'step': 0.5,
             },
             {
                 'name': f'{band_name}_saturation',
-                'type': DeclarativeImageProcessNodeBase.TYPE_INT,
+                'type': DeclarativeImageProcessNodeBase.TYPE_FLOAT,
                 'port': f'Input{(index * 2) + 4:02d}',
-                'widget': 'slider_int',
+                'widget': 'slider_float',
                 'label': f'{band_name[:3]} sat',
-                'default': 0,
+                'default': 0.0,
                 'min': -100,
                 'max': 100,
-                'cast': int,
+                'cast': float,
+                'precision': 1,
+                'quantize': 0.5,
+                'step': 0.5,
             },
         ])
 
@@ -244,7 +258,7 @@ class Node(DeclarativeImageProcessNodeBase):
         item_conf = dpg.get_item_configuration(slider_tag)
         current = dpg.get_value(slider_tag)
         if isinstance(current, float):
-            next_value = round(current + (0.01 * step), 2)
+            next_value = round(current + (0.5 * step), 1)
         else:
             next_value = int(current) + step
         min_value = item_conf.get('min_value', next_value)

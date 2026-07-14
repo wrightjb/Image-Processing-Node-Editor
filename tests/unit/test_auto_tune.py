@@ -297,7 +297,7 @@ def test_declarative_nodes_skip_stale_auto_tune_parameter_values():
         auto_tune_source,
         {'6:AutoTuneGaussianBlur': {'__auto_tune_ready__': True}},
     ) is True
-    hue_bands_source = '7:AutoTuneHueBands:Int:Output02'
+    hue_bands_source = '7:AutoTuneHueBands:Float:Output02'
     assert node._source_allows_parameter_sync(hue_bands_source, {}) is False
     assert node._source_allows_parameter_sync(
         hue_bands_source,
@@ -1042,6 +1042,21 @@ def test_auto_tune_hue_bands_node_can_match_target_compression(monkeypatch):
     )
 
 
+
+def test_hue_bands_parameters_quantize_to_half_steps():
+    import auto_tune.hue_bands as hue_bands
+
+    parameters = hue_bands._initial_parameters({
+        'red_hue_shift': 12.24,
+        'red_saturation': -7.26,
+    })
+
+    assert parameters['red_hue_shift'] == 12.0
+    assert parameters['red_saturation'] == -7.5
+    assert hue_bands._clamp_to_step(12.25, -90, 90) == 12.5
+    assert hue_bands._clamp_to_step(-12.25, -90, 90) == -12.5
+    assert hue_bands._coordinate_candidate_values(12.0, 0.5, -90, 90) == [11.5, 12.5]
+
 def test_tune_hue_bands_recovers_simple_band_adjustment():
     import cv2
     if not hasattr(cv2, 'cvtColor'):
@@ -1076,10 +1091,10 @@ def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
     assert ports.source_image.dpg_tag == '42:AutoTuneHueBands:Image:Input01'
     assert ports.target_image.dpg_tag == '42:AutoTuneHueBands:Image:Input02'
     assert ports.blend.dpg_tag == '42:AutoTuneHueBands:Float:Output01'
-    assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output02'
-    assert ports.orange_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output04'
-    assert ports.purple_hue_shift.dpg_tag == '42:AutoTuneHueBands:Int:Output14'
-    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Int:Output17'
+    assert ports.red_hue_shift.dpg_tag == '42:AutoTuneHueBands:Float:Output02'
+    assert ports.orange_hue_shift.dpg_tag == '42:AutoTuneHueBands:Float:Output04'
+    assert ports.purple_hue_shift.dpg_tag == '42:AutoTuneHueBands:Float:Output14'
+    assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Float:Output17'
     assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output18'
 
 

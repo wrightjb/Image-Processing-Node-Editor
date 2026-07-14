@@ -89,17 +89,25 @@ def _band_parameter_names(band_name):
     return f'{band_name}_hue_shift', f'{band_name}_saturation'
 
 
-def _clamp_int(value, minimum, maximum):
-    return int(max(minimum, min(maximum, round(float(value)))))
+def _quantize_to_step(value, step):
+    step = float(step)
+    value = float(value)
+    return np.sign(value) * np.floor((abs(value) / step) + 0.5) * step
+
+
+def _clamp_to_step(value, minimum, maximum, step=0.5):
+    value = _quantize_to_step(value, step)
+    value = max(float(minimum), min(float(maximum), value))
+    return round(value, 1)
 
 
 def _local_values(center, radius, minimum, maximum, include_zero=True):
     values = {
-        _clamp_int(center + offset, minimum, maximum)
-        for offset in (-radius, -radius // 2, 0, radius // 2, radius)
+        _clamp_to_step(center + offset, minimum, maximum)
+        for offset in (-radius, -radius / 2.0, 0, radius / 2.0, radius)
     }
     if include_zero and minimum <= 0 <= maximum:
-        values.add(0)
+        values.add(0.0)
     return sorted(values)
 
 
@@ -107,12 +115,12 @@ def _initial_parameters(current_parameters):
     parameters = {'blend': float(current_parameters.get('blend', 1.0))}
     for band_name, _center in _BANDS:
         hue_name, sat_name = _band_parameter_names(band_name)
-        parameters[hue_name] = _clamp_int(
+        parameters[hue_name] = _clamp_to_step(
             current_parameters.get(hue_name, 0),
             HUE_SHIFT_MIN,
             HUE_SHIFT_MAX,
         )
-        parameters[sat_name] = _clamp_int(
+        parameters[sat_name] = _clamp_to_step(
             current_parameters.get(sat_name, 0),
             -100,
             100,
@@ -191,12 +199,12 @@ def _estimate_parameters_from_hsv(source, target, blend):
     parameters = {'blend': float(blend)}
     for index, (band_name, _center) in enumerate(_BANDS):
         hue_name, sat_name = _band_parameter_names(band_name)
-        parameters[hue_name] = _clamp_int(
+        parameters[hue_name] = _clamp_to_step(
             hue_solution[index],
             HUE_SHIFT_MIN,
             HUE_SHIFT_MAX,
         )
-        parameters[sat_name] = _clamp_int(sat_solution[index] * 100.0, -100, 100)
+        parameters[sat_name] = _clamp_to_step(sat_solution[index] * 100.0, -100, 100)
     return parameters
 
 
@@ -233,15 +241,45 @@ def _tunable_parameter_names():
     return names
 
 
+def _parameter_bounds(parameter_name):
+    if parameter_name.endswith('_hue_shift'):
+        return HUE_SHIFT_MIN, HUE_SHIFT_MAX
+    if parameter_name.endswith('_saturation'):
+        return -100, 100
+    if parameter_name == 'blend':
+        return 0.0, 1.0
+    raise KeyError(f'unknown hue bands parameter: {parameter_name}')
+
+
+def _coordinate_candidate_values(current, step, minimum, maximum):
+    values = []
+    for direction in (-1, 1):
+        value = _clamp_to_step(current + direction * step, minimum, maximum)
+        if value != current and value not in values:
+            values.append(value)
+    return values
+
+
 def _polish_parameters_full_image(
     parameters,
     source,
     target,
-    max_passes=8,
+    max_passes=3,
     progress_callback=None,
     score_image_transform=None,
+    step_sizes=(1.0, 0.5),
+    active_only=True,
 ):
-    """Greedily polish integer parameters against the full-image score."""
+    """Greedily polish half-step parameters against the full-image score.
+
+    This intentionally mirrors the manual Image Diff workflow: nudge one Hue
+    Bands output up or down, keep the direction only when the full-image error
+    improves, then repeat at small step sizes.  Earlier refinement uses per-band
+    weighted scores for speed, but those local scores can miss cross-band
+    interactions and leave active outputs a few integers away from the true
+    full-image optimum.  Keep this pass deliberately narrow because every
+    accepted or rejected nudge renders the Hue Bands node again.
+    """
     polished = dict(parameters)
     best_image = image_process(source, **polished)
     best_score, best_scored_image, _compression_metadata = _score_with_transform(
@@ -251,69 +289,60 @@ def _polish_parameters_full_image(
     )
     best_image = best_scored_image
     evaluated_count = 0
+    names = [name for name in _tunable_parameter_names() if name != 'blend']
+    if active_only:
+        active_names = [name for name in names if float(polished.get(name, 0.0)) != 0.0]
+        if active_names:
+            names = active_names
 
-    for _pass_index in range(max(0, int(max_passes))):
-        improved = False
-        active_names = [
-            name for name in _tunable_parameter_names()
-            if name != 'blend' and int(polished.get(name, 0)) != 0
-        ]
-        for name in active_names:
-            current = int(polished.get(name, 0))
-            if name.endswith('_hue_shift'):
-                values = {
-                    _clamp_int(current + offset, HUE_SHIFT_MIN, HUE_SHIFT_MAX)
-                    for offset in (-2, -1, 0, 1, 2)
-                }
-                values.add(0)
-            else:
-                values = {
-                    _clamp_int(current + offset, -100, 100)
-                    for offset in (-2, -1, 0, 1, 2)
-                }
-                values.add(0)
-
-            candidate_values = [value for value in values if value != current]
-            candidate_values = sorted(
-                candidate_values,
-                key=lambda candidate: (
-                    abs(candidate - current),
-                    0 if candidate == 0 else 1,
-                    abs(candidate),
-                ),
-            )
-            for candidate_index, value in enumerate(candidate_values, start=1):
-                candidate = dict(polished)
-                candidate[name] = value
-                candidate_image = image_process(source, **candidate)
-                candidate_score, candidate_scored_image, _compression_metadata = (
-                    _score_with_transform(
-                        candidate_image,
-                        target,
-                        score_image_transform,
+    for step in step_sizes:
+        for _pass_index in range(max(0, int(max_passes))):
+            improved_in_pass = False
+            for name in names:
+                minimum, maximum = _parameter_bounds(name)
+                parameter_improved = True
+                while parameter_improved:
+                    parameter_improved = False
+                    current = float(polished.get(name, 0.0))
+                    candidate_values = _coordinate_candidate_values(
+                        current,
+                        step,
+                        minimum,
+                        maximum,
                     )
-                )
-                evaluated_count += 1
-                if progress_callback is not None:
-                    progress_callback({
-                        'phase': 'polish',
-                        'band': name,
-                        'candidate_index': candidate_index,
-                        'candidate_count': len(candidate_values),
-                        'total_evaluated': evaluated_count,
-                        'parameters': dict(candidate),
-                        'score': float(candidate_score),
-                        'best_score': float(best_score),
-                        'best_parameters': dict(polished),
-                    })
-                if candidate_score + 1.0e-12 < best_score:
-                    polished = candidate
-                    best_image = candidate_scored_image
-                    best_score = candidate_score
-                    improved = True
-                    break
-        if not improved:
-            break
+                    for candidate_index, value in enumerate(candidate_values, start=1):
+                        candidate = dict(polished)
+                        candidate[name] = value
+                        candidate_image = image_process(source, **candidate)
+                        candidate_score, candidate_scored_image, _compression_metadata = (
+                            _score_with_transform(
+                                candidate_image,
+                                target,
+                                score_image_transform,
+                            )
+                        )
+                        evaluated_count += 1
+                        if progress_callback is not None:
+                            progress_callback({
+                                'phase': f'polish step {step}',
+                                'band': name,
+                                'candidate_index': candidate_index,
+                                'candidate_count': len(candidate_values),
+                                'total_evaluated': evaluated_count,
+                                'parameters': dict(candidate),
+                                'score': float(candidate_score),
+                                'best_score': float(best_score),
+                                'best_parameters': dict(polished),
+                            })
+                        if candidate_score + 1.0e-12 < best_score:
+                            polished = candidate
+                            best_image = candidate_scored_image
+                            best_score = candidate_score
+                            improved_in_pass = True
+                            parameter_improved = True
+                            break
+            if not improved_in_pass:
+                break
     return polished, best_score, best_image, evaluated_count
 
 

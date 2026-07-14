@@ -815,6 +815,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
                 return int(value)
             if cast is float:
                 value = float(value)
+                quantize = parameter.get('quantize', None)
+                if quantize:
+                    value = np.sign(value) * np.floor((abs(value) / quantize) + 0.5) * quantize
                 precision = parameter.get('precision', None)
                 if precision is not None:
                     value = round(value, precision)

@@ -380,7 +380,7 @@ def test_registered_hovered_output_port_beyond_legacy_scan_range(editor_and_dpg)
     output_port = PortRef(
         node_ref=NodeRef('1', 'TestNode'),
         direction='Output',
-        data_type='Int',
+        data_type='Float',
         index=125,
         port_name='Output125',
         dpg_tag='1:TestNode:Int:Output125',
@@ -1634,21 +1634,21 @@ def test_hue_bands_tuner_spawn_uses_parameter_names_not_port_numbers(editor_and_
     blue_hue_port = PortRef(
         node_ref=node_ref,
         direction='Input',
-        data_type='Int',
+        data_type='Float',
         index=11,
         port_name='Input11',
-        dpg_tag='5:HueSaturationAdjustment:Int:Input11',
-        value_tag='5:HueSaturationAdjustment:Int:Input11Value',
+        dpg_tag='5:HueSaturationAdjustment:Float:Input11',
+        value_tag='5:HueSaturationAdjustment:Float:Input11Value',
         spec_key='blue_hue_shift',
     )
     cyan_sat_port = PortRef(
         node_ref=node_ref,
         direction='Input',
-        data_type='Int',
+        data_type='Float',
         index=10,
         port_name='Input10',
-        dpg_tag='5:HueSaturationAdjustment:Int:Input10',
-        value_tag='5:HueSaturationAdjustment:Int:Input10Value',
+        dpg_tag='5:HueSaturationAdjustment:Float:Input10',
+        value_tag='5:HueSaturationAdjustment:Float:Input10Value',
         spec_key='cyan_saturation',
     )
     editor._mdl_register_port_ref(cyan_sat_port)

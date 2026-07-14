@@ -11,7 +11,7 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.2'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -26,10 +26,10 @@ class Node(DpgNodeBase):
     }
     for _index, (_band_name, _center) in enumerate(_BANDS):
         _specs[f'{_band_name}_hue_shift'] = OutputPort(
-            PortDataType.INT, index=(_index * 2) + 2,
+            PortDataType.FLOAT, index=(_index * 2) + 2,
         )
         _specs[f'{_band_name}_saturation'] = OutputPort(
-            PortDataType.INT, index=(_index * 2) + 3,
+            PortDataType.FLOAT, index=(_index * 2) + 3,
         )
     _specs['best_score'] = OutputPort(PortDataType.FLOAT, index=(len(_BANDS) * 2) + 2)
     port_specs = PortSpecs(**_specs)
@@ -87,15 +87,15 @@ class Node(DpgNodeBase):
                 dpg.add_text('target image')
             self._add_float_output(ports.blend, 'blend', 0.0)
             for band_name, _center in _BANDS:
-                self._add_int_output(
+                self._add_float_output(
                     getattr(ports, f'{band_name}_hue_shift'),
                     f'{band_name[:3]} hue',
-                    0,
+                    0.0,
                 )
-                self._add_int_output(
+                self._add_float_output(
                     getattr(ports, f'{band_name}_saturation'),
                     f'{band_name[:3]} sat',
-                    0,
+                    0.0,
                 )
             self._add_float_output(ports.best_score, 'score', 0.0)
         return self._node_name(node_id)
@@ -197,7 +197,7 @@ class Node(DpgNodeBase):
         for name in ['blend'] + [f'{b}_{kind}' for b, _ in _BANDS for kind in ('hue_shift', 'saturation')]:
             value = dpg_get_value(getattr(ports, name).value_tag)
             if value is not None:
-                parameters[name] = float(value) if name == 'blend' else int(value)
+                parameters[name] = float(value)
         return parameters
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
@@ -269,7 +269,7 @@ class Node(DpgNodeBase):
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
             if port is not None:
-                dpg_set_value(port.value_tag, float(value) if name == 'blend' else int(value))
+                dpg_set_value(port.value_tag, float(value))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
         status_detail = f'done: {result.evaluated_count} candidates'
         compression_metadata = result.best_parameters.get('compression_metadata')

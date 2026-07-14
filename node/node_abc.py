@@ -37,6 +37,7 @@ class DpgNodeABC(metaclass=ABCMeta):
     TYPE_TIME_MS = PortDataType.TIME_MS.value
     TYPE_TEXT = PortDataType.TEXT.value
     TYPE_CURVE_POINTS = PortDataType.CURVE_POINTS.value
+    TYPE_METADATA = PortDataType.METADATA.value
 
     @abstractmethod
     def add_node(

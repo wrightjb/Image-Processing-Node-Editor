@@ -200,6 +200,7 @@ def _ternary_kernel_search(
     progress_callback=None,
     metric=mean_squared_error,
     metric_diagnostics=None,
+    score_image_transform=None,
 ):
     target = target_for_score
     score_cache = {}
@@ -224,13 +225,18 @@ def _ternary_kernel_search(
             bool(parameters.get('auto_kernel', False)),
             float(parameters.get('kernel_factor', 3.0)),
         )
-        score = metric(image, target)
+        scored_image = image
+        compression_metadata = None
+        if score_image_transform is not None:
+            scored_image, compression_metadata = score_image_transform(image)
+        score = metric(scored_image, target)
         evaluated_count += 1
         if best_score is None or score < best_score:
             best_score = score
             best_parameters = dict(parameters)
-            best_image = image
-        score_cache[kernel_size] = (score, image, dict(parameters))
+            best_image = scored_image
+            best_parameters['compression_metadata'] = compression_metadata
+        score_cache[kernel_size] = (score, scored_image, dict(parameters))
         if progress_callback is not None:
             update = {
                 'candidate_index': evaluated_count,
@@ -241,7 +247,7 @@ def _ternary_kernel_search(
                 'best_parameters': dict(best_parameters),
             }
             if metric_diagnostics is not None:
-                update.update(metric_diagnostics(image, target))
+                update.update(metric_diagnostics(scored_image, target))
             progress_callback(update)
         return score
 
@@ -286,6 +292,7 @@ def _ternary_sigma_search(
     progress_callback=None,
     metric=mean_squared_error,
     metric_diagnostics=None,
+    score_image_transform=None,
 ):
     target = target_for_score
     score_cache = {}
@@ -315,13 +322,18 @@ def _ternary_sigma_search(
             bool(parameters.get('auto_kernel', False)),
             float(parameters.get('kernel_factor', 3.0)),
         )
-        score = metric(image, target)
+        scored_image = image
+        compression_metadata = None
+        if score_image_transform is not None:
+            scored_image, compression_metadata = score_image_transform(image)
+        score = metric(scored_image, target)
         evaluated_count += 1
         if best_score is None or score < best_score:
             best_score = score
             best_parameters = dict(parameters)
-            best_image = image
-        score_cache[sigma] = (score, image, dict(parameters))
+            best_image = scored_image
+            best_parameters['compression_metadata'] = compression_metadata
+        score_cache[sigma] = (score, scored_image, dict(parameters))
         if progress_callback is not None:
             update = {
                 'candidate_index': evaluated_count,
@@ -332,7 +344,7 @@ def _ternary_sigma_search(
                 'best_parameters': dict(best_parameters),
             }
             if metric_diagnostics is not None:
-                update.update(metric_diagnostics(image, target))
+                update.update(metric_diagnostics(scored_image, target))
             progress_callback(update)
         return score
 
@@ -388,6 +400,7 @@ def _tune_gaussian_blur_pass(
     pass_count,
     total_evaluated_before,
     progress_callback=None,
+    score_image_transform=None,
 ):
     source_for_score, downscale_step = _downscale_for_tuning(
         source_image,
@@ -434,6 +447,7 @@ def _tune_gaussian_blur_pass(
             progress_callback=_progress,
             metric=metric,
             metric_diagnostics=metric_diagnostics,
+            score_image_transform=score_image_transform,
         )
     elif auto_sigma:
         result = _ternary_kernel_search(
@@ -444,6 +458,7 @@ def _tune_gaussian_blur_pass(
             progress_callback=_progress,
             metric=metric,
             metric_diagnostics=metric_diagnostics,
+            score_image_transform=score_image_transform,
         )
     else:
         fixed['sigma'] = starting_sigma
@@ -455,6 +470,7 @@ def _tune_gaussian_blur_pass(
             progress_callback=_progress,
             metric=metric,
             metric_diagnostics=metric_diagnostics,
+            score_image_transform=score_image_transform,
         )
         if kernel_result.best_score <= 0.0:
             result = kernel_result
@@ -469,6 +485,7 @@ def _tune_gaussian_blur_pass(
                 progress_callback=_progress,
                 metric=metric,
                 metric_diagnostics=metric_diagnostics,
+                score_image_transform=score_image_transform,
             )
             result = replace(
                 result,
@@ -519,6 +536,7 @@ def tune_gaussian_blur(
     progress_callback=None,
     metric_name='local_smoothness',
     refinement_iterations=DEFAULT_REFINEMENT_ITERATIONS,
+    score_image_transform=None,
 ):
     """Tune Gaussian Blur kernel size and, when enabled, sigma.
 
@@ -569,6 +587,7 @@ def tune_gaussian_blur(
                 pass_count,
                 total_evaluated_count,
                 progress_callback,
+                score_image_transform=score_image_transform,
             )
             total_evaluated_count += result.evaluated_count
             current_sigma = float(result.best_parameters.get('sigma', current_sigma))
@@ -592,6 +611,9 @@ def tune_gaussian_blur(
         bool(best_parameters.get('auto_kernel', False)),
         float(best_parameters.get('kernel_factor', 3.0)),
     )
+    if score_image_transform is not None:
+        best_image, compression_metadata = score_image_transform(best_image)
+        best_parameters['compression_metadata'] = compression_metadata
     return replace(
         result,
         best_parameters=best_parameters,

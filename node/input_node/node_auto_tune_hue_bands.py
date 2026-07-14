@@ -6,6 +6,7 @@ from auto_tune.hue_bands import DEFAULT_REFINEMENT_ITERATIONS, tune_hue_bands
 from node.process_node.node_hue_saturation_adjustment import _BANDS
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node_editor.image_metadata import match_metadata_compression
 from node_editor.util import dpg_get_value, dpg_set_value
 
 
@@ -70,6 +71,12 @@ class Node(DpgNodeBase):
                     max_value=1.0,
                     width=120,
                 )
+            with dpg.node_attribute(tag=self._match_compression_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
+                dpg.add_checkbox(
+                    label='Match target compression',
+                    tag=self._match_compression_value_tag(node_id),
+                    default_value=False,
+                )
             with dpg.node_attribute(tag=source_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('source image')
             with dpg.node_attribute(tag=target_image, attribute_type=dpg.mvNode_Attr_Input):
@@ -118,6 +125,16 @@ class Node(DpgNodeBase):
     def _tune_blend_value(self, node_id):
         return bool(dpg_get_value(self._tune_blend_value_tag(node_id)))
 
+    def _match_compression_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'MatchCompression')
+
+    def _match_compression_value_tag(self, node_id):
+        return self._node_control_value_tag(
+            node_id,
+            self.TYPE_TEXT,
+            'MatchCompression',
+        )
+
     def _fixed_blend_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_FLOAT, 'FixedBlend')
 
@@ -138,6 +155,23 @@ class Node(DpgNodeBase):
         del sender, app_data
         self._run_requested_node_ids.add(str(user_data))
         self._set_status(user_data, 'queued')
+
+    def _linked_image_result(
+        self,
+        port_ref,
+        connection_list,
+        node_image_dict,
+        node_result_dict,
+    ):
+        for connection_info, source_tag, destination_tag, _connection_type in self._iter_connection_infos(connection_list):
+            if destination_tag != port_ref.dpg_tag:
+                continue
+            source_node_key = self._connection_source_node_key(connection_info, source_tag)
+            return (
+                node_image_dict.get(source_node_key),
+                node_result_dict.get(source_node_key),
+            )
+        return None, None
 
     def _linked_image(self, port_ref, connection_list, node_image_dict):
         for connection_info, source_tag, destination_tag, _connection_type in self._iter_connection_infos(connection_list):
@@ -163,14 +197,18 @@ class Node(DpgNodeBase):
         return parameters
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
-        del node_result_dict
         node_id_key = str(node_id)
         if node_id_key not in self._run_requested_node_ids:
             return None, {'__auto_tune_ready__': False}
         self._run_requested_node_ids.discard(node_id_key)
         ports = self.ports(node_id)
         source = self._linked_image(ports.source_image, connection_list, node_image_dict)
-        target = self._linked_image(ports.target_image, connection_list, node_image_dict)
+        target, target_result = self._linked_image_result(
+            ports.target_image,
+            connection_list,
+            node_image_dict,
+            node_result_dict,
+        )
         if source is None or target is None:
             self._set_status(node_id, 'missing source/target')
             return None, {'__auto_tune_ready__': False}
@@ -195,6 +233,25 @@ class Node(DpgNodeBase):
         fixed_blend = self._fixed_blend_value(node_id)
         dpg_set_value(self._tune_blend_value_tag(node_id), tune_blend)
         dpg_set_value(self._fixed_blend_value_tag(node_id), fixed_blend)
+        match_target_compression = (
+            dpg_get_value(self._match_compression_value_tag(node_id)) is True
+        )
+        target_metadata = None
+        if isinstance(target_result, dict):
+            target_metadata = target_result.get('metadata') or target_result.get(
+                'compression_metadata',
+            )
+
+        def _score_image_transform(image):
+            return match_metadata_compression(image, target_metadata)
+
+        score_image_transform = None
+        if match_target_compression:
+            if target_metadata is None:
+                self._set_status(node_id, 'running: no target compression metadata')
+            else:
+                score_image_transform = _score_image_transform
+
         result = tune_hue_bands(
             source,
             target,
@@ -203,14 +260,24 @@ class Node(DpgNodeBase):
             progress_callback=_progress,
             tune_blend=tune_blend,
             fixed_blend=fixed_blend,
+            score_image_transform=score_image_transform,
         )
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
             if port is not None:
                 dpg_set_value(port.value_tag, float(value) if name == 'blend' else int(value))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
-        self._set_status(node_id, f'done: {result.evaluated_count} candidates')
-        return result.best_image, {'__auto_tune_ready__': True, 'tune_result': result}
+        status_detail = f'done: {result.evaluated_count} candidates'
+        compression_metadata = result.best_parameters.get('compression_metadata')
+        if match_target_compression and compression_metadata is not None:
+            status_detail = f'{status_detail}, target compression matched'
+        self._set_status(node_id, status_detail)
+        return result.best_image, {
+            '__auto_tune_ready__': True,
+            'tune_result': result,
+            'compression_metadata': compression_metadata,
+            'match_target_compression': match_target_compression,
+        }
 
     def close(self, node_id):
         del node_id
@@ -228,6 +295,9 @@ class Node(DpgNodeBase):
         setting[self._fixed_blend_value_tag(node_id)] = dpg_get_value(
             self._fixed_blend_value_tag(node_id)
         )
+        setting[self._match_compression_value_tag(node_id)] = dpg_get_value(
+            self._match_compression_value_tag(node_id)
+        )
         return setting
 
     def set_setting_dict(self, node_id, setting_dict):
@@ -241,6 +311,9 @@ class Node(DpgNodeBase):
         tune_blend_tag = self._tune_blend_value_tag(node_id)
         if tune_blend_tag in setting_dict:
             dpg_set_value(tune_blend_tag, setting_dict[tune_blend_tag])
+        match_compression_tag = self._match_compression_value_tag(node_id)
+        if match_compression_tag in setting_dict:
+            dpg_set_value(match_compression_tag, setting_dict[match_compression_tag])
         fixed_blend_tag = self._fixed_blend_value_tag(node_id)
         if fixed_blend_tag in setting_dict:
             dpg_set_value(fixed_blend_tag, setting_dict[fixed_blend_tag])

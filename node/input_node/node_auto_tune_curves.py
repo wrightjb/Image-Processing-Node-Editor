@@ -79,6 +79,7 @@ class Node(DpgNodeBase):
                     min_value=2,
                     min_clamped=True,
                     width=120,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=self._metric_attr_tag(node_id),
@@ -90,6 +91,7 @@ class Node(DpgNodeBase):
                     tag=self._metric_value_tag(node_id),
                     default_value='balanced_huber',
                     width=140,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=self._refinement_iterations_attr_tag(node_id),
@@ -102,6 +104,7 @@ class Node(DpgNodeBase):
                     min_value=0,
                     min_clamped=True,
                     width=120,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=self._channel_attr_tag(node_id),
@@ -113,6 +116,7 @@ class Node(DpgNodeBase):
                     tag=self._channel_value_tag(node_id),
                     default_value='All',
                     width=140,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=self._match_compression_attr_tag(node_id),
@@ -122,6 +126,7 @@ class Node(DpgNodeBase):
                     label='Match target compression',
                     tag=self._match_compression_value_tag(node_id),
                     default_value=False,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=source_image,

@@ -105,7 +105,6 @@ class Node(DpgNodeBase):
         opencv_setting_dict=None,
         callback=None,
     ):
-        del callback
         tag_node_name = self._node_name(node_id)
         ports = self.create_ports(node_id)
         image_a_port = ports.image_a
@@ -142,6 +141,7 @@ class Node(DpgNodeBase):
             )
 
         with dpg.node(tag=tag_node_name, parent=parent, label=self.node_label, pos=pos):
+            self.add_editor_toolbar(node_id, callback=callback)
             with dpg.node_attribute(tag=image_a, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text(tag=image_a_port.value_tag, default_value='image A')
             with dpg.node_attribute(tag=image_b, attribute_type=dpg.mvNode_Attr_Input):
@@ -154,6 +154,7 @@ class Node(DpgNodeBase):
                     min_value=1.0,
                     max_value=255.0,
                     width=small_window_w - 80,
+                    callback=callback,
                 )
             with dpg.node_attribute(
                 tag=self._mode_attr_tag(node_id),
@@ -165,6 +166,7 @@ class Node(DpgNodeBase):
                     tag=self._mode_value_tag(node_id),
                     default_value=_MODE_ABSOLUTE,
                     width=140,
+                    callback=callback,
                 )
             with dpg.node_attribute(tag=image, attribute_type=dpg.mvNode_Attr_Output):
                 dpg.add_image(image_port.value_tag)

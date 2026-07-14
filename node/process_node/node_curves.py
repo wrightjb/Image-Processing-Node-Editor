@@ -155,6 +155,12 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         self._reset_points_from_setting(node_id, value)
         return True
 
+
+    def on_editor_parameter_value_applied(self, value_tag, value):
+        if self.apply_history_value(value_tag, value):
+            return True
+        return super().on_editor_parameter_value_applied(value_tag, value)
+
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, width, callback
         self.build_curve_points_file_dialogs(node_id)

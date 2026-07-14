@@ -154,6 +154,7 @@ class Node(DpgNodeBase):
                     width=small_window_w,
                     height=int((small_window_h / 3) * 2),
                     tab_input=True,
+                    callback=callback,
                 )
             # Processing time
             if use_pref_counter:

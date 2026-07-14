@@ -149,6 +149,7 @@ class Node(DpgNodeBase):
                         tag=tag_node_input02_value_name,
                         label='',
                         width=small_window_w - 30,
+                        callback=callback,
                     )
                     dpg.add_color_edit(
                         (0, 255, 0),

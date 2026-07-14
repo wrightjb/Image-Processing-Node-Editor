@@ -126,6 +126,7 @@ class Node(DpgNodeBase):
                     default_value=list(self._model_class.keys())[0],
                     width=small_window_w,
                     tag=tag_node_input02_value_name,
+                    callback=callback,
                 )
             # Processing time
             if use_pref_counter:

@@ -46,6 +46,19 @@ class Node(DpgNodeBase):
     def _build_texture_tag_with_size(self, node_id, width, height):
         return f'{self.node_tag}:{node_id}:Output01:Texture:{width}x{height}'
 
+    def _get_image_file_signature(self, image_path):
+        if image_path is None:
+            return None
+        try:
+            stat_result = os.stat(image_path)
+        except OSError:
+            return (image_path, None)
+        return (
+            image_path,
+            stat_result.st_mtime_ns,
+            stat_result.st_size,
+        )
+
     def add_node(
         self,
         parent,
@@ -200,7 +213,13 @@ class Node(DpgNodeBase):
             )
             dpg_set_value(texture_tag, texture)
 
-        return frame, None
+        result = {
+            '__cache_kind__': 'still_image',
+            '__cache_source__': image_path,
+            '__cache_file_signature__': self._get_image_file_signature(image_path),
+        }
+
+        return frame, result
 
     def close(self, node_id):
         texture_tags = self._texture_tags_dict.pop(node_id, set())
@@ -223,6 +242,10 @@ class Node(DpgNodeBase):
         setting_dict['ver'] = self._ver
         setting_dict['pos'] = pos
         setting_dict['image_path'] = image_path
+        setting_dict['image_file_signature'] = self._get_image_file_signature(
+            image_path
+        )
+        setting_dict['__cache_source_enabled__'] = True
 
         return setting_dict
 

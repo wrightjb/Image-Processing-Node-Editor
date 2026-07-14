@@ -325,8 +325,8 @@ class Node(DpgNodeBase):
             print(f'AutoTuneCurves: {message}')
             self._set_status(node_id, message)
 
-        match_target_compression = bool(
-            dpg_get_value(self._match_compression_value_tag(node_id))
+        match_target_compression = (
+            dpg_get_value(self._match_compression_value_tag(node_id)) is True
         )
         target_metadata = None
         if isinstance(target_result, dict):
@@ -380,8 +380,6 @@ class Node(DpgNodeBase):
         compression_metadata = result.best_parameters.get('compression_metadata')
         if match_target_compression and compression_metadata is not None:
             status_detail = f'{status_detail}, target compression matched'
-        elif match_target_compression:
-            status_detail = f'{status_detail}, no compression metadata'
 
         dpg_set_value(ports.points.value_tag, str(curves_payload))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))

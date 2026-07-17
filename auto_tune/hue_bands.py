@@ -24,16 +24,20 @@ def _resize_pair(source, target, max_size=240):
     source = np.asarray(source)
     target = np.asarray(target)
     if source.shape[:2] != target.shape[:2]:
-        target = cv2.resize(target, (source.shape[1], source.shape[0]))
+        target = cv2.resize(
+            target,
+            (source.shape[1], source.shape[0]),
+            interpolation=cv2.INTER_NEAREST,
+        )
     height, width = source.shape[:2]
     scale = min(1.0, float(max_size) / float(max(height, width)))
     if scale >= 1.0:
         return source, target
-    new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
-    return (
-        cv2.resize(source, new_size, interpolation=cv2.INTER_AREA),
-        cv2.resize(target, new_size, interpolation=cv2.INTER_AREA),
-    )
+    new_height = max(1, int(height * scale))
+    new_width = max(1, int(width * scale))
+    rows = np.linspace(0, height - 1, new_height).astype(np.intp)
+    columns = np.linspace(0, width - 1, new_width).astype(np.intp)
+    return source[rows[:, None], columns], target[rows[:, None], columns]
 
 
 def _match_target_shape(source, target):
@@ -269,16 +273,16 @@ def _polish_parameters_full_image(
     score_image_transform=None,
     step_sizes=(1.0, 0.5),
     active_only=True,
+    parameter_names=None,
 ):
     """Greedily polish half-step parameters against the full-image score.
 
     This intentionally mirrors the manual Image Diff workflow: nudge one Hue
     Bands output up or down, keep the direction only when the full-image error
-    improves, then repeat at small step sizes.  Earlier refinement uses per-band
-    weighted scores for speed, but those local scores can miss cross-band
-    interactions and leave active outputs a few integers away from the true
-    full-image optimum.  Keep this pass deliberately narrow because every
-    accepted or rejected nudge renders the Hue Bands node again.
+    improves, then repeat at small step sizes. Keep this pass deliberately
+    narrow because every accepted or rejected nudge renders the Hue Bands node
+    again. Callers may provide a parameter subset after scaled polishing to
+    avoid repeating full-resolution checks for fields that did not move.
     """
     polished = dict(parameters)
     best_image = image_process(source, **polished)
@@ -290,15 +294,20 @@ def _polish_parameters_full_image(
     best_image = best_scored_image
     evaluated_count = 0
     names = [name for name in _tunable_parameter_names() if name != 'blend']
+    if parameter_names is not None:
+        selected = set(parameter_names)
+        names = [name for name in names if name in selected]
     if active_only:
         active_names = [name for name in names if float(polished.get(name, 0.0)) != 0.0]
         if active_names:
             names = active_names
 
-    for step in step_sizes:
-        for _pass_index in range(max(0, int(max_passes))):
+    step_sizes = tuple(step_sizes)
+    pass_count = max(0, int(max_passes))
+    for step_index, step in enumerate(step_sizes, start=1):
+        for pass_index in range(1, pass_count + 1):
             improved_in_pass = False
-            for name in names:
+            for parameter_index, name in enumerate(names, start=1):
                 minimum, maximum = _parameter_bounds(name)
                 parameter_improved = True
                 while parameter_improved:
@@ -326,6 +335,12 @@ def _polish_parameters_full_image(
                             progress_callback({
                                 'phase': f'polish step {step}',
                                 'band': name,
+                                'step_index': step_index,
+                                'step_count': len(step_sizes),
+                                'pass_index': pass_index,
+                                'pass_count': pass_count,
+                                'parameter_index': parameter_index,
+                                'parameter_count': len(names),
                                 'candidate_index': candidate_index,
                                 'candidate_count': len(candidate_values),
                                 'total_evaluated': evaluated_count,
@@ -401,16 +416,23 @@ def tune_hue_bands(
     fixed_blend=1.0,
     score_image_transform=None,
     refine_only=False,
+    stages=None,
 ):
     """Tune Hue Bands, optionally refining only the supplied parameters.
 
-    ``refine_only`` skips HSV estimation, blend search, and simplification. It
-    starts from ``current_parameters`` and runs the local and full-image refine
-    passes, which makes repeated manual-style refinement inexpensive.
+    Individual stages can be selected so their intermediate output can be
+    inspected. ``refine_only`` remains as a compatibility shortcut for local
+    refinement followed by full-resolution polish.
     """
     if source is None or target is None:
         raise ValueError('source and target images are required')
     current_parameters = current_parameters or {}
+    if stages is None:
+        stages = (
+            ('refine', 'polish') if refine_only else
+            ('estimate', 'refine', 'polish_scaled', 'polish', 'simplify')
+        )
+    stages = tuple(stages)
     fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
     work_source, work_target = _resize_pair(source, target)
 
@@ -423,6 +445,7 @@ def tune_hue_bands(
     original_visual_score = best_visual_score
     best_objective = best_visual_score + _parameter_penalty(best_parameters)
     evaluated_count = 1
+    scaled_polish_changed_names = None
 
     def evaluate(parameters, phase, band_name=None, candidate_index=0, candidate_count=0):
         nonlocal best_image, best_parameters, best_visual_score, best_objective
@@ -455,7 +478,7 @@ def tune_hue_bands(
                 'best_parameters': dict(best_parameters),
             })
 
-    if not refine_only:
+    if 'estimate' in stages:
         estimate_candidates = _estimate_candidate_parameters(
             work_source,
             work_target,
@@ -465,7 +488,9 @@ def tune_hue_bands(
         for index, parameters in enumerate(estimate_candidates, start=1):
             evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
 
-    for round_index in range(max(0, int(refinement_iterations))):
+    for round_index in range(
+        max(0, int(refinement_iterations)) if 'refine' in stages else 0
+    ):
         hue_radius = max(2, 12 // (round_index + 1))
         sat_radius = max(2, 12 // (round_index + 1))
         for band_name, _center in _BANDS:
@@ -496,7 +521,7 @@ def tune_hue_bands(
                         len(values),
                     )
 
-    if not refine_only:
+    if 'estimate' in stages:
         if tune_blend:
             for index, blend in enumerate(BLEND_CANDIDATES, start=1):
                 candidate = dict(best_parameters)
@@ -520,19 +545,50 @@ def tune_hue_bands(
         if progress_callback is not None:
             progress_callback(update)
 
-    (
-        best_parameters,
-        best_visual_score,
-        best_image,
-        polish_evaluated_count,
-    ) = _polish_parameters_full_image(
-        best_parameters,
-        full_source,
-        full_target,
-        progress_callback=_progress_polish,
-        score_image_transform=score_image_transform,
-    )
-    evaluated_count += polish_evaluated_count
+    if 'polish_scaled' in stages:
+        before_scaled_polish = dict(best_parameters)
+
+        def _progress_scaled_polish(update):
+            update = dict(update)
+            update['phase'] = f"scaled {update['phase']}"
+            _progress_polish(update)
+
+        (
+            best_parameters,
+            best_visual_score,
+            best_image,
+            polish_evaluated_count,
+        ) = _polish_parameters_full_image(
+            best_parameters,
+            work_source,
+            work_target,
+            progress_callback=_progress_scaled_polish,
+            score_image_transform=score_image_transform,
+        )
+        evaluated_count += polish_evaluated_count
+        scaled_polish_changed_names = {
+            name for name, value in best_parameters.items()
+            if before_scaled_polish.get(name) != value
+        }
+
+    if 'polish' in stages:
+        polish_names = None
+        if 'polish_scaled' in stages:
+            polish_names = scaled_polish_changed_names
+        (
+            best_parameters,
+            best_visual_score,
+            best_image,
+            polish_evaluated_count,
+        ) = _polish_parameters_full_image(
+            best_parameters,
+            full_source,
+            full_target,
+            progress_callback=_progress_polish,
+            score_image_transform=score_image_transform,
+            parameter_names=polish_names,
+        )
+        evaluated_count += polish_evaluated_count
 
     def _progress_simplify(parameter_name, simplified_score):
         if progress_callback is None:
@@ -549,7 +605,15 @@ def tune_hue_bands(
             'best_parameters': dict(best_parameters),
         })
 
-    if not refine_only:
+    if 'simplify' in stages:
+        simplify_image = image_process(full_source, **best_parameters)
+        best_visual_score, _scored_image, _compression_metadata = (
+            _score_with_transform(
+                simplify_image,
+                full_target,
+                score_image_transform,
+            )
+        )
         best_parameters, best_visual_score = _simplify_parameters(
             best_parameters,
             full_source,

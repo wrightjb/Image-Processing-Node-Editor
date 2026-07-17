@@ -1058,6 +1058,23 @@ def test_hue_bands_parameters_quantize_to_half_steps():
     assert hue_bands._coordinate_candidate_values(12.0, 0.5, -90, 90) == [11.5, 12.5]
 
 
+def test_hue_bands_working_resize_subsamples_without_averaging():
+    import auto_tune.hue_bands as hue_bands
+
+    source = np.arange(4 * 4 * 3, dtype=np.uint8).reshape(4, 4, 3)
+    target = source.copy()
+
+    work_source, work_target = hue_bands._resize_pair(
+        source,
+        target,
+        max_size=2,
+    )
+
+    expected = source[np.ix_([0, 3], [0, 3])]
+    assert np.array_equal(work_source, expected)
+    assert np.array_equal(work_target, expected)
+
+
 def test_hue_bands_refine_only_starts_from_current_outputs(monkeypatch):
     import auto_tune.hue_bands as hue_bands
 
@@ -1142,6 +1159,15 @@ def test_auto_tune_hue_bands_refine_button_queues_refine_mode(monkeypatch):
 
     assert node._run_requested_modes == {'42': 'refine'}
     assert status_updates[-1] == (node._status_value_tag(42), 'queued refine')
+
+    node._on_estimate_button(None, None, 42)
+    assert node._run_requested_modes == {'42': 'estimate'}
+    node._on_polish_scaled_button(None, None, 42)
+    assert node._run_requested_modes == {'42': 'polish_scaled'}
+    node._on_polish_button(None, None, 42)
+    assert node._run_requested_modes == {'42': 'polish'}
+    node._on_simplify_button(None, None, 42)
+    assert node._run_requested_modes == {'42': 'simplify'}
 
 
 def test_tune_hue_bands_recovers_simple_band_adjustment():
@@ -1310,6 +1336,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
     monkeypatch.setattr(hue_bands, '_score', fake_score)
 
+    progress_updates = []
     polished, score, image, evaluated_count = hue_bands._polish_parameters_full_image(
         {
             'blue_hue_shift': 89,
@@ -1318,6 +1345,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
         },
         source=None,
         target=None,
+        progress_callback=progress_updates.append,
     )
 
     assert polished['blue_hue_shift'] == 90
@@ -1326,6 +1354,12 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     assert score == 0.0
     assert image == polished
     assert evaluated_count > 0
+    assert progress_updates
+    assert progress_updates[0]['step_index'] == 1
+    assert progress_updates[0]['step_count'] == 2
+    assert progress_updates[0]['pass_index'] == 1
+    assert progress_updates[0]['pass_count'] == 3
+    assert progress_updates[0]['parameter_count'] == 3
 
 
 def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeypatch):
@@ -1343,7 +1377,7 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         hue_bands,
         '_estimate_candidate_parameters',
         lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
-            {'blend': fixed_blend, 'blue_hue_shift': 89}
+            {'blend': fixed_blend, 'blue_hue_shift': 88}
         ],
     )
     monkeypatch.setattr(

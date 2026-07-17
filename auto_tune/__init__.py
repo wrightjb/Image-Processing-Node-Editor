@@ -6,6 +6,7 @@ from auto_tune.service import (
     TuneRequest,
     TuneResult,
     grid_search,
+    mean_absolute_error,
     mean_squared_error,
     normalize_image_for_metric,
 )
@@ -18,6 +19,7 @@ __all__ = [
     'TuneRequest',
     'TuneResult',
     'grid_search',
+    'mean_absolute_error',
     'mean_squared_error',
     'normalize_image_for_metric',
     'tune_gaussian_blur',

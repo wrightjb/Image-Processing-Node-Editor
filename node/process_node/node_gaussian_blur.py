@@ -83,7 +83,7 @@ class Node(DeclarativeImageProcessNodeBase):
             'label': 'sigma',
             'default': 0.1,
             'min': 0.1,
-            'max': 100.0,
+            'max': 200.0,
             'cast': float,
             'precision': 3,
         },

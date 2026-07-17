@@ -859,17 +859,17 @@ def test_hue_saturation_adjustment_node_get_set_settings(monkeypatch):
 
     values = {
         '111:HueSaturationAdjustment:Float:Input02Value': 1.0,
-        '111:HueSaturationAdjustment:Int:Input03Value': 45,
-        '111:HueSaturationAdjustment:Int:Input04Value': 20,
-        '111:HueSaturationAdjustment:Int:Input05Value': 10,
-        '111:HueSaturationAdjustment:Int:Input06Value': 0,
-        '111:HueSaturationAdjustment:Int:Input07Value': 0,
-        '111:HueSaturationAdjustment:Int:Input08Value': 0,
-        '111:HueSaturationAdjustment:Int:Input09Value': 0,
-        '111:HueSaturationAdjustment:Int:Input10Value': 0,
-        '111:HueSaturationAdjustment:Int:Input11Value': 0,
-        '111:HueSaturationAdjustment:Int:Input12Value': 0,
-        '111:HueSaturationAdjustment:Int:Input13Value': 0,
+        '111:HueSaturationAdjustment:Float:Input03Value': 45,
+        '111:HueSaturationAdjustment:Float:Input04Value': 20,
+        '111:HueSaturationAdjustment:Float:Input05Value': 10,
+        '111:HueSaturationAdjustment:Float:Input06Value': 0,
+        '111:HueSaturationAdjustment:Float:Input07Value': 0,
+        '111:HueSaturationAdjustment:Float:Input08Value': 0,
+        '111:HueSaturationAdjustment:Float:Input09Value': 0,
+        '111:HueSaturationAdjustment:Float:Input10Value': 0,
+        '111:HueSaturationAdjustment:Float:Input11Value': 0,
+        '111:HueSaturationAdjustment:Float:Input12Value': 0,
+        '111:HueSaturationAdjustment:Float:Input13Value': 0,
     }
     writes = {}
 
@@ -882,20 +882,42 @@ def test_hue_saturation_adjustment_node_get_set_settings(monkeypatch):
     assert setting['ver'] == node._ver
     assert setting['pos'] == [10, 20]
     assert setting['111:HueSaturationAdjustment:Float:Input02Value'] == 1.0
-    assert setting['111:HueSaturationAdjustment:Int:Input03Value'] == 45
+    assert setting['111:HueSaturationAdjustment:Float:Input03Value'] == 45
 
     node.set_setting_dict(111, {
         '111:HueSaturationAdjustment:Float:Input02Value': 0.0,
-        '111:HueSaturationAdjustment:Int:Input03Value': -60,
-        '111:HueSaturationAdjustment:Int:Input12Value': 50,
-        '111:HueSaturationAdjustment:Int:Input13Value': 55,
+        '111:HueSaturationAdjustment:Float:Input03Value': -60,
+        '111:HueSaturationAdjustment:Float:Input12Value': 50,
+        '111:HueSaturationAdjustment:Float:Input13Value': 55,
     })
 
     assert writes['111:HueSaturationAdjustment:Float:Input02Value'] == 0.0
-    assert writes['111:HueSaturationAdjustment:Int:Input03Value'] == -60
-    assert writes['111:HueSaturationAdjustment:Int:Input12Value'] == 50
-    assert writes['111:HueSaturationAdjustment:Int:Input13Value'] == 55
+    assert writes['111:HueSaturationAdjustment:Float:Input03Value'] == -60
+    assert writes['111:HueSaturationAdjustment:Float:Input12Value'] == 50
+    assert writes['111:HueSaturationAdjustment:Float:Input13Value'] == 55
 
+
+
+def test_hue_saturation_adjustment_parameters_use_half_step_float_controls():
+    node = HueSaturationAdjustmentNode()
+    red_hue = next(
+        parameter for parameter in node.parameters
+        if parameter['name'] == 'red_hue_shift'
+    )
+    red_sat = next(
+        parameter for parameter in node.parameters
+        if parameter['name'] == 'red_saturation'
+    )
+
+    assert red_hue['type'] == node.TYPE_FLOAT
+    assert red_hue['widget'] == 'slider_float'
+    assert red_hue['step'] == 0.5
+    assert red_hue['quantize'] == 0.5
+    assert red_sat['type'] == node.TYPE_FLOAT
+    assert red_sat['step'] == 0.5
+    assert node._cast_parameter_value(red_hue, 12.24) == 12.0
+    assert node._cast_parameter_value(red_hue, 12.25) == 12.5
+    assert node._cast_parameter_value(red_hue, -12.25) == -12.5
 
 def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monkeypatch):
     node = HueSaturationAdjustmentNode()
@@ -910,7 +932,10 @@ def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monk
             hsv[:, :, 1] = 100
             hsv[:, :, 2] = 200
             return hsv
-        return image
+        converted = np.zeros_like(image)
+        converted[:, :, 0] = image[:, :, 0] / 510.0
+        converted[:, :, 1:] = image[:, :, 1:]
+        return converted
 
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'merge', lambda channels: np.stack(channels, axis=-1), raising=False)
@@ -971,7 +996,10 @@ def test_hue_saturation_adjustment_uses_only_active_band_weights(monkeypatch):
             hsv[:, :, 1] = 100
             hsv[:, :, 2] = 200
             return hsv
-        return image
+        converted = np.zeros_like(image)
+        converted[:, :, 0] = image[:, :, 0] / 510.0
+        converted[:, :, 1:] = image[:, :, 1:]
+        return converted
 
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
@@ -1000,7 +1028,10 @@ def test_hue_saturation_adjustment_hue_uses_single_band_without_neighbor_bleed(m
             hsv[:, :, 1] = 180
             hsv[:, :, 2] = 200
             return hsv
-        return image
+        converted = np.zeros_like(image)
+        converted[:, :, 0] = image[:, :, 0] / 510.0
+        converted[:, :, 1:] = image[:, :, 1:]
+        return converted
 
     monkeypatch.setattr(hue_saturation_adjustment_module.cv2, 'cvtColor', _cvt_color_stub, raising=False)
 
@@ -1018,10 +1049,10 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
     _prepare_node(node)
 
     values = {
-        '501:IntValue:Int:Output01Value': 999,
-        '502:IntValue:Int:Output01Value': -180,
-        '601:HueSaturationAdjustment:Int:Input04Value': 0,
-        '601:HueSaturationAdjustment:Int:Input03Value': 0,
+        '501:FloatValue:Float:Output01Value': 999,
+        '502:FloatValue:Float:Output01Value': -180,
+        '601:HueSaturationAdjustment:Float:Input04Value': 0,
+        '601:HueSaturationAdjustment:Float:Input03Value': 0,
     }
     writes = {}
 
@@ -1036,8 +1067,8 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
         601,
         [
             ['1:ImageSource:Image:Output01', '601:HueSaturationAdjustment:Image:Input01'],
-            ['501:IntValue:Int:Output01', '601:HueSaturationAdjustment:Int:Input03'],
-            ['502:IntValue:Int:Output01', '601:HueSaturationAdjustment:Int:Input04'],
+            ['501:FloatValue:Float:Output01', '601:HueSaturationAdjustment:Float:Input03'],
+            ['502:FloatValue:Float:Output01', '601:HueSaturationAdjustment:Float:Input04'],
         ],
         {'1:ImageSource': frame},
         {},
@@ -1045,8 +1076,8 @@ def test_hue_saturation_adjustment_update_clamps_linked_values(monkeypatch):
 
     assert result is None
     assert out_frame.shape == frame.shape
-    assert writes['601:HueSaturationAdjustment:Int:Input03Value'] == 90
-    assert writes['601:HueSaturationAdjustment:Int:Input04Value'] == -100
+    assert writes['601:HueSaturationAdjustment:Float:Input03Value'] == 90
+    assert writes['601:HueSaturationAdjustment:Float:Input04Value'] == -100
 
 
 def test_warmth_tint_node_get_set_settings(monkeypatch):
@@ -1609,8 +1640,8 @@ def test_rgb_channel_swap_node_falls_back_to_rgb_on_invalid_order():
 def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
     node = HueSaturationAdjustmentNode()
     node._last_touched_slider_tag_by_node = {
-        1: '1:HueSaturationAdjustment:Int:Input03Value',
-        2: '2:HueSaturationAdjustment:Int:Input03Value',
+        1: '1:HueSaturationAdjustment:Float:Input03Value',
+        2: '2:HueSaturationAdjustment:Float:Input03Value',
     }
     node._last_touched_node_id = 2
     writes = {}
@@ -1626,7 +1657,7 @@ def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
 
         @staticmethod
         def get_value(tag):
-            return 10 if tag.startswith('2:') else 100
+            return 10.0 if tag.startswith('2:') else 100.0
 
         @staticmethod
         def set_value(tag, value):
@@ -1636,7 +1667,7 @@ def test_hue_saturation_adjustment_nudges_only_last_touched_node(monkeypatch):
 
     node._nudge_slider(None, None, 1)
 
-    assert writes == {'2:HueSaturationAdjustment:Int:Input03Value': 11}
+    assert writes == {'2:HueSaturationAdjustment:Float:Input03Value': 10.5}
 
 
 def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():

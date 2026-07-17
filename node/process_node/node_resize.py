@@ -48,7 +48,7 @@ class Node(DeclarativeImageProcessNodeBase):
             'label': 'Width',
             'default': 960,
             'min': 1,
-            'max': 4096,
+            'max': 10000,
             'cast': int,
         },
         {
@@ -59,7 +59,7 @@ class Node(DeclarativeImageProcessNodeBase):
             'label': 'Height',
             'default': 540,
             'min': 1,
-            'max': 4096,
+            'max': 10000,
             'cast': int,
         },
     ]
@@ -69,8 +69,8 @@ class Node(DeclarativeImageProcessNodeBase):
         height = parameter_values['height']
         interpolation_text = parameter_values['interpolation_text']
 
-        width = max(1, min(4096, width))
-        height = max(1, min(4096, height))
+        width = max(self.parameters[1]['min'], min(self.parameters[1]['max'], width))
+        height = max(self.parameters[2]['min'], min(self.parameters[2]['max'], height))
 
         dpg_set_value(
             self._value_tag(self._port_tag(tag_node_name, self.TYPE_INT, 'Input02')),

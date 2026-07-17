@@ -11,10 +11,10 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.5'
 
     def __init__(self):
-        self._run_requested_node_ids = set()
+        self._run_requested_modes = {}
 
     node_label = 'Auto Tune (Hue Bands)'
     node_tag = 'AutoTuneHueBands'
@@ -26,10 +26,10 @@ class Node(DpgNodeBase):
     }
     for _index, (_band_name, _center) in enumerate(_BANDS):
         _specs[f'{_band_name}_hue_shift'] = OutputPort(
-            PortDataType.INT, index=(_index * 2) + 2,
+            PortDataType.FLOAT, index=(_index * 2) + 2,
         )
         _specs[f'{_band_name}_saturation'] = OutputPort(
-            PortDataType.INT, index=(_index * 2) + 3,
+            PortDataType.FLOAT, index=(_index * 2) + 3,
         )
     _specs['best_score'] = OutputPort(PortDataType.FLOAT, index=(len(_BANDS) * 2) + 2)
     port_specs = PortSpecs(**_specs)
@@ -45,9 +45,7 @@ class Node(DpgNodeBase):
             self.add_editor_toolbar(
                 node_id,
                 callback=callback,
-                build_extra_controls=lambda: dpg.add_button(
-                    label='Run Tune', width=80, callback=self._on_run_button, user_data=node_id,
-                ),
+                build_extra_controls=lambda: self._add_run_controls(node_id),
             )
             with dpg.node_attribute(tag=self._status_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_text('idle', tag=self._status_value_tag(node_id))
@@ -87,15 +85,15 @@ class Node(DpgNodeBase):
                 dpg.add_text('target image')
             self._add_float_output(ports.blend, 'blend', 0.0)
             for band_name, _center in _BANDS:
-                self._add_int_output(
+                self._add_float_output(
                     getattr(ports, f'{band_name}_hue_shift'),
                     f'{band_name[:3]} hue',
-                    0,
+                    0.0,
                 )
-                self._add_int_output(
+                self._add_float_output(
                     getattr(ports, f'{band_name}_saturation'),
                     f'{band_name[:3]} sat',
-                    0,
+                    0.0,
                 )
             self._add_float_output(ports.best_score, 'score', 0.0)
         return self._node_name(node_id)
@@ -150,15 +148,93 @@ class Node(DpgNodeBase):
         try:
             return max(0.0, min(1.0, float(value)))
         except (TypeError, ValueError):
-            return 0.0
+            return 1.0
 
     def _set_status(self, node_id, message):
         dpg_set_value(self._status_value_tag(node_id), message)
 
+    @staticmethod
+    def _progress_position(update):
+        parts = []
+        for label, index_key, count_key in (
+            ('step', 'step_index', 'step_count'),
+            ('pass', 'pass_index', 'pass_count'),
+            ('field', 'parameter_index', 'parameter_count'),
+        ):
+            if index_key in update and count_key in update:
+                parts.append(
+                    f'{label} {update[index_key]}/{update[count_key]}'
+                )
+        return ', '.join(parts) if parts else 'stage progress'
+
+    def _add_run_controls(self, node_id):
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Tune',
+                width=55,
+                callback=self._on_run_button,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Estimate',
+                width=70,
+                callback=self._on_estimate_button,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Refine',
+                width=60,
+                callback=self._on_refine_button,
+                user_data=node_id,
+            )
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Polish Scaled',
+                width=100,
+                callback=self._on_polish_scaled_button,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Polish',
+                width=60,
+                callback=self._on_polish_button,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Simplify',
+                width=70,
+                callback=self._on_simplify_button,
+                user_data=node_id,
+            )
+
+    def _queue_stage(self, node_id, stage):
+        self._run_requested_modes[str(node_id)] = stage
+        self._set_status(node_id, f'queued {stage.replace("_", " ")}')
+
     def _on_run_button(self, sender, app_data, user_data):
         del sender, app_data
-        self._run_requested_node_ids.add(str(user_data))
+        self._run_requested_modes[str(user_data)] = 'tune'
         self._set_status(user_data, 'queued')
+
+    def _on_refine_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._queue_stage(user_data, 'refine')
+
+    def _on_estimate_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._queue_stage(user_data, 'estimate')
+
+    def _on_polish_scaled_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._queue_stage(user_data, 'polish_scaled')
+
+    def _on_polish_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._queue_stage(user_data, 'polish')
+
+    def _on_simplify_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._queue_stage(user_data, 'simplify')
 
     def _linked_image_result(
         self,
@@ -197,14 +273,21 @@ class Node(DpgNodeBase):
         for name in ['blend'] + [f'{b}_{kind}' for b, _ in _BANDS for kind in ('hue_shift', 'saturation')]:
             value = dpg_get_value(getattr(ports, name).value_tag)
             if value is not None:
-                parameters[name] = float(value) if name == 'blend' else int(value)
+                parameters[name] = float(value)
+        return parameters
+
+    def _run_parameters(self, ports, run_mode, tune_blend, fixed_blend):
+        parameters = self._current_output_parameters(ports)
+        if run_mode != 'tune' or not tune_blend:
+            parameters['blend'] = fixed_blend
         return parameters
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
         node_id_key = str(node_id)
-        if node_id_key not in self._run_requested_node_ids:
+        run_mode = self._run_requested_modes.pop(node_id_key, None)
+        if run_mode is None:
             return None, {'__auto_tune_ready__': False}
-        self._run_requested_node_ids.discard(node_id_key)
+        selected_stages = None if run_mode == 'tune' else (run_mode,)
         ports = self.ports(node_id)
         source = self._linked_image(ports.source_image, connection_list, node_image_dict)
         target, target_result = self._linked_image_result(
@@ -220,15 +303,24 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id), DEFAULT_REFINEMENT_ITERATIONS, 0,
         )
         dpg_set_value(self._refinement_iterations_value_tag(node_id), refinement_iterations)
-        self._set_status(node_id, 'running')
+        running_label = 'tune' if run_mode == 'tune' else run_mode.replace('_', ' ')
+        self._set_status(node_id, f'running {running_label}')
 
         def _progress(update):
             band = update.get('band') or 'blend'
+            component_detail = ''
+            if 'component_score' in update:
+                component_detail = (
+                    f" {update['phase'].split()[-1]}="
+                    f"{update['component_score']:.6g}"
+                )
             message = (
                 f"{update['phase']} {band}\n"
+                f"{self._progress_position(update)}\n"
                 f"candidate {update['candidate_index']}/{update['candidate_count']} "
                 f"total {update['total_evaluated']}\n"
                 f"score={update['score']:.6g} best={update['best_score']:.6g}"
+                f"{component_detail}"
             )
             print(f'AutoTuneHueBands: {message}')
             self._set_status(node_id, message)
@@ -256,22 +348,31 @@ class Node(DpgNodeBase):
             else:
                 score_image_transform = _score_image_transform
 
+        current_parameters = self._run_parameters(
+            ports,
+            run_mode,
+            tune_blend,
+            fixed_blend,
+        )
+
         result = tune_hue_bands(
             source,
             target,
-            current_parameters=self._current_output_parameters(ports),
+            current_parameters=current_parameters,
             refinement_iterations=refinement_iterations,
             progress_callback=_progress,
             tune_blend=tune_blend,
             fixed_blend=fixed_blend,
             score_image_transform=score_image_transform,
+            stages=selected_stages,
         )
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
             if port is not None:
-                dpg_set_value(port.value_tag, float(value) if name == 'blend' else int(value))
+                dpg_set_value(port.value_tag, float(value))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
-        status_detail = f'done: {result.evaluated_count} candidates'
+        status_prefix = 'done' if run_mode == 'tune' else f'{running_label} done'
+        status_detail = f'{status_prefix}: {result.evaluated_count} candidates'
         compression_metadata = result.best_parameters.get('compression_metadata')
         if match_target_compression and compression_metadata is not None:
             status_detail = f'{status_detail}, target compression matched'

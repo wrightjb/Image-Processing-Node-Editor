@@ -69,6 +69,18 @@ def mean_squared_error(candidate, target):
     return float(np.mean(difference * difference))
 
 
+def mean_absolute_error(candidate, target):
+    """Return mean absolute channel error for normalized images."""
+    candidate = normalize_image_for_metric(candidate)
+    target = normalize_image_for_metric(target)
+    if candidate.shape != target.shape:
+        raise ValueError(
+            'candidate and target images must have matching shapes: '
+            f'{candidate.shape} != {target.shape}'
+        )
+    return float(np.mean(np.abs(candidate - target)))
+
+
 def _candidate_dicts(parameter_specs: Iterable[ParameterSpec]):
     specs = list(parameter_specs)
     names = [spec.name for spec in specs]

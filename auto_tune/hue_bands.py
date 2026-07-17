@@ -156,6 +156,10 @@ def _weighted_least_squares(matrix, observed, sample_weight, ridge=1.0e-3):
         return np.zeros(matrix.shape[1], dtype=np.float32)
     weighted_matrix = matrix[valid] * sample_weight[valid, None]
     weighted_observed = observed[valid] * sample_weight[valid]
+    data_scale = float(np.linalg.norm(sample_weight[valid]))
+    if data_scale > 1.0e-6:
+        weighted_matrix /= data_scale
+        weighted_observed /= data_scale
     if ridge > 0.0:
         regularizer = np.sqrt(float(ridge)) * np.eye(
             matrix.shape[1],
@@ -189,15 +193,19 @@ def _estimate_parameters_from_hsv(source, target, blend):
         weights,
         hue_observed,
         hue_sample_weight,
+        ridge=1.0e-5,
     )
 
-    sat_ratio = (target_sat + 1.0) / (source_sat + 1.0) - 1.0
-    sat_observed = sat_ratio.reshape(-1)
-    sat_sample_weight = np.maximum(source_sat, target_sat).reshape(-1) / 255.0
+    reliable_source_sat = np.maximum(source_sat, 16.0)
+    sat_ratio = (target_sat - source_sat) / reliable_source_sat
+    sat_observed = np.clip(sat_ratio, -1.0, 1.0).reshape(-1)
+    sat_sample_weight = (source_sat.reshape(-1) / 255.0) ** 2
+    sat_sample_weight[source_sat.reshape(-1) < 16.0] = 0.0
     sat_solution = _weighted_least_squares(
         weights,
         sat_observed,
         sat_sample_weight,
+        ridge=0.002,
     )
 
     parameters = {'blend': float(blend)}

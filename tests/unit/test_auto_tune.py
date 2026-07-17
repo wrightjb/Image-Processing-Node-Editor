@@ -1058,6 +1058,61 @@ def test_hue_bands_parameters_quantize_to_half_steps():
     assert hue_bands._coordinate_candidate_values(12.0, 0.5, -90, 90) == [11.5, 12.5]
 
 
+def test_hue_bands_full_blend_estimate_rejects_low_saturation_noise(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    height, width = 32, 180
+    source_hsv = np.zeros((height, width, 3), dtype=np.float32)
+    source_hsv[:, :, 0] = np.arange(width, dtype=np.float32)[None, :]
+    source_hsv[:, :, 1] = np.linspace(0, 255, height)[:, None]
+    source_hsv[:, :, 2] = 220
+    target_hsv = source_hsv.copy()
+    noise = ((np.indices((height, width)).sum(axis=0) % 5) - 2).astype(
+        np.float32
+    )
+    target_hsv[:, :, 1] = np.clip(source_hsv[:, :, 1] + noise, 0, 255)
+    monkeypatch.setattr(
+        hue_bands,
+        '_hsv_pair',
+        lambda _source, _target: (source_hsv, target_hsv),
+    )
+
+    parameters = hue_bands._estimate_parameters_from_hsv(None, None, blend=1.0)
+    saturation_values = [
+        parameters[f'{band_name}_saturation']
+        for band_name, _center in hue_bands._BANDS
+    ]
+
+    assert max(abs(value) for value in saturation_values) <= 1.0
+
+
+def test_hue_bands_full_blend_estimate_keeps_real_saturation_change(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    height, width = 32, 180
+    source_hsv = np.zeros((height, width, 3), dtype=np.float32)
+    source_hsv[:, :, 0] = np.arange(width, dtype=np.float32)[None, :]
+    source_hsv[:, :, 1] = np.linspace(40, 180, height)[:, None]
+    source_hsv[:, :, 2] = 220
+    target_hsv = source_hsv.copy()
+    target_hsv[:, :, 1] = source_hsv[:, :, 1] * 1.25
+    monkeypatch.setattr(
+        hue_bands,
+        '_hsv_pair',
+        lambda _source, _target: (source_hsv, target_hsv),
+    )
+
+    parameters = hue_bands._estimate_parameters_from_hsv(None, None, blend=1.0)
+    saturation_values = [
+        parameters[f'{band_name}_saturation']
+        for band_name, _center in hue_bands._BANDS
+    ]
+
+    assert all(abs(value - 25.0) <= 2.0 for value in saturation_values), (
+        saturation_values
+    )
+
+
 def test_hue_bands_working_resize_subsamples_without_averaging():
     import auto_tune.hue_bands as hue_bands
 

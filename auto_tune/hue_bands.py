@@ -60,6 +60,33 @@ def _score_with_transform(image, target, score_image_transform=None):
     return _score(scored_image, target), scored_image, compression_metadata
 
 
+def _hsv_for_score(image):
+    return cv2.cvtColor(
+        np.asarray(image)[:, :, :3],
+        cv2.COLOR_BGR2HSV,
+    ).astype(np.float32)
+
+
+def _hsv_component_score(image, target_hsv, component):
+    candidate_hsv = _hsv_for_score(image)
+    if component == 'hue':
+        difference = np.abs(candidate_hsv[:, :, 0] - target_hsv[:, :, 0])
+        difference = np.minimum(difference, 180.0 - difference) / 90.0
+        saturation_weight = (
+            np.maximum(candidate_hsv[:, :, 1], target_hsv[:, :, 1]) / 255.0
+        ) ** 2
+        weight_sum = float(np.sum(saturation_weight))
+        if weight_sum <= 1.0e-6:
+            return 0.0
+        return float(np.sum((difference ** 2) * saturation_weight) / weight_sum)
+    if component == 'saturation':
+        difference = (
+            candidate_hsv[:, :, 1] - target_hsv[:, :, 1]
+        ) / 255.0
+        return float(np.mean(difference ** 2))
+    raise ValueError(f'unsupported HSV score component: {component}')
+
+
 def _weighted_score(image, target, weight_map):
     candidate = normalize_image_for_metric(image)
     normalized_target = normalize_image_for_metric(target)
@@ -247,9 +274,8 @@ def _neutral_parameter_value(parameter_name, neutral_blend=1.0):
 
 def _tunable_parameter_names():
     names = ['blend']
-    for band_name, _center in _BANDS:
-        hue_name, sat_name = _band_parameter_names(band_name)
-        names.extend((hue_name, sat_name))
+    names.extend(f'{band_name}_hue_shift' for band_name, _center in _BANDS)
+    names.extend(f'{band_name}_saturation' for band_name, _center in _BANDS)
     return names
 
 
@@ -438,7 +464,7 @@ def tune_hue_bands(
     if stages is None:
         stages = (
             ('refine', 'polish') if refine_only else
-            ('estimate', 'refine', 'polish_scaled', 'polish', 'simplify')
+            ('estimate', 'refine', 'polish_scaled', 'simplify')
         )
     stages = tuple(stages)
     fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
@@ -496,18 +522,33 @@ def tune_hue_bands(
         for index, parameters in enumerate(estimate_candidates, start=1):
             evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
 
+    score_target_hsv = None
+    if 'refine' in stages and int(refinement_iterations) > 0:
+        score_target_hsv = _hsv_for_score(work_target)
+
     for round_index in range(
         max(0, int(refinement_iterations)) if 'refine' in stages else 0
     ):
         hue_radius = max(2, 12 // (round_index + 1))
         sat_radius = max(2, 12 // (round_index + 1))
-        for band_name, _center in _BANDS:
-            hue_name, sat_name = _band_parameter_names(band_name)
-            parameter_searches = (
-                (hue_name, hue_radius, HUE_SHIFT_MIN, HUE_SHIFT_MAX),
-                (sat_name, sat_radius, -100, 100),
-            )
-            for parameter_name, radius, minimum, maximum in parameter_searches:
+        parameter_phases = (
+            (
+                'hue',
+                [f'{band_name}_hue_shift' for band_name, _center in _BANDS],
+                hue_radius,
+                HUE_SHIFT_MIN,
+                HUE_SHIFT_MAX,
+            ),
+            (
+                'saturation',
+                [f'{band_name}_saturation' for band_name, _center in _BANDS],
+                sat_radius,
+                -100,
+                100,
+            ),
+        )
+        for component, parameter_names, radius, minimum, maximum in parameter_phases:
+            for parameter_name in parameter_names:
                 current = best_parameters[parameter_name]
                 values = [
                     value for value in _local_values(
@@ -518,15 +559,53 @@ def tune_hue_bands(
                     )
                     if value != current
                 ]
+                local_parameters = dict(best_parameters)
+                local_image = image_process(work_source, **local_parameters)
+                local_score = _hsv_component_score(
+                    local_image,
+                    score_target_hsv,
+                    component,
+                )
                 for index, value in enumerate(values, start=1):
                     candidate = dict(best_parameters)
                     candidate[parameter_name] = value
-                    evaluate(
-                        candidate,
-                        f'refine {round_index + 1}',
-                        parameter_name,
-                        index,
-                        len(values),
+                    candidate_image = image_process(work_source, **candidate)
+                    component_score = _hsv_component_score(
+                        candidate_image,
+                        score_target_hsv,
+                        component,
+                    )
+                    candidate_visual_score, candidate_scored_image, _metadata = (
+                        _score_with_transform(
+                            candidate_image,
+                            work_target,
+                            score_image_transform,
+                        )
+                    )
+                    evaluated_count += 1
+                    if component_score + 1.0e-12 < local_score:
+                        local_score = component_score
+                        local_parameters = candidate
+                        local_image = candidate_scored_image
+                        best_visual_score = candidate_visual_score
+                    if progress_callback is not None:
+                        progress_callback({
+                            'phase': f'refine {round_index + 1} {component}',
+                            'band': parameter_name,
+                            'candidate_index': index,
+                            'candidate_count': len(values),
+                            'total_evaluated': evaluated_count,
+                            'parameters': dict(candidate),
+                            'score': float(candidate_visual_score),
+                            'component_score': float(component_score),
+                            'best_score': float(best_visual_score),
+                            'best_parameters': dict(local_parameters),
+                        })
+                if local_parameters != best_parameters:
+                    best_parameters = local_parameters
+                    best_image = local_image
+                    best_objective = (
+                        best_visual_score + _parameter_penalty(best_parameters)
                     )
 
     if 'estimate' in stages:

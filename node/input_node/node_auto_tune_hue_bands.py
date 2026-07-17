@@ -11,7 +11,7 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.4'
+    _ver = '0.0.5'
 
     def __init__(self):
         self._run_requested_modes = {}
@@ -276,6 +276,12 @@ class Node(DpgNodeBase):
                 parameters[name] = float(value)
         return parameters
 
+    def _run_parameters(self, ports, run_mode, tune_blend, fixed_blend):
+        parameters = self._current_output_parameters(ports)
+        if run_mode != 'tune' or not tune_blend:
+            parameters['blend'] = fixed_blend
+        return parameters
+
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
         node_id_key = str(node_id)
         run_mode = self._run_requested_modes.pop(node_id_key, None)
@@ -302,12 +308,19 @@ class Node(DpgNodeBase):
 
         def _progress(update):
             band = update.get('band') or 'blend'
+            component_detail = ''
+            if 'component_score' in update:
+                component_detail = (
+                    f" {update['phase'].split()[-1]}="
+                    f"{update['component_score']:.6g}"
+                )
             message = (
                 f"{update['phase']} {band}\n"
                 f"{self._progress_position(update)}\n"
                 f"candidate {update['candidate_index']}/{update['candidate_count']} "
                 f"total {update['total_evaluated']}\n"
                 f"score={update['score']:.6g} best={update['best_score']:.6g}"
+                f"{component_detail}"
             )
             print(f'AutoTuneHueBands: {message}')
             self._set_status(node_id, message)
@@ -335,10 +348,17 @@ class Node(DpgNodeBase):
             else:
                 score_image_transform = _score_image_transform
 
+        current_parameters = self._run_parameters(
+            ports,
+            run_mode,
+            tune_blend,
+            fixed_blend,
+        )
+
         result = tune_hue_bands(
             source,
             target,
-            current_parameters=self._current_output_parameters(ports),
+            current_parameters=current_parameters,
             refinement_iterations=refinement_iterations,
             progress_callback=_progress,
             tune_blend=tune_blend,

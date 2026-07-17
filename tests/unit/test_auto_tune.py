@@ -1166,7 +1166,7 @@ def test_hue_bands_refine_only_starts_from_current_outputs(monkeypatch):
     assert result.best_score == 0.0
 
 
-def test_hue_bands_refinement_uses_full_score_and_tunes_saturation(monkeypatch):
+def test_hue_bands_refinement_tunes_hue_before_saturation(monkeypatch):
     import auto_tune.hue_bands as hue_bands
 
     source = np.zeros((1, 1, 3), dtype=np.uint8)
@@ -1180,11 +1180,20 @@ def test_hue_bands_refinement_uses_full_score_and_tunes_saturation(monkeypatch):
 
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
     monkeypatch.setattr(hue_bands, '_score', fake_score)
+    monkeypatch.setattr(hue_bands, '_hsv_for_score', lambda _image: None)
     monkeypatch.setattr(
         hue_bands,
-        '_weighted_score',
-        lambda *_args, **_kwargs: pytest.fail('refinement used a band-only score'),
+        '_hsv_component_score',
+        lambda parameters, _target_hsv, component: (
+            abs(parameters.get('red_saturation', 0.0) - 6.0)
+            if component == 'saturation'
+            else sum(
+                abs(parameters.get(f'{band_name}_hue_shift', 0.0))
+                for band_name, _center in hue_bands._BANDS
+            )
+        ),
     )
+    progress_updates = []
 
     result = hue_bands.tune_hue_bands(
         source,
@@ -1192,11 +1201,23 @@ def test_hue_bands_refinement_uses_full_score_and_tunes_saturation(monkeypatch):
         current_parameters={'blend': 1.0},
         refinement_iterations=1,
         refine_only=True,
+        progress_callback=progress_updates.append,
     )
 
     assert result.best_parameters['red_saturation'] == 6.0
     assert result.best_score == 0.0
     assert result.evaluated_count < 100
+    hue_updates = [
+        index for index, update in enumerate(progress_updates)
+        if update['phase'] == 'refine 1 hue'
+    ]
+    saturation_updates = [
+        index for index, update in enumerate(progress_updates)
+        if update['phase'] == 'refine 1 saturation'
+    ]
+    assert hue_updates
+    assert saturation_updates
+    assert max(hue_updates) < min(saturation_updates)
 
 
 def test_auto_tune_hue_bands_refine_button_queues_refine_mode(monkeypatch):
@@ -1223,6 +1244,34 @@ def test_auto_tune_hue_bands_refine_button_queues_refine_mode(monkeypatch):
     assert node._run_requested_modes == {'42': 'polish'}
     node._on_simplify_button(None, None, 42)
     assert node._run_requested_modes == {'42': 'simplify'}
+
+
+def test_auto_tune_hue_bands_stages_adopt_fixed_blend(monkeypatch):
+    import node.input_node.node_auto_tune_hue_bands as hue_node_module
+
+    node = hue_node_module.Node()
+    ports = node.create_ports(42)
+    monkeypatch.setattr(
+        hue_node_module,
+        'dpg_get_value',
+        lambda tag: 0.0 if tag == ports.blend.value_tag else None,
+    )
+
+    refine_parameters = node._run_parameters(
+        ports,
+        run_mode='refine',
+        tune_blend=False,
+        fixed_blend=1.0,
+    )
+    tuned_parameters = node._run_parameters(
+        ports,
+        run_mode='tune',
+        tune_blend=True,
+        fixed_blend=1.0,
+    )
+
+    assert refine_parameters['blend'] == 1.0
+    assert tuned_parameters['blend'] == 0.0
 
 
 def test_tune_hue_bands_recovers_simple_band_adjustment():
@@ -1417,7 +1466,7 @@ def test_hue_bands_full_image_polish_finds_exact_integer_solution(monkeypatch):
     assert progress_updates[0]['parameter_count'] == 3
 
 
-def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeypatch):
+def test_hue_bands_tune_stops_after_scaled_polish(monkeypatch):
     import auto_tune.hue_bands as hue_bands
 
     source = np.zeros((2, 1, 3), dtype=np.uint8)
@@ -1460,8 +1509,8 @@ def test_hue_bands_tune_polishes_on_full_resolution_after_working_resize(monkeyp
         fixed_blend=0.0,
     )
 
-    assert result.best_parameters['blue_hue_shift'] == 90
-    assert result.best_score == 0.0
+    assert result.best_parameters['blue_hue_shift'] == 89
+    assert result.best_score == 1.0
 
 
 def test_tune_gaussian_blur_auto_kernel_tunes_sigma_only(monkeypatch):

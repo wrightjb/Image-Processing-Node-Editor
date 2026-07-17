@@ -5,7 +5,7 @@
 import cv2
 import numpy as np
 
-from auto_tune.service import TuneResult, mean_squared_error, normalize_image_for_metric
+from auto_tune.service import TuneResult, mean_absolute_error, normalize_image_for_metric
 from node.process_node.node_hue_saturation_adjustment import (
     HUE_SHIFT_MAX,
     HUE_SHIFT_MIN,
@@ -49,7 +49,7 @@ def _match_target_shape(source, target):
 
 
 def _score(image, target):
-    return mean_squared_error(image, target)
+    return mean_absolute_error(image, target)
 
 
 def _score_with_transform(image, target, score_image_transform=None):
@@ -78,12 +78,12 @@ def _hsv_component_score(image, target_hsv, component):
         weight_sum = float(np.sum(saturation_weight))
         if weight_sum <= 1.0e-6:
             return 0.0
-        return float(np.sum((difference ** 2) * saturation_weight) / weight_sum)
+        return float(np.sum(difference * saturation_weight) / weight_sum)
     if component == 'saturation':
         difference = (
             candidate_hsv[:, :, 1] - target_hsv[:, :, 1]
         ) / 255.0
-        return float(np.mean(difference ** 2))
+        return float(np.mean(np.abs(difference)))
     raise ValueError(f'unsupported HSV score component: {component}')
 
 
@@ -101,7 +101,7 @@ def _weighted_score(image, target, weight_map):
     weight_sum = float(np.sum(weights))
     if weight_sum <= 1.0e-6:
         return _score(image, target)
-    pixel_error = np.mean((candidate - normalized_target) ** 2, axis=2)
+    pixel_error = np.mean(np.abs(candidate - normalized_target), axis=2)
     return float(np.sum(pixel_error * weights) / weight_sum)
 
 
@@ -440,6 +440,103 @@ def _simplify_parameters(
     return simplified, current_score
 
 
+def _run_default_tune(
+    source,
+    target,
+    current_parameters,
+    refinement_iterations,
+    progress_callback,
+    tune_blend,
+    fixed_blend,
+    score_image_transform,
+):
+    """Run no-blend discovery before refining at the requested blend."""
+    evaluated_offset = 0
+
+    def run_stages(parameters, stages, stage_fixed_blend):
+        nonlocal evaluated_offset
+
+        def offset_progress(update):
+            if progress_callback is None:
+                return
+            adjusted = dict(update)
+            adjusted['total_evaluated'] = (
+                int(update.get('total_evaluated', 0)) + evaluated_offset
+            )
+            progress_callback(adjusted)
+
+        result = tune_hue_bands(
+            source,
+            target,
+            current_parameters=parameters,
+            refinement_iterations=refinement_iterations,
+            progress_callback=offset_progress,
+            tune_blend=False,
+            fixed_blend=stage_fixed_blend,
+            score_image_transform=score_image_transform,
+            stages=stages,
+        )
+        evaluated_offset += result.evaluated_count
+        next_parameters = dict(result.best_parameters)
+        next_parameters.pop('compression_metadata', None)
+        return result, next_parameters
+
+    no_blend_parameters = dict(current_parameters)
+    no_blend_parameters['blend'] = 0.0
+    result, parameters = run_stages(
+        no_blend_parameters,
+        ('estimate', 'refine', 'polish_scaled'),
+        0.0,
+    )
+
+    selected_blend = float(np.clip(fixed_blend, 0.0, 1.0))
+    if tune_blend:
+        work_source, work_target = _resize_pair(source, target)
+        best_blend_score = None
+        for index, blend in enumerate(BLEND_CANDIDATES, start=1):
+            candidate = dict(parameters)
+            candidate['blend'] = blend
+            candidate_image = image_process(work_source, **candidate)
+            candidate_score, _scored_image, _metadata = _score_with_transform(
+                candidate_image,
+                work_target,
+                score_image_transform,
+            )
+            evaluated_offset += 1
+            if best_blend_score is None or candidate_score < best_blend_score:
+                best_blend_score = candidate_score
+                selected_blend = blend
+            if progress_callback is not None:
+                progress_callback({
+                    'phase': 'blend',
+                    'band': None,
+                    'candidate_index': index,
+                    'candidate_count': len(BLEND_CANDIDATES),
+                    'total_evaluated': evaluated_offset,
+                    'parameters': dict(candidate),
+                    'score': float(candidate_score),
+                    'best_score': float(best_blend_score),
+                    'best_parameters': {
+                        **parameters,
+                        'blend': selected_blend,
+                    },
+                })
+
+    parameters['blend'] = selected_blend
+    if selected_blend > 0.0:
+        result, parameters = run_stages(
+            parameters,
+            ('refine', 'polish_scaled'),
+            selected_blend,
+        )
+    return TuneResult(
+        best_parameters=result.best_parameters,
+        best_score=result.best_score,
+        best_image=result.best_image,
+        evaluated_count=evaluated_offset,
+    )
+
+
 def tune_hue_bands(
     source,
     target,
@@ -461,11 +558,19 @@ def tune_hue_bands(
     if source is None or target is None:
         raise ValueError('source and target images are required')
     current_parameters = current_parameters or {}
-    if stages is None:
-        stages = (
-            ('refine', 'polish') if refine_only else
-            ('estimate', 'refine', 'polish_scaled', 'simplify')
+    if stages is None and not refine_only:
+        return _run_default_tune(
+            source,
+            target,
+            current_parameters,
+            refinement_iterations,
+            progress_callback,
+            tune_blend,
+            fixed_blend,
+            score_image_transform,
         )
+    if stages is None:
+        stages = ('refine', 'polish')
     stages = tuple(stages)
     fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
     work_source, work_target = _resize_pair(source, target)

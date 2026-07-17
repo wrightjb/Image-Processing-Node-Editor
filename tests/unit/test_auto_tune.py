@@ -15,6 +15,7 @@ from auto_tune.service import (
     ParameterSpec,
     TuneRequest,
     grid_search,
+    mean_absolute_error,
     mean_squared_error,
 )
 import node.process_node.node_gaussian_blur as gaussian_blur_module
@@ -73,6 +74,15 @@ def test_metric_rejects_shape_mismatch():
         assert 'matching shapes' in str(exc)
     else:
         raise AssertionError('shape mismatch should fail')
+
+
+def test_mean_absolute_error_matches_absolute_diff_brightness():
+    candidate = np.array([[[0, 20, 100]]], dtype=np.uint8)
+    target = np.zeros_like(candidate)
+
+    assert mean_absolute_error(candidate, target) == pytest.approx(
+        np.mean(candidate) / 255.0
+    )
 
 
 def test_gaussian_blur_candidate_helpers_use_node_metadata_domains():
@@ -1272,6 +1282,59 @@ def test_auto_tune_hue_bands_stages_adopt_fixed_blend(monkeypatch):
 
     assert refine_parameters['blend'] == 1.0
     assert tuned_parameters['blend'] == 0.0
+
+
+def test_hue_bands_default_tune_runs_no_blend_then_requested_blend(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    calls = []
+
+    def fake_tune(
+        source,
+        target,
+        current_parameters=None,
+        fixed_blend=1.0,
+        stages=None,
+        **_kwargs,
+    ):
+        del source, target
+        calls.append((dict(current_parameters), fixed_blend, tuple(stages)))
+        parameters = dict(current_parameters)
+        parameters['blend'] = fixed_blend
+        return hue_bands.TuneResult(
+            best_parameters=parameters,
+            best_score=0.1,
+            best_image=np.zeros((1, 1, 3), dtype=np.uint8),
+            evaluated_count=3,
+        )
+
+    monkeypatch.setattr(hue_bands, 'tune_hue_bands', fake_tune)
+
+    result = hue_bands._run_default_tune(
+        np.zeros((1, 1, 3), dtype=np.uint8),
+        np.zeros((1, 1, 3), dtype=np.uint8),
+        current_parameters={'blend': 1.0, 'red_hue_shift': 5.0},
+        refinement_iterations=2,
+        progress_callback=None,
+        tune_blend=False,
+        fixed_blend=0.75,
+        score_image_transform=None,
+    )
+
+    assert calls == [
+        (
+            {'blend': 0.0, 'red_hue_shift': 5.0},
+            0.0,
+            ('estimate', 'refine', 'polish_scaled'),
+        ),
+        (
+            {'blend': 0.75, 'red_hue_shift': 5.0},
+            0.75,
+            ('refine', 'polish_scaled'),
+        ),
+    ]
+    assert result.best_parameters['blend'] == 0.75
+    assert result.evaluated_count == 6
 
 
 def test_tune_hue_bands_recovers_simple_band_adjustment():

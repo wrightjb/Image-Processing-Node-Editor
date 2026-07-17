@@ -11,10 +11,10 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.2'
+    _ver = '0.0.3'
 
     def __init__(self):
-        self._run_requested_node_ids = set()
+        self._run_requested_modes = {}
 
     node_label = 'Auto Tune (Hue Bands)'
     node_tag = 'AutoTuneHueBands'
@@ -45,9 +45,7 @@ class Node(DpgNodeBase):
             self.add_editor_toolbar(
                 node_id,
                 callback=callback,
-                build_extra_controls=lambda: dpg.add_button(
-                    label='Run Tune', width=80, callback=self._on_run_button, user_data=node_id,
-                ),
+                build_extra_controls=lambda: self._add_run_controls(node_id),
             )
             with dpg.node_attribute(tag=self._status_attr_tag(node_id), attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_text('idle', tag=self._status_value_tag(node_id))
@@ -155,10 +153,30 @@ class Node(DpgNodeBase):
     def _set_status(self, node_id, message):
         dpg_set_value(self._status_value_tag(node_id), message)
 
+    def _add_run_controls(self, node_id):
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Run Tune',
+                width=80,
+                callback=self._on_run_button,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Refine Only',
+                width=80,
+                callback=self._on_refine_button,
+                user_data=node_id,
+            )
+
     def _on_run_button(self, sender, app_data, user_data):
         del sender, app_data
-        self._run_requested_node_ids.add(str(user_data))
+        self._run_requested_modes[str(user_data)] = 'tune'
         self._set_status(user_data, 'queued')
+
+    def _on_refine_button(self, sender, app_data, user_data):
+        del sender, app_data
+        self._run_requested_modes[str(user_data)] = 'refine'
+        self._set_status(user_data, 'queued refine')
 
     def _linked_image_result(
         self,
@@ -202,9 +220,10 @@ class Node(DpgNodeBase):
 
     def update(self, node_id, connection_list, node_image_dict, node_result_dict):
         node_id_key = str(node_id)
-        if node_id_key not in self._run_requested_node_ids:
+        run_mode = self._run_requested_modes.pop(node_id_key, None)
+        if run_mode is None:
             return None, {'__auto_tune_ready__': False}
-        self._run_requested_node_ids.discard(node_id_key)
+        refine_only = run_mode == 'refine'
         ports = self.ports(node_id)
         source = self._linked_image(ports.source_image, connection_list, node_image_dict)
         target, target_result = self._linked_image_result(
@@ -220,7 +239,7 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id), DEFAULT_REFINEMENT_ITERATIONS, 0,
         )
         dpg_set_value(self._refinement_iterations_value_tag(node_id), refinement_iterations)
-        self._set_status(node_id, 'running')
+        self._set_status(node_id, 'running refine' if refine_only else 'running')
 
         def _progress(update):
             band = update.get('band') or 'blend'
@@ -265,13 +284,15 @@ class Node(DpgNodeBase):
             tune_blend=tune_blend,
             fixed_blend=fixed_blend,
             score_image_transform=score_image_transform,
+            refine_only=refine_only,
         )
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
             if port is not None:
                 dpg_set_value(port.value_tag, float(value))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
-        status_detail = f'done: {result.evaluated_count} candidates'
+        status_prefix = 'refine done' if refine_only else 'done'
+        status_detail = f'{status_prefix}: {result.evaluated_count} candidates'
         compression_metadata = result.best_parameters.get('compression_metadata')
         if match_target_compression and compression_metadata is not None:
             status_detail = f'{status_detail}, target compression matched'

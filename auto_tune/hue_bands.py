@@ -400,8 +400,14 @@ def tune_hue_bands(
     tune_blend=False,
     fixed_blend=0.0,
     score_image_transform=None,
+    refine_only=False,
 ):
-    """Tune Hue Bands with HSV-domain estimation plus local refinement."""
+    """Tune Hue Bands, optionally refining only the supplied parameters.
+
+    ``refine_only`` skips HSV estimation, blend search, and simplification. It
+    starts from ``current_parameters`` and runs the local and full-image refine
+    passes, which makes repeated manual-style refinement inexpensive.
+    """
     if source is None or target is None:
         raise ValueError('source and target images are required')
     current_parameters = current_parameters or {}
@@ -449,14 +455,15 @@ def tune_hue_bands(
                 'best_parameters': dict(best_parameters),
             })
 
-    estimate_candidates = _estimate_candidate_parameters(
-        work_source,
-        work_target,
-        tune_blend=tune_blend,
-        fixed_blend=fixed_blend,
-    )
-    for index, parameters in enumerate(estimate_candidates, start=1):
-        evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
+    if not refine_only:
+        estimate_candidates = _estimate_candidate_parameters(
+            work_source,
+            work_target,
+            tune_blend=tune_blend,
+            fixed_blend=fixed_blend,
+        )
+        for index, parameters in enumerate(estimate_candidates, start=1):
+            evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
 
     for round_index in range(max(0, int(refinement_iterations))):
         hue_radius = max(2, 12 // (round_index + 1))
@@ -527,13 +534,14 @@ def tune_hue_bands(
                 best_visual_score = local_best_visual_score
                 best_objective = best_visual_score + _parameter_penalty(best_parameters)
 
-    if tune_blend:
-        for index, blend in enumerate(BLEND_CANDIDATES, start=1):
-            candidate = dict(best_parameters)
-            candidate['blend'] = blend
-            evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
-    else:
-        best_parameters['blend'] = fixed_blend
+    if not refine_only:
+        if tune_blend:
+            for index, blend in enumerate(BLEND_CANDIDATES, start=1):
+                candidate = dict(best_parameters)
+                candidate['blend'] = blend
+                evaluate(candidate, 'blend', None, index, len(BLEND_CANDIDATES))
+        else:
+            best_parameters['blend'] = fixed_blend
 
     full_source = np.asarray(source)
     full_target = _match_target_shape(full_source, target)
@@ -579,16 +587,17 @@ def tune_hue_bands(
             'best_parameters': dict(best_parameters),
         })
 
-    best_parameters, best_visual_score = _simplify_parameters(
-        best_parameters,
-        full_source,
-        full_target,
-        original_full_score,
-        best_visual_score,
-        score_callback=_progress_simplify,
-        neutral_blend=fixed_blend if not tune_blend else 1.0,
-        score_image_transform=score_image_transform,
-    )
+    if not refine_only:
+        best_parameters, best_visual_score = _simplify_parameters(
+            best_parameters,
+            full_source,
+            full_target,
+            original_full_score,
+            best_visual_score,
+            score_callback=_progress_simplify,
+            neutral_blend=fixed_blend if not tune_blend else 1.0,
+            score_image_transform=score_image_transform,
+        )
 
     full_best_image = image_process(full_source, **best_parameters)
     full_score, full_scored_image, compression_metadata = _score_with_transform(

@@ -1057,6 +1057,60 @@ def test_hue_bands_parameters_quantize_to_half_steps():
     assert hue_bands._clamp_to_step(-12.25, -90, 90) == -12.5
     assert hue_bands._coordinate_candidate_values(12.0, 0.5, -90, 90) == [11.5, 12.5]
 
+
+def test_hue_bands_refine_only_starts_from_current_outputs(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    source = np.zeros((1, 1, 3), dtype=np.uint8)
+    target = np.zeros_like(source)
+
+    def fake_image_process(_source, **parameters):
+        return parameters
+
+    def fake_score(parameters, _target):
+        return abs(parameters.get('blue_hue_shift', 0.0) - 11.0)
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+    monkeypatch.setattr(
+        hue_bands,
+        '_estimate_candidate_parameters',
+        lambda *_args, **_kwargs: pytest.fail('refine-only ran estimation'),
+    )
+
+    result = hue_bands.tune_hue_bands(
+        source,
+        target,
+        current_parameters={
+            'blend': 0.75,
+            'blue_hue_shift': 10.5,
+        },
+        refinement_iterations=0,
+        refine_only=True,
+    )
+
+    assert result.best_parameters['blue_hue_shift'] == 11.0
+    assert result.best_parameters['blend'] == 0.75
+    assert result.best_score == 0.0
+
+
+def test_auto_tune_hue_bands_refine_button_queues_refine_mode(monkeypatch):
+    import node.input_node.node_auto_tune_hue_bands as hue_node_module
+
+    node = hue_node_module.Node()
+    status_updates = []
+    monkeypatch.setattr(
+        hue_node_module,
+        'dpg_set_value',
+        lambda tag, value: status_updates.append((tag, value)),
+    )
+
+    node._on_refine_button(None, None, 42)
+
+    assert node._run_requested_modes == {'42': 'refine'}
+    assert status_updates[-1] == (node._status_value_tag(42), 'queued refine')
+
+
 def test_tune_hue_bands_recovers_simple_band_adjustment():
     import cv2
     if not hasattr(cv2, 'cvtColor'):

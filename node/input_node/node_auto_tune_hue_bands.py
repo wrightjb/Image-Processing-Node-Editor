@@ -66,7 +66,7 @@ class Node(DpgNodeBase):
                 dpg.add_slider_float(
                     tag=self._fixed_blend_value_tag(node_id),
                     label='Fixed Blend',
-                    default_value=1.0,
+                    default_value=0.0,
                     min_value=0.0,
                     max_value=1.0,
                     width=120,

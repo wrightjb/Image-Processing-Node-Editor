@@ -1094,6 +1094,39 @@ def test_hue_bands_refine_only_starts_from_current_outputs(monkeypatch):
     assert result.best_score == 0.0
 
 
+def test_hue_bands_refinement_uses_full_score_and_tunes_saturation(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    source = np.zeros((1, 1, 3), dtype=np.uint8)
+    target = np.zeros_like(source)
+
+    def fake_image_process(_source, **parameters):
+        return parameters
+
+    def fake_score(parameters, _target):
+        return abs(parameters.get('red_saturation', 0.0) - 6.0)
+
+    monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
+    monkeypatch.setattr(hue_bands, '_score', fake_score)
+    monkeypatch.setattr(
+        hue_bands,
+        '_weighted_score',
+        lambda *_args, **_kwargs: pytest.fail('refinement used a band-only score'),
+    )
+
+    result = hue_bands.tune_hue_bands(
+        source,
+        target,
+        current_parameters={'blend': 1.0},
+        refinement_iterations=1,
+        refine_only=True,
+    )
+
+    assert result.best_parameters['red_saturation'] == 6.0
+    assert result.best_score == 0.0
+    assert result.evaluated_count < 100
+
+
 def test_auto_tune_hue_bands_refine_button_queues_refine_mode(monkeypatch):
     import node.input_node.node_auto_tune_hue_bands as hue_node_module
 
@@ -1163,7 +1196,7 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
         del target
         score = 0.1
         if parameters.get('blue_hue_shift') == 35:
-            score = 0.0095 if parameters.get('blend') == 1.0 else 0.009
+            score = 0.00905 if parameters.get('blend') == 1.0 else 0.009
         return score
 
     monkeypatch.setattr(hue_bands, 'image_process', fake_image_process)
@@ -1184,7 +1217,7 @@ def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
     assert simplified['blue_hue_shift'] == 35
     assert simplified['magenta_hue_shift'] == 0
     assert simplified['blend'] == 1.0
-    assert simplified_score == 0.0095
+    assert simplified_score == 0.00905
 
     simplified_fixed_zero, _score = hue_bands._simplify_parameters(
         {'blend': 0.75, 'blue_hue_shift': 35},
@@ -1217,7 +1250,7 @@ def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch)
         tune_blend=True,
     )
 
-    assert [candidate['blend'] for candidate in default_candidates] == [0.0]
+    assert [candidate['blend'] for candidate in default_candidates] == [1.0]
     assert [candidate['blend'] for candidate in tuned_candidates] == list(
         hue_bands.BLEND_CANDIDATES
     )
@@ -1228,7 +1261,7 @@ def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch)
     )
 
     assert [candidate['blend'] for candidate in fixed_candidates] == [0.35]
-    assert seen_blends == [0.0] + list(hue_bands.BLEND_CANDIDATES) + [0.35]
+    assert seen_blends == [1.0] + list(hue_bands.BLEND_CANDIDATES) + [0.35]
 
 
 def test_auto_tune_hue_bands_tune_blend_defaults_false():

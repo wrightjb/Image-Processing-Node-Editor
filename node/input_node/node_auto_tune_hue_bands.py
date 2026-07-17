@@ -66,7 +66,7 @@ class Node(DpgNodeBase):
                 dpg.add_slider_float(
                     tag=self._fixed_blend_value_tag(node_id),
                     label='Fixed Blend',
-                    default_value=0.0,
+                    default_value=1.0,
                     min_value=0.0,
                     max_value=1.0,
                     width=120,
@@ -148,7 +148,7 @@ class Node(DpgNodeBase):
         try:
             return max(0.0, min(1.0, float(value)))
         except (TypeError, ValueError):
-            return 0.0
+            return 1.0
 
     def _set_status(self, node_id, message):
         dpg_set_value(self._status_value_tag(node_id), message)
@@ -162,7 +162,7 @@ class Node(DpgNodeBase):
                 user_data=node_id,
             )
             dpg.add_button(
-                label='Refine Only',
+                label='Refine',
                 width=80,
                 callback=self._on_refine_button,
                 user_data=node_id,

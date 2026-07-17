@@ -169,6 +169,110 @@ def test_update_node_info_uses_cache_when_signature_unchanged():
     assert result_dict['2:TestNode'] == {'v': 1}
 
 
+def test_update_node_info_static_cache_hit_preserves_active_output_objects():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_image = bytearray(b'image')
+    process_result = {'values': [1, 2, 3]}
+    process_node = Mock()
+    process_node.update.return_value = (process_image, process_result)
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+    version_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+    active_image = image_dict['2:TestNode']
+    active_result = result_dict['2:TestNode']
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+
+    process_node.update.assert_called_once()
+    assert image_dict['2:TestNode'] is active_image
+    assert result_dict['2:TestNode'] is active_result
+
+
+def test_update_node_info_static_cache_hit_restores_missing_active_outputs():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = (bytearray(b'image'), {'values': [1]})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+    version_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+    cached_image = cache_dict['2:TestNode']['image']
+    cached_result = cache_dict['2:TestNode']['result']
+    del image_dict['2:TestNode']
+    del result_dict['2:TestNode']
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+
+    process_node.update.assert_called_once()
+    assert image_dict['2:TestNode'] == cached_image
+    assert image_dict['2:TestNode'] is not cached_image
+    assert result_dict['2:TestNode'] == cached_result
+    assert result_dict['2:TestNode'] is not cached_result
+
+
 def test_update_node_info_invalidates_cache_when_setting_changes():
     source_node = Mock()
     source_node.update.return_value = ('src-img', {'source': 1})

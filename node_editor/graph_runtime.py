@@ -264,7 +264,9 @@ def update_node_info(
         sorted_node_connection_dict = node_editor.get_sorted_node_connection()
 
     for node_id_name in node_list:
-        if node_id_name not in node_image_dict:
+        has_active_image = node_id_name in node_image_dict
+        has_active_result = node_id_name in node_result_dict
+        if not has_active_image:
             node_image_dict[node_id_name] = None
 
         node_id, node_name = node_id_name.split(':')
@@ -389,12 +391,19 @@ def update_node_info(
                 cached_result is not None and
                 cached_result.get('signature') == cache_signature
             ):
-                node_image_dict[node_id_name] = copy.deepcopy(
-                    cached_result['image']
-                )
-                node_result_dict[node_id_name] = copy.deepcopy(
-                    cached_result['result']
-                )
+                # A static cache hit normally means these dictionaries already
+                # contain this exact output from the previous tick.  Keep those
+                # objects in place rather than copying full-resolution images
+                # on every graph traversal.  Restore from the cache only when
+                # a caller supplied cache state without the active outputs.
+                if not has_active_image:
+                    node_image_dict[node_id_name] = copy.deepcopy(
+                        cached_result['image']
+                    )
+                if not has_active_result:
+                    node_result_dict[node_id_name] = copy.deepcopy(
+                        cached_result['result']
+                    )
                 if (
                     cached_result.get('rendered_signature') != cache_signature and
                     hasattr(node_instance, 'render_cached_output')

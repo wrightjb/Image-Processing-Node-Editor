@@ -175,14 +175,18 @@ def _build_node_signature(
         source_version = node_version_dict.get(source_node_id_name)
         if source_version is not None:
             upstream_image_value = ('version', _freeze_cache_value(source_version))
+            upstream_result_value = ('version', _freeze_cache_value(source_version))
         else:
             upstream_image_value = _freeze_cache_value(
                 node_image_dict.get(source_node_id_name)
             )
+            upstream_result_value = _freeze_cache_value(
+                _strip_cache_meta(source_result)
+            )
         upstream_values.append((
             source_tag,
             upstream_image_value,
-            _freeze_cache_value(_strip_cache_meta(source_result)),
+            upstream_result_value,
         ))
 
     signature_payload = {
@@ -256,6 +260,33 @@ def _build_pipeline_signature_for_video(
     }
     payload_bytes = pickle.dumps(signature_payload)
     return hashlib.sha1(payload_bytes).hexdigest()
+
+
+def _build_uncached_output_version(image, result):
+    """Build a stable small-output revision for uncached nodes.
+
+    This is primarily for uncached parameter/tuner nodes: downstream cache
+    signatures can compare this token instead of re-freezing identical metadata
+    results every pass.  Large mutable image arrays intentionally fall back to
+    identity metadata instead of hashing pixels; live/video sources should keep
+    publishing explicit frame tokens.
+    """
+    if (
+        hasattr(image, 'shape') and
+        hasattr(image, 'dtype') and
+        hasattr(image, 'tobytes')
+    ):
+        image_value = (
+            'ndarray-ref',
+            tuple(image.shape),
+            str(image.dtype),
+            id(image),
+        )
+    else:
+        image_value = _freeze_cache_value(image)
+
+    payload = (image_value, _freeze_cache_value(_strip_cache_meta(result)))
+    return ('uncached-output', hashlib.sha1(pickle.dumps(payload)).hexdigest())
 
 
 def _extract_frame_token(result):
@@ -674,7 +705,10 @@ def update_node_info(
             if frame_token is not None:
                 node_version_dict[node_id_name] = ('frame', frame_token)
             else:
-                node_version_dict.pop(node_id_name, None)
+                node_version_dict[node_id_name] = _build_uncached_output_version(
+                    image,
+                    result,
+                )
 
         tracer.update_finished(
             node_id_name,

@@ -735,3 +735,33 @@ def test_auto_tune_curves_parameter_sync_waits_for_ready_result(monkeypatch):
         source_tag,
         {'7:AutoTuneCurves': {'__auto_tune_ready__': True}},
     )
+
+
+def test_update_node_info_uses_sorted_connection_order():
+    execution_order = []
+
+    source_node = Mock()
+    source_node.update.side_effect = (
+        lambda *args: execution_order.append('source') or ('src', {})
+    )
+
+    process_node = Mock()
+    process_node.update.side_effect = (
+        lambda *args: execution_order.append('process') or ('img', {})
+    )
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['2:TestNode', '1:SourceNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    update_node_info(editor, {}, {}, mode_async=False)
+
+    assert execution_order == ['source', 'process']

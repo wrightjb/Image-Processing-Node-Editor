@@ -424,7 +424,17 @@ def update_node_info(
     else:
         sorted_node_connection_dict = node_editor.get_sorted_node_connection()
 
-    for node_id_name in node_list:
+    ordered_node_list = [
+        node_id_name for node_id_name in sorted_node_connection_dict.keys()
+        if node_id_name in active_node_set
+    ]
+    ordered_node_set = set(ordered_node_list)
+    ordered_node_list.extend(
+        node_id_name for node_id_name in node_list
+        if node_id_name not in ordered_node_set
+    )
+
+    for node_id_name in ordered_node_list:
         has_active_image = node_id_name in node_image_dict
         has_active_result = node_id_name in node_result_dict
         if not has_active_image:

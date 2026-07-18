@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import pickle
+import time
 
 from node.port_model import LinkConnectionAdapter
 
@@ -10,13 +11,25 @@ from node.port_model import LinkConnectionAdapter
 class GraphRuntime:
     """Owns graph update state (images/results/cache) and executes update ticks."""
 
-    def __init__(self, cache_enabled=True, cache_source_nodes=False):
+    def __init__(
+        self,
+        cache_enabled=True,
+        cache_source_nodes=False,
+        trace_enabled=False,
+        trace_threshold_ms=50.0,
+        trace_repeat_seconds=30.0,
+    ):
         self.node_image_dict = {}
         self.node_result_dict = {}
         self.node_cache_dict = {}
         self.node_version_dict = {}
         self.cache_enabled = cache_enabled
         self.cache_source_nodes = cache_source_nodes
+        self.tracer = RuntimeTracePrinter(
+            enabled=trace_enabled,
+            threshold_ms=trace_threshold_ms,
+            repeat_seconds=trace_repeat_seconds,
+        )
 
     def step(self, node_editor, mode_async=True):
         update_node_info(
@@ -28,7 +41,73 @@ class GraphRuntime:
             mode_async=mode_async,
             cache_enabled=self.cache_enabled,
             cache_source_nodes=self.cache_source_nodes,
+            tracer=self.tracer,
         )
+
+
+class RuntimeTracePrinter:
+    """Emit concise, throttled diagnostics for graph runtime work."""
+
+    def __init__(
+        self,
+        enabled=False,
+        threshold_ms=50.0,
+        repeat_seconds=30.0,
+        clock=time.perf_counter,
+        emit=None,
+    ):
+        self.enabled = enabled
+        self.threshold_ms = max(0.0, float(threshold_ms))
+        self.repeat_seconds = max(0.0, float(repeat_seconds))
+        self._clock = clock
+        self._emit = emit or (lambda message: print(message, flush=True))
+        self._last_reported_at = {}
+
+    def _can_report(self, event, node_id_name, now):
+        key = (event, node_id_name)
+        last_reported_at = self._last_reported_at.get(key)
+        if (
+            last_reported_at is not None and
+            now - last_reported_at < self.repeat_seconds
+        ):
+            return False
+        self._last_reported_at[key] = now
+        return True
+
+    def update_started(self, node_id_name):
+        if not self.enabled:
+            return None, False
+        now = self._clock()
+        announced = self._can_report('update', node_id_name, now)
+        if announced:
+            self._emit(f'[runtime] update {node_id_name}')
+        return now, announced
+
+    def update_finished(self, node_id_name, started_at, announced):
+        if not self.enabled or started_at is None:
+            return
+        elapsed_ms = (self._clock() - started_at) * 1000.0
+        if announced:
+            self._emit(f'[runtime] done   {node_id_name} {elapsed_ms:.1f} ms')
+        elif elapsed_ms >= self.threshold_ms:
+            now = self._clock()
+            if self._can_report('slow-update', node_id_name, now):
+                self._emit(
+                    f'[runtime] slow update {node_id_name} {elapsed_ms:.1f} ms'
+                )
+
+    def expensive_operation(self, operation, node_id_name, elapsed_seconds):
+        if not self.enabled:
+            return
+        elapsed_ms = elapsed_seconds * 1000.0
+        if elapsed_ms < self.threshold_ms:
+            return
+        now = self._clock()
+        event = f'slow-{operation}'
+        if self._can_report(event, node_id_name, now):
+            self._emit(
+                f'[runtime] slow {operation} {node_id_name} {elapsed_ms:.1f} ms'
+            )
 
 
 def _freeze_cache_value(value):
@@ -207,6 +286,7 @@ def update_node_info(
     mode_async=True,
     cache_enabled=True,
     cache_source_nodes=False,
+    tracer=None,
 ):
     """
     Update all nodes in topological order with optional in-memory caching.
@@ -222,6 +302,8 @@ def update_node_info(
         node_cache_dict = {}
     if node_version_dict is None:
         node_version_dict = {}
+    if tracer is None:
+        tracer = RuntimeTracePrinter()
 
     if not cache_enabled and node_cache_dict:
         node_cache_dict.clear()
@@ -335,6 +417,7 @@ def update_node_info(
                 if frame_token is not None:
                     upstream_frame_tokens.append((source_tag, frame_token))
 
+            signature_started_at = time.perf_counter() if tracer.enabled else None
             cache_signature = _build_node_signature(
                 node_id,
                 connection_list,
@@ -343,6 +426,12 @@ def update_node_info(
                 node_setting,
                 node_version_dict=node_version_dict,
             )
+            if signature_started_at is not None:
+                tracer.expensive_operation(
+                    'signature',
+                    node_id_name,
+                    time.perf_counter() - signature_started_at,
+                )
             cached_result = node_cache_dict.get(node_id_name)
             if upstream_frame_tokens:
                 pipeline_signature = _build_pipeline_signature_for_video(
@@ -360,12 +449,21 @@ def update_node_info(
                     cached_frame_results = cached_result.get('frame_results', {})
                     frame_cached_result = cached_frame_results.get(frame_key)
                     if frame_cached_result is not None:
+                        restore_started_at = (
+                            time.perf_counter() if tracer.enabled else None
+                        )
                         node_image_dict[node_id_name] = copy.deepcopy(
                             frame_cached_result['image']
                         )
                         node_result_dict[node_id_name] = copy.deepcopy(
                             frame_cached_result['result']
                         )
+                        if restore_started_at is not None:
+                            tracer.expensive_operation(
+                                'cache restore',
+                                node_id_name,
+                                time.perf_counter() - restore_started_at,
+                            )
                         rendered_frame_keys = cached_result.setdefault(
                             'rendered_frame_keys', set()
                         )
@@ -397,12 +495,27 @@ def update_node_info(
                 # on every graph traversal.  Restore from the cache only when
                 # a caller supplied cache state without the active outputs.
                 if not has_active_image:
+                    restore_started_at = (
+                        time.perf_counter() if tracer.enabled else None
+                    )
                     node_image_dict[node_id_name] = copy.deepcopy(
                         cached_result['image']
                     )
+                else:
+                    restore_started_at = None
                 if not has_active_result:
+                    if restore_started_at is None:
+                        restore_started_at = (
+                            time.perf_counter() if tracer.enabled else None
+                        )
                     node_result_dict[node_id_name] = copy.deepcopy(
                         cached_result['result']
+                    )
+                if restore_started_at is not None:
+                    tracer.expensive_operation(
+                        'cache restore',
+                        node_id_name,
+                        time.perf_counter() - restore_started_at,
                     )
                 if (
                     cached_result.get('rendered_signature') != cache_signature and
@@ -419,6 +532,9 @@ def update_node_info(
                 node_version_dict[node_id_name] = cache_signature
                 continue
 
+        update_started_at, update_announced = (
+            tracer.update_started(node_id_name) if tracer.enabled else (None, False)
+        )
         if mode_async:
             try:
                 image, result = node_instance.update(
@@ -493,6 +609,12 @@ def update_node_info(
                 node_version_dict[node_id_name] = ('frame', frame_token)
             else:
                 node_version_dict.pop(node_id_name, None)
+
+        tracer.update_finished(
+            node_id_name,
+            update_started_at,
+            update_announced,
+        )
 
     deleted_node_id_name_list = [
         node_id_name for node_id_name in node_cache_dict.keys()

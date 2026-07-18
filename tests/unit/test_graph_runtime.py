@@ -2,7 +2,7 @@ from collections import OrderedDict
 from unittest.mock import Mock
 
 from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
-from node_editor.graph_runtime import GraphRuntime
+from node_editor.graph_runtime import GraphRuntime, RuntimeTracePrinter
 
 
 class FakeEditor:
@@ -147,3 +147,42 @@ def test_graph_runtime_policy_cache_source_nodes():
 
     assert source_node.update.call_count == 1
     assert '1:SourceNode' in runtime.node_cache_dict
+
+
+def test_runtime_trace_reports_updates_and_throttles_repeated_nodes():
+    timestamps = iter([0.0, 0.010, 0.020, 0.030])
+    messages = []
+    tracer = RuntimeTracePrinter(
+        enabled=True,
+        threshold_ms=50,
+        repeat_seconds=5,
+        clock=lambda: next(timestamps),
+        emit=messages.append,
+    )
+
+    started_at, announced = tracer.update_started('1:TestNode')
+    tracer.update_finished('1:TestNode', started_at, announced)
+    _, second_announced = tracer.update_started('1:TestNode')
+
+    assert announced is True
+    assert second_announced is False
+    assert messages == [
+        '[runtime] update 1:TestNode',
+        '[runtime] done   1:TestNode 10.0 ms',
+    ]
+
+
+def test_runtime_trace_only_reports_expensive_operations_over_threshold():
+    messages = []
+    tracer = RuntimeTracePrinter(
+        enabled=True,
+        threshold_ms=50,
+        clock=lambda: 1.0,
+        emit=messages.append,
+    )
+
+    tracer.expensive_operation('signature', '1:TestNode', 0.049)
+    tracer.expensive_operation('signature', '1:TestNode', 0.051)
+    tracer.expensive_operation('signature', '1:TestNode', 0.200)
+
+    assert messages == ['[runtime] slow signature 1:TestNode 51.0 ms']

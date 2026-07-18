@@ -155,8 +155,13 @@ node if base classes and standard callback helpers provide the default behavior.
 ## Implementation order and safeguards
 
 1. Land the static cache-hit no-op with identity and restoration tests.
-2. Add lightweight runtime timing/counter instrumentation for cache hits,
-   updates, byte hashing, and defensive copies.
+2. Add lightweight runtime timing instrumentation for actual node updates, slow
+   signature construction (including fallback image hashing), and slow cache
+   restoration. **Implemented:** launch with `--runtime_trace`; reports are
+   throttled per node and operation, and slow-operation reports default to a
+   50 ms threshold configurable with `--runtime_trace_threshold_ms`. Repeated
+   reports for the same node default to a 30-second interval, configurable with
+   `--runtime_trace_repeat_seconds`, so video graphs do not flood the terminal.
 3. Introduce compute-only settings with compatibility fallbacks.
 4. Complete revision coverage and measure any remaining image-hash fallback.
 5. Audit mutation behavior and reduce cache-insertion/video copies.

@@ -74,13 +74,14 @@ class RuntimeTracePrinter:
         self._last_reported_at[key] = now
         return True
 
-    def update_started(self, node_id_name):
+    def update_started(self, node_id_name, reason=None):
         if not self.enabled:
             return None, False
         now = self._clock()
         announced = self._can_report('update', node_id_name, now)
         if announced:
-            self._emit(f'[runtime] update {node_id_name}')
+            reason_text = f' ({reason})' if reason else ''
+            self._emit(f'[runtime] update {node_id_name}{reason_text}')
         return now, announced
 
     def update_finished(self, node_id_name, started_at, announced):
@@ -159,6 +160,7 @@ def _build_node_signature(
     node_result_dict,
     node_setting,
     node_version_dict=None,
+    include_components=False,
 ):
     if node_version_dict is None:
         node_version_dict = {}
@@ -191,7 +193,36 @@ def _build_node_signature(
         'node_setting': _freeze_cache_value(node_setting),
     }
     payload_bytes = pickle.dumps(signature_payload)
-    return hashlib.sha1(payload_bytes).hexdigest()
+    signature = hashlib.sha1(payload_bytes).hexdigest()
+    if not include_components:
+        return signature
+
+    components = {
+        name: hashlib.sha1(pickle.dumps(value)).hexdigest()
+        for name, value in {
+            'connections': connection_list,
+            'upstream': upstream_values,
+            'frames': upstream_frame_tokens,
+            'settings': signature_payload['node_setting'],
+        }.items()
+    }
+    return signature, components
+
+
+def _cache_miss_reason(cached_result, current_components):
+    if cached_result is None:
+        return 'cold cache'
+    previous_components = cached_result.get('signature_components')
+    if previous_components is None or current_components is None:
+        return 'cache miss'
+    changed = [
+        name
+        for name, value in current_components.items()
+        if previous_components.get(name) != value
+    ]
+    if not changed:
+        return 'cache miss'
+    return f"cache miss: {','.join(changed)}"
 
 
 def _build_pipeline_signature_for_video(
@@ -248,6 +279,23 @@ def _strip_cache_meta(result):
         key: value
         for key, value in result.items()
         if not str(key).startswith('__cache_')
+    }
+
+
+def _compute_node_setting(node_setting):
+    """Remove persisted presentation state that cannot affect node outputs."""
+    if not isinstance(node_setting, dict):
+        return node_setting
+
+    presentation_keys = {
+        'pos',
+        '__result_image_enabled__',
+        '__result_large_image_enabled__',
+    }
+    return {
+        key: value
+        for key, value in node_setting.items()
+        if key not in presentation_keys
     }
 
 
@@ -381,6 +429,9 @@ def update_node_info(
         use_cache = cache_enabled and (
             len(connection_list) > 0 or cache_source_nodes
         )
+        update_reason = 'cache disabled'
+        if cache_enabled and not use_cache:
+            update_reason = 'uncached source'
         node_setting = {}
         if cache_enabled and hasattr(node_instance, 'get_setting_dict'):
             if mode_async:
@@ -401,6 +452,7 @@ def update_node_info(
         if use_cache and isinstance(node_setting, dict):
             if node_setting.get('__cache_enabled__') is False:
                 use_cache = False
+                update_reason = 'node cache disabled'
 
         if (
             cache_enabled and
@@ -408,6 +460,8 @@ def update_node_info(
             node_setting.get('__cache_source_enabled__') is True
         ):
             use_cache = True
+
+        compute_setting = _compute_node_setting(node_setting)
 
         if use_cache:
             for source_tag, _ in connection_list:
@@ -418,14 +472,20 @@ def update_node_info(
                     upstream_frame_tokens.append((source_tag, frame_token))
 
             signature_started_at = time.perf_counter() if tracer.enabled else None
-            cache_signature = _build_node_signature(
+            signature_result = _build_node_signature(
                 node_id,
                 connection_list,
                 node_image_dict,
                 node_result_dict,
-                node_setting,
+                compute_setting,
                 node_version_dict=node_version_dict,
+                include_components=tracer.enabled,
             )
+            if tracer.enabled:
+                cache_signature, signature_components = signature_result
+            else:
+                cache_signature = signature_result
+                signature_components = None
             if signature_started_at is not None:
                 tracer.expensive_operation(
                     'signature',
@@ -433,13 +493,17 @@ def update_node_info(
                     time.perf_counter() - signature_started_at,
                 )
             cached_result = node_cache_dict.get(node_id_name)
+            update_reason = _cache_miss_reason(
+                cached_result,
+                signature_components,
+            )
             if upstream_frame_tokens:
                 pipeline_signature = _build_pipeline_signature_for_video(
                     node_id,
                     connection_list,
                     upstream_frame_tokens,
                     node_result_dict,
-                    node_setting,
+                    compute_setting,
                 )
                 frame_key = tuple(upstream_frame_tokens)
                 if (
@@ -533,7 +597,8 @@ def update_node_info(
                 continue
 
         update_started_at, update_announced = (
-            tracer.update_started(node_id_name) if tracer.enabled else (None, False)
+            tracer.update_started(node_id_name, update_reason)
+            if tracer.enabled else (None, False)
         )
         if mode_async:
             try:
@@ -568,7 +633,7 @@ def update_node_info(
                     connection_list,
                     upstream_frame_tokens,
                     node_result_dict,
-                    node_setting,
+                    compute_setting,
                 )
                 frame_key = tuple(upstream_frame_tokens)
                 cache_entry = node_cache_dict.get(node_id_name, {})
@@ -594,6 +659,7 @@ def update_node_info(
             else:
                 node_cache_dict[node_id_name] = {
                     'signature': cache_signature,
+                    'signature_components': signature_components,
                     'image': copy.deepcopy(image),
                     'result': copy.deepcopy(result),
                     'rendered_signature': cache_signature,

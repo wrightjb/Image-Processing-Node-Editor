@@ -2,7 +2,11 @@ from collections import OrderedDict
 from unittest.mock import Mock
 
 from node.port_model import LinkConnectionAdapter, LinkRef, NodeRef, PortRef
-from node_editor.graph_runtime import GraphRuntime, RuntimeTracePrinter
+from node_editor.graph_runtime import (
+    GraphRuntime,
+    RuntimeTracePrinter,
+    _cache_miss_reason,
+)
 
 
 class FakeEditor:
@@ -105,6 +109,34 @@ def test_graph_runtime_persists_state_between_steps():
     assert runtime.node_result_dict['2:ProcessNode'] == {'v': 1}
 
 
+def test_graph_runtime_trace_does_not_turn_cache_hits_into_updates():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:ProcessNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:ProcessNode', [['1:SourceNode:Image:Output01', '2:ProcessNode:Image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'ProcessNode': process_node},
+    )
+
+    runtime = GraphRuntime(trace_enabled=True)
+    runtime.tracer._emit = Mock()
+    runtime.step(editor, mode_async=False)
+    runtime.step(editor, mode_async=False)
+
+    assert source_node.update.call_count == 2
+    assert process_node.update.call_count == 1
+
+
 def test_graph_runtime_policy_cache_disabled_runs_every_step():
     source_node = Mock()
     source_node.update.return_value = ('src-img', {'source': 1})
@@ -160,14 +192,14 @@ def test_runtime_trace_reports_updates_and_throttles_repeated_nodes():
         emit=messages.append,
     )
 
-    started_at, announced = tracer.update_started('1:TestNode')
+    started_at, announced = tracer.update_started('1:TestNode', 'cache miss')
     tracer.update_finished('1:TestNode', started_at, announced)
     _, second_announced = tracer.update_started('1:TestNode')
 
     assert announced is True
     assert second_announced is False
     assert messages == [
-        '[runtime] update 1:TestNode',
+        '[runtime] update 1:TestNode (cache miss)',
         '[runtime] done   1:TestNode 10.0 ms',
     ]
 
@@ -186,3 +218,24 @@ def test_runtime_trace_only_reports_expensive_operations_over_threshold():
     tracer.expensive_operation('signature', '1:TestNode', 0.200)
 
     assert messages == ['[runtime] slow signature 1:TestNode 51.0 ms']
+
+
+def test_runtime_trace_cache_miss_reason_names_changed_components():
+    cached_result = {
+        'signature_components': {
+            'connections': 'same-connections',
+            'upstream': 'old-upstream',
+            'frames': 'same-frames',
+            'settings': 'old-settings',
+        },
+    }
+    current_components = {
+        'connections': 'same-connections',
+        'upstream': 'new-upstream',
+        'frames': 'same-frames',
+        'settings': 'new-settings',
+    }
+
+    assert _cache_miss_reason(cached_result, current_components) == (
+        'cache miss: upstream,settings'
+    )

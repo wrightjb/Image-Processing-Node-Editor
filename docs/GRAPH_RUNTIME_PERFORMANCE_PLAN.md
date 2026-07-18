@@ -57,6 +57,11 @@ tests.
 
 ## Stage 2: Separate compute parameters from persistence and presentation state
 
+**Status: partially implemented.** The runtime now excludes the universal
+presentation-only keys `pos`, `__result_image_enabled__`, and
+`__result_large_image_enabled__` from cache signatures. The dedicated API and
+legacy/custom-node migration described below remain future work.
+
 Introduce a cache-specific API, for example `get_compute_setting_dict(node_id)`,
 that contains only values capable of changing a node's returned image or result.
 Keep `get_setting_dict()` as the import/export representation. Node position,
@@ -162,6 +167,10 @@ node if base classes and standard callback helpers provide the default behavior.
    50 ms threshold configurable with `--runtime_trace_threshold_ms`. Repeated
    reports for the same node default to a 30-second interval, configurable with
    `--runtime_trace_repeat_seconds`, so video graphs do not flood the terminal.
+   Update lines identify whether work is an intentionally uncached source, a
+   disabled cache, a cold cache, or a cache miss. With tracing enabled, cache
+   misses also name changed signature components (`connections`, `upstream`,
+   `frames`, or `settings`) to make repeated invalidation diagnosable.
 3. Introduce compute-only settings with compatibility fallbacks.
 4. Complete revision coverage and measure any remaining image-hash fallback.
 5. Audit mutation behavior and reduce cache-insertion/video copies.

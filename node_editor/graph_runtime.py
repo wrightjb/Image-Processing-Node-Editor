@@ -475,6 +475,7 @@ def update_node_info(
             update_reason = 'uncached source'
         node_setting = {}
         if cache_enabled and hasattr(node_instance, 'get_setting_dict'):
+            settings_started_at = time.perf_counter() if tracer.enabled else None
             if mode_async:
                 try:
                     node_setting = node_instance.get_setting_dict(node_id)
@@ -489,6 +490,12 @@ def update_node_info(
                     use_cache = False
             else:
                 node_setting = node_instance.get_setting_dict(node_id)
+            if settings_started_at is not None:
+                tracer.expensive_operation(
+                    'settings',
+                    node_id_name,
+                    time.perf_counter() - settings_started_at,
+                )
 
         if use_cache and isinstance(node_setting, dict):
             if node_setting.get('__cache_enabled__') is False:

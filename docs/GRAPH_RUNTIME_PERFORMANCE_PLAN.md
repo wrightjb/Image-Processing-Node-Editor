@@ -167,6 +167,8 @@ node if base classes and standard callback helpers provide the default behavior.
    50 ms threshold configurable with `--runtime_trace_threshold_ms`. Repeated
    reports for the same node default to a 30-second interval, configurable with
    `--runtime_trace_repeat_seconds`, so video graphs do not flood the terminal.
+   Slow settings reads are traced separately from signature construction so GUI
+   polling costs are visible.
    Update lines identify whether work is an intentionally uncached source, a
    disabled cache, a cold cache, or a cache miss. With tracing enabled, cache
    misses also name changed signature components (`connections`, `upstream`,

@@ -239,3 +239,19 @@ def test_runtime_trace_cache_miss_reason_names_changed_components():
     assert _cache_miss_reason(cached_result, current_components) == (
         'cache miss: upstream,settings'
     )
+
+
+def test_trace_reports_slow_settings_poll():
+    events = []
+    times = iter([10.0, 10.2, 10.21, 10.22])
+    tracer = RuntimeTracePrinter(
+        enabled=True,
+        threshold_ms=50.0,
+        repeat_seconds=30.0,
+        clock=lambda: next(times),
+        emit=events.append,
+    )
+
+    tracer.expensive_operation('settings', '1:SlowSettings', 0.2)
+
+    assert events == ['[runtime] slow settings 1:SlowSettings 200.0 ms']

@@ -102,7 +102,7 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             'port': 'Input03',
             'label': 'Interpolation',
             'widget': 'combo',
-            'options': ['linear', 'spline'],
+            'items': ['linear', 'spline'],
             'default': 'linear',
         },
     ]

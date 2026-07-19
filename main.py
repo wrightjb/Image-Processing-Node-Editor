@@ -60,6 +60,26 @@ def get_args():
         ),
     )
     parser.add_argument(
+        '--runtime_trace',
+        action='store_true',
+        help=(
+            'Print concise, throttled graph update and slow-operation '
+            'diagnostics.'
+        ),
+    )
+    parser.add_argument(
+        '--runtime_trace_threshold_ms',
+        type=float,
+        default=50.0,
+        help='Minimum duration for slow runtime operation diagnostics.',
+    )
+    parser.add_argument(
+        '--runtime_trace_repeat_seconds',
+        type=float,
+        default=30.0,
+        help='Minimum interval between repeated diagnostics for the same node.',
+    )
+    parser.add_argument(
         '-i',
         '--import_json',
         type=str,
@@ -110,7 +130,11 @@ def main():
 
     dpg.show_viewport()
 
-    runtime = GraphRuntime()
+    runtime = GraphRuntime(
+        trace_enabled=args.runtime_trace,
+        trace_threshold_ms=args.runtime_trace_threshold_ms,
+        trace_repeat_seconds=args.runtime_trace_repeat_seconds,
+    )
 
     event_loop = run_editor_main_loop(
         node_editor,

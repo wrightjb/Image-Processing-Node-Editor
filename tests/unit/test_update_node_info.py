@@ -1,6 +1,8 @@
 # tests/test_update_node_info.py
 # Standard library imports
 from collections import OrderedDict
+from pathlib import Path
+import sys
 from unittest.mock import Mock, patch
 
 # Third-party imports
@@ -169,6 +171,110 @@ def test_update_node_info_uses_cache_when_signature_unchanged():
     assert result_dict['2:TestNode'] == {'v': 1}
 
 
+def test_update_node_info_static_cache_hit_preserves_active_output_objects():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_image = bytearray(b'image')
+    process_result = {'values': [1, 2, 3]}
+    process_node = Mock()
+    process_node.update.return_value = (process_image, process_result)
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+    version_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+    active_image = image_dict['2:TestNode']
+    active_result = result_dict['2:TestNode']
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+
+    process_node.update.assert_called_once()
+    assert image_dict['2:TestNode'] is active_image
+    assert result_dict['2:TestNode'] is active_result
+
+
+def test_update_node_info_static_cache_hit_restores_missing_active_outputs():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = (bytearray(b'image'), {'values': [1]})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+    version_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+    cached_image = cache_dict['2:TestNode']['image']
+    cached_result = cache_dict['2:TestNode']['result']
+    del image_dict['2:TestNode']
+    del result_dict['2:TestNode']
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+    )
+
+    process_node.update.assert_called_once()
+    assert image_dict['2:TestNode'] == cached_image
+    assert image_dict['2:TestNode'] is not cached_image
+    assert result_dict['2:TestNode'] == cached_result
+    assert result_dict['2:TestNode'] is not cached_result
+
+
 def test_update_node_info_invalidates_cache_when_setting_changes():
     source_node = Mock()
     source_node.update.return_value = ('src-img', {'source': 1})
@@ -211,6 +317,60 @@ def test_update_node_info_invalidates_cache_when_setting_changes():
     assert process_node.update.call_count == 2
     assert image_dict['2:TestNode'] == 'img2'
     assert result_dict['2:TestNode'] == {'v': 2}
+
+
+def test_update_node_info_ignores_presentation_only_setting_changes():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.side_effect = [
+        {
+            'alpha': 0.5,
+            'pos': [10, 20],
+            '__result_image_enabled__': False,
+            '__result_large_image_enabled__': False,
+        },
+        {
+            'alpha': 0.5,
+            'pos': [30, 40],
+            '__result_image_enabled__': True,
+            '__result_large_image_enabled__': True,
+        },
+    ]
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        mode_async=False,
+    )
+
+    process_node.update.assert_called_once()
 
 
 def test_update_node_info_does_not_cache_source_nodes_without_inputs():
@@ -502,3 +662,106 @@ def test_update_node_info_uses_upstream_version_instead_of_rehashing_image(monke
 
     assert source_node.update.call_count == 1
     assert process_node.update.call_count == 1
+
+
+def test_uncached_unchanged_upstream_does_not_force_downstream_update():
+    source_node = Mock()
+    source_node.update.return_value = (None, {'ready': False})
+    source_node.get_setting_dict.return_value = {'__cache_enabled__': False}
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:TestNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:points:Output01', '2:TestNode:points:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+    image_dict = {}
+    result_dict = {}
+    cache_dict = {}
+    version_dict = {}
+
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+        cache_source_nodes=True,
+    )
+    update_node_info(
+        editor,
+        image_dict,
+        result_dict,
+        node_cache_dict=cache_dict,
+        node_version_dict=version_dict,
+        mode_async=False,
+        cache_source_nodes=True,
+    )
+
+    assert source_node.update.call_count == 2
+    process_node.update.assert_called_once()
+    assert version_dict['1:SourceNode'][0] == 'uncached-output'
+
+
+def test_auto_tune_curves_parameter_sync_waits_for_ready_result(monkeypatch):
+    stubs_dir = Path(__file__).resolve().parents[1] / 'stubs'
+    monkeypatch.syspath_prepend(str(stubs_dir))
+    sys.modules.pop('cv2', None)
+
+    from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
+
+    class TestDeclarativeNode(DeclarativeImageProcessNodeBase):
+        def process(self, frame, **parameter_values):
+            return frame, parameter_values
+
+    source_tag = '7:AutoTuneCurves:points:Output01'
+    node = TestDeclarativeNode()
+
+    assert not node._source_allows_parameter_sync(source_tag, {})
+    assert not node._source_allows_parameter_sync(
+        source_tag,
+        {'7:AutoTuneCurves': {'__auto_tune_ready__': False}},
+    )
+    assert node._source_allows_parameter_sync(
+        source_tag,
+        {'7:AutoTuneCurves': {'__auto_tune_ready__': True}},
+    )
+
+
+def test_update_node_info_uses_sorted_connection_order():
+    execution_order = []
+
+    source_node = Mock()
+    source_node.update.side_effect = (
+        lambda *args: execution_order.append('source') or ('src', {})
+    )
+
+    process_node = Mock()
+    process_node.update.side_effect = (
+        lambda *args: execution_order.append('process') or ('img', {})
+    )
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['2:TestNode', '1:SourceNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:TestNode', [['1:SourceNode:image:Output01', '2:TestNode:image:Input01']]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'TestNode': process_node},
+    )
+
+    update_node_info(editor, {}, {}, mode_async=False)
+
+    assert execution_order == ['source', 'process']

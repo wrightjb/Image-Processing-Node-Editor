@@ -510,6 +510,7 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         if source_node_key.endswith((
             ':AutoTuneGaussianBlur',
             ':AutoTuneHueBands',
+            ':AutoTuneCurves',
         )):
             source_result = node_result_dict.get(source_node_key)
             if not isinstance(source_result, dict):

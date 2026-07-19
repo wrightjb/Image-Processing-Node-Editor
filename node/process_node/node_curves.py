@@ -18,9 +18,37 @@ _BGR_INDEX_BY_CHANNEL = {
 }
 
 
-def _points_to_lut(points):
+def _points_to_lut(points, interpolation='linear'):
     xs, ys = zip(*points)
-    return np.interp(np.arange(256), xs, ys).astype(np.uint8)
+    x_values = np.arange(256, dtype=np.float32)
+    if interpolation != 'spline' or len(points) < 3:
+        return np.interp(x_values, xs, ys).astype(np.uint8)
+    xs = np.asarray(xs, dtype=np.float32)
+    ys = np.asarray(ys, dtype=np.float32)
+    result = np.interp(x_values, xs, ys).astype(np.float32)
+    for index in range(len(xs) - 1):
+        mask = (x_values >= xs[index]) & (x_values <= xs[index + 1])
+        if not np.any(mask):
+            continue
+        x0 = xs[max(0, index - 1)]
+        x1 = xs[index]
+        x2 = xs[index + 1]
+        x3 = xs[min(len(xs) - 1, index + 2)]
+        y0 = ys[max(0, index - 1)]
+        y1 = ys[index]
+        y2 = ys[index + 1]
+        y3 = ys[min(len(ys) - 1, index + 2)]
+        if x2 <= x1:
+            continue
+        t = (x_values[mask] - x1) / (x2 - x1)
+        m1 = 0.0 if x2 == x0 else (y2 - y0) * (x2 - x1) / (x2 - x0)
+        m2 = 0.0 if x3 == x1 else (y3 - y1) * (x2 - x1) / (x3 - x1)
+        h00 = (2 * t**3) - (3 * t**2) + 1
+        h10 = t**3 - (2 * t**2) + t
+        h01 = (-2 * t**3) + (3 * t**2)
+        h11 = t**3 - t**2
+        result[mask] = (h00 * y1) + (h10 * m1) + (h01 * y2) + (h11 * m2)
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
 def _apply_lut(image, table):
@@ -30,7 +58,7 @@ def _apply_lut(image, table):
         return table[np.asarray(image)]
 
 
-def image_process(image, curves, channel=None):
+def image_process(image, curves, channel=None, interpolation='linear'):
     """Apply White first, then per-channel RGB curves."""
     helper = CurvesPointsEditorMixin()
     if channel in CURVE_CHANNELS:
@@ -38,14 +66,14 @@ def image_process(image, curves, channel=None):
         curve_set[channel] = helper._parse_points(curves)
     else:
         curve_set = helper._normalize_curve_set(curves)
-    white_lut = _points_to_lut(curve_set['White'])
+    white_lut = _points_to_lut(curve_set['White'], interpolation=interpolation)
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return _apply_lut(image, white_lut)
 
     output = image.copy()
     color_channels = output[:, :, :3]
     for channel, channel_index in _BGR_INDEX_BY_CHANNEL.items():
-        channel_lut = _points_to_lut(curve_set[channel])
+        channel_lut = _points_to_lut(curve_set[channel], interpolation=interpolation)
         composed_lut = channel_lut[white_lut]
         color_channels[:, :, channel_index] = _apply_lut(
             image[:, :, channel_index],
@@ -67,6 +95,15 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             'label': 'Curves',
             'widget': 'custom',
             'default': '{"curves": {}}',
+        },
+        {
+            'name': 'interpolation',
+            'type': PortDataType.TEXT,
+            'port': 'Input03',
+            'label': 'Interpolation',
+            'widget': 'combo',
+            'options': ['linear', 'spline'],
+            'default': 'linear',
         },
     ]
 
@@ -216,7 +253,15 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         return parameter_values
 
     def process(self, frame, **parameter_values):
-        frame = image_process(frame, parameter_values['curves'])
+        interpolation = parameter_values.get('interpolation', 'linear')
+        if interpolation == 'spline':
+            frame = image_process(
+                frame,
+                parameter_values['curves'],
+                interpolation=interpolation,
+            )
+        else:
+            frame = image_process(frame, parameter_values['curves'])
         return frame, None
 
     def get_custom_setting_dict(self, tag_node_name, node_id):

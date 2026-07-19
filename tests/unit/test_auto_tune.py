@@ -1719,3 +1719,40 @@ def test_auto_tune_node_auto_controls_update_display_values(monkeypatch):
     assert values[node._auto_kernel_value_tag(6)] is False
     assert values[ports.sigma.value_tag] == 2.0
     assert values[ports.auto_kernel.value_tag] is False
+
+
+def test_curves_spline_interpolation_changes_lut_shape():
+    from auto_tune.curves import points_to_lut
+
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    linear = points_to_lut(points, quantize=False, interpolation='linear')
+    spline = points_to_lut(points, quantize=False, interpolation='spline')
+
+    assert linear.shape == (256,)
+    assert spline.shape == (256,)
+    assert not np.array_equal(linear, spline)
+    assert spline.min() >= 0
+    assert spline.max() <= 255
+
+
+def test_tune_curves_reports_requested_spline_interpolation():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (4, 1))
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert result.best_parameters['interpolation'] == 'spline'

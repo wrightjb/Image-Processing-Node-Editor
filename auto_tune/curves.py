@@ -868,6 +868,7 @@ def tune_curves(
     channel='White',
     score_image_transform=None,
     interpolation='linear',
+    prune_points=True,
 ):
     """Recover Curves-node points from source/target images."""
     channel = _normalize_channel(channel)
@@ -948,7 +949,7 @@ def tune_curves(
             'point_count': len(refined_points),
         })
 
-    if interpolation == 'spline':
+    if interpolation == 'spline' or not prune_points:
         pruned_points = refined_points
     else:
         refined_points = prune_close_curve_points(
@@ -1012,6 +1013,7 @@ def tune_curves(
             'compression_metadata': compression_metadata,
             'interpolation': interpolation,
             'observed_bins': int(np.count_nonzero(observed.counts)),
+            'prune_points': bool(prune_points),
         },
         best_score=float(lut_score),
         best_image=scored_image,
@@ -1030,6 +1032,7 @@ def tune_curve_set(
     point_precision=DEFAULT_POINT_PRECISION,
     score_image_transform=None,
     interpolation='linear',
+    prune_points=True,
 ):
     """Recover a White-first, then RGB, Curves-node curve set."""
 
@@ -1052,6 +1055,7 @@ def tune_curve_set(
         point_precision=point_precision,
         channel='White',
         interpolation=interpolation,
+        prune_points=prune_points,
     )
     helper = CurvesPointsEditorMixin()
     curve_set = helper._default_curve_set()
@@ -1071,6 +1075,7 @@ def tune_curve_set(
             point_precision=point_precision,
             channel=channel,
             interpolation=interpolation,
+            prune_points=prune_points,
         )
         curve_set[channel] = result.best_parameters['points']
         channel_results[channel] = result
@@ -1088,6 +1093,7 @@ def tune_curve_set(
             'channel_results': channel_results,
             'image_score': float(image_score),
             'compression_metadata': compression_metadata,
+            'prune_points': bool(prune_points),
         },
         best_score=best_score,
         best_image=scored_image,

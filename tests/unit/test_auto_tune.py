@@ -1880,3 +1880,27 @@ def test_tune_curves_spline_dense_reconstruction_prefers_shape_points():
     )
 
     assert len(result.best_parameters['points']) <= 10
+
+
+def test_tune_curves_linear_can_skip_point_pruning(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target = source.copy()
+
+    def _fail_prune(*args, **kwargs):
+        raise AssertionError('pruning should be disabled')
+
+    monkeypatch.setattr(curves_module, 'prune_curve_points', _fail_prune)
+    monkeypatch.setattr(curves_module, 'prune_close_curve_points', _fail_prune)
+
+    result = curves_module.tune_curves(
+        source,
+        target,
+        max_points=100,
+        refinement_iterations=0,
+        interpolation='linear',
+        prune_points=False,
+    )
+
+    assert result.best_parameters['prune_points'] is False

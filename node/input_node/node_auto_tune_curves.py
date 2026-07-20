@@ -131,6 +131,16 @@ class Node(DpgNodeBase):
                     callback=callback,
                 )
             with dpg.node_attribute(
+                tag=self._prune_points_attr_tag(node_id),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_checkbox(
+                    label='Prune Points',
+                    tag=self._prune_points_value_tag(node_id),
+                    default_value=True,
+                    callback=callback,
+                )
+            with dpg.node_attribute(
                 tag=self._match_compression_attr_tag(node_id),
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
@@ -202,6 +212,15 @@ class Node(DpgNodeBase):
     def _interpolation_value(self, node_id):
         value = dpg_get_value(self._interpolation_value_tag(node_id))
         return 'spline' if value == 'spline' else 'linear'
+
+    def _prune_points_attr_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'PrunePoints')
+
+    def _prune_points_value_tag(self, node_id):
+        return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'PrunePoints')
+
+    def _prune_points_value(self, node_id):
+        return dpg_get_value(self._prune_points_value_tag(node_id)) is not False
 
     def _match_compression_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'MatchCompression')
@@ -334,7 +353,7 @@ class Node(DpgNodeBase):
         def _progress(update):
             if update.get('phase') == 'refine':
                 message = (
-                    f"refine round {update['round_index']} "
+                    f"x-refine round {update['round_index']} "
                     f"radius={update['radius']}\n"
                     f"points={update['point_count']} "
                     f"score={update['score']:.6g}"
@@ -393,6 +412,7 @@ class Node(DpgNodeBase):
                 score_image_transform = _score_image_transform
 
         interpolation = self._interpolation_value(node_id)
+        prune_points = self._prune_points_value(node_id)
         tune_channel = self._channel_value(node_id)
         if tune_channel == 'All':
             result = tune_curve_set(
@@ -404,6 +424,7 @@ class Node(DpgNodeBase):
                 progress_callback=_progress,
                 score_image_transform=score_image_transform,
                 interpolation=interpolation,
+                prune_points=prune_points,
             )
             curves_payload = {'curves': result.best_parameters['curves']}
             status_detail = '4 curves'
@@ -418,6 +439,7 @@ class Node(DpgNodeBase):
                 progress_callback=_progress,
                 score_image_transform=score_image_transform,
                 interpolation=interpolation,
+                prune_points=prune_points,
             )
             helper = CurvesPointsEditorMixin()
             curve_set = helper._default_curve_set()
@@ -459,6 +481,7 @@ class Node(DpgNodeBase):
             ),
             self._channel_value_tag(node_id): self._channel_value(node_id),
             self._interpolation_value_tag(node_id): self._interpolation_value(node_id),
+            self._prune_points_value_tag(node_id): self._prune_points_value(node_id),
             self._match_compression_value_tag(node_id): dpg_get_value(
                 self._match_compression_value_tag(node_id),
             ),
@@ -475,6 +498,7 @@ class Node(DpgNodeBase):
             self._refinement_iterations_value_tag(node_id),
             self._channel_value_tag(node_id),
             self._interpolation_value_tag(node_id),
+            self._prune_points_value_tag(node_id),
             self._match_compression_value_tag(node_id),
         ):
             if value_tag in setting_dict:

@@ -347,3 +347,67 @@ def test_curve_points_clear_channel_and_all_reset_curve_sets():
 
     assert editor._curve_set(7) == editor._default_curve_set()
     assert editor.changed[-1] == (7, editor._default_curve_set())
+
+
+def test_curve_points_editor_uses_large_precision_canvas():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+
+    assert editor._plot_width >= 500
+    assert editor._plot_height >= 340
+    assert editor._keyboard_nudge_step <= 0.1
+
+
+def test_curve_points_keyboard_nudges_last_touched_point(monkeypatch):
+    from node import curves_points_ui as curves_ui
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    class TestEditor(CurvesPointsEditorMixin):
+        def __init__(self):
+            self.values = {'point-tag': [128.0, 128.0]}
+            self.changed = []
+            self.emitted = []
+            self._last_touched_point_by_node = {'7': 'point-tag'}
+
+        def _node_name(self, node_id):
+            return f'{node_id}:TestCurves'
+
+        def _get_drag_points(self, node_id):
+            del node_id
+            return [self.values['point-tag']]
+
+        def _redraw_line(self, node_id):
+            del node_id
+
+        def _on_points_changed(self, node_id, points):
+            self.changed.append((node_id, points))
+
+        def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
+            self.emitted.append((node_id, before_points, after_points, coalesce))
+
+    editor = TestEditor()
+    monkeypatch.setattr(curves_ui.dpg, 'does_item_exist', lambda tag: tag == 'point-tag')
+    monkeypatch.setattr(curves_ui.dpg, 'get_item_user_data', lambda tag: (7, None))
+    monkeypatch.setattr(curves_ui, 'dpg_get_value', lambda tag: editor.values[tag])
+    monkeypatch.setattr(
+        curves_ui.dpg,
+        'set_value',
+        lambda tag, value: editor.values.__setitem__(tag, value),
+    )
+
+    editor._callback_nudge_last_point(None, None, (7, 0.1, -0.1))
+
+    assert editor.values['point-tag'] == [128.1, 127.9]
+    assert editor.changed[-1][0] == 7
+    assert editor.emitted[-1][3] is False
+
+
+def test_curve_points_keyboard_handlers_use_global_handler_registry():
+    from pathlib import Path
+
+    source = Path('node/curves_points_ui.py').read_text(encoding='utf-8')
+    key_handler_block = source.split('dpg.add_key_press_handler', maxsplit=1)[1]
+
+    assert 'with dpg.handler_registry()' in source
+    assert 'parent=handler' not in key_handler_block.split(')', maxsplit=1)[0]

@@ -8,6 +8,7 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
+from node.process_node.node_curves import _points_to_lut as node_points_to_lut
 from node.process_node.node_curves import image_process
 
 DEFAULT_MAX_POINTS = 20
@@ -143,11 +144,14 @@ def _format_points(points, precision=DEFAULT_POINT_PRECISION):
     return formatted
 
 
-def points_to_lut(points, quantize=False):
+def points_to_lut(points, quantize=False, interpolation='linear'):
     """Build the LUT shape that the Curves node will interpolate."""
     normalized = _normalize_points(points)
-    xs, ys = zip(*normalized)
-    lut = np.interp(_LUT_X, xs, ys).astype(np.float32)
+    if interpolation == 'spline':
+        lut = node_points_to_lut(normalized, interpolation='spline').astype(np.float32)
+    else:
+        xs, ys = zip(*normalized)
+        lut = np.interp(_LUT_X, xs, ys).astype(np.float32)
     lut = np.clip(lut, 0, 255)
     if quantize:
         return lut.astype(np.uint8).astype(np.float32)
@@ -322,8 +326,8 @@ def fit_curve_y_values(
     return _format_points(zip(x_positions, fitted_y), precision=precision)
 
 
-def _score_points(points, observed, metric='balanced_huber'):
-    lut = points_to_lut(points, quantize=True)
+def _score_points(points, observed, metric='balanced_huber', interpolation='linear'):
+    lut = points_to_lut(points, quantize=True, interpolation=interpolation)
     return score_curve_lut(
         lut,
         observed.observed_values,
@@ -491,6 +495,7 @@ def tune_curves(
     point_precision=DEFAULT_POINT_PRECISION,
     channel='White',
     score_image_transform=None,
+    interpolation='linear',
 ):
     """Recover Curves-node points from source/target images."""
     channel = _normalize_channel(channel)
@@ -508,7 +513,13 @@ def tune_curves(
         prior_values=observed.values,
         precision=point_precision,
     )
-    initial_score = _score_points(initial_points, observed, metric=metric_name)
+    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    initial_score = _score_points(
+        initial_points,
+        observed,
+        metric=metric_name,
+        interpolation=interpolation,
+    )
     if progress_callback is not None:
         progress_callback({
             'candidate_index': 1,
@@ -531,7 +542,12 @@ def tune_curves(
         progress_callback=progress_callback,
     )
     refined_points = _refit_points(refined_points, observed, precision=point_precision)
-    refined_score = _score_points(refined_points, observed, metric=metric_name)
+    refined_score = _score_points(
+        refined_points,
+        observed,
+        metric=metric_name,
+        interpolation=interpolation,
+    )
     if progress_callback is not None:
         progress_callback({
             'candidate_index': 2,
@@ -557,15 +573,25 @@ def tune_curves(
         complexity_penalty=complexity_penalty,
         precision=point_precision,
     )
-    lut_score = _score_points(pruned_points, observed, metric=metric_name)
+    lut_score = _score_points(
+        pruned_points,
+        observed,
+        metric=metric_name,
+        interpolation=interpolation,
+    )
     source_uint8 = _as_uint8_values(source_image).copy()
     try:
         best_image = image_process(
             source_uint8,
             _single_channel_curve_set(channel, pruned_points),
+            interpolation=interpolation,
         )
     except AttributeError:
-        lut = points_to_lut(pruned_points, quantize=True).astype(np.uint8)
+        lut = points_to_lut(
+            pruned_points,
+            quantize=True,
+            interpolation=interpolation,
+        ).astype(np.uint8)
         best_image = lut[source_uint8]
     scored_image = best_image
     compression_metadata = None
@@ -590,6 +616,7 @@ def tune_curves(
             'lut_score': float(lut_score),
             'image_score': float(image_score),
             'compression_metadata': compression_metadata,
+            'interpolation': interpolation,
             'observed_bins': int(np.count_nonzero(observed.counts)),
         },
         best_score=float(lut_score),
@@ -608,6 +635,7 @@ def tune_curve_set(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     point_precision=DEFAULT_POINT_PRECISION,
     score_image_transform=None,
+    interpolation='linear',
 ):
     """Recover a White-first, then RGB, Curves-node curve set."""
 
@@ -629,6 +657,7 @@ def tune_curve_set(
         complexity_penalty=complexity_penalty,
         point_precision=point_precision,
         channel='White',
+        interpolation=interpolation,
     )
     helper = CurvesPointsEditorMixin()
     curve_set = helper._default_curve_set()
@@ -647,11 +676,12 @@ def tune_curve_set(
             complexity_penalty=complexity_penalty,
             point_precision=point_precision,
             channel=channel,
+            interpolation=interpolation,
         )
         curve_set[channel] = result.best_parameters['points']
         channel_results[channel] = result
 
-    best_image = image_process(source_image, curve_set)
+    best_image = image_process(source_image, curve_set, interpolation=interpolation)
     scored_image = best_image
     compression_metadata = None
     if score_image_transform is not None:

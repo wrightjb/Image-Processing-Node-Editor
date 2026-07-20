@@ -1904,3 +1904,12 @@ def test_tune_curves_linear_can_skip_point_pruning(monkeypatch):
     )
 
     assert result.best_parameters['prune_points'] is False
+
+
+def test_auto_tune_curves_prune_points_defaults_to_disabled(monkeypatch):
+    import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
+
+    node = auto_tune_curves_node_module.Node()
+    monkeypatch.setattr(auto_tune_curves_node_module, 'dpg_get_value', lambda tag: None)
+
+    assert node._prune_points_value(7) is False

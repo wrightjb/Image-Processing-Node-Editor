@@ -137,7 +137,7 @@ class Node(DpgNodeBase):
                 dpg.add_checkbox(
                     label='Prune Points',
                     tag=self._prune_points_value_tag(node_id),
-                    default_value=True,
+                    default_value=False,
                     callback=callback,
                 )
             with dpg.node_attribute(
@@ -220,7 +220,7 @@ class Node(DpgNodeBase):
         return self._node_control_value_tag(node_id, self.TYPE_TEXT, 'PrunePoints')
 
     def _prune_points_value(self, node_id):
-        return dpg_get_value(self._prune_points_value_tag(node_id)) is not False
+        return dpg_get_value(self._prune_points_value_tag(node_id)) is True
 
     def _match_compression_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'MatchCompression')

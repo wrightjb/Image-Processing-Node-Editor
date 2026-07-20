@@ -29,10 +29,14 @@ class CurvesPointsEditorMixin:
     _min_val = 0
     _max_val = 255
     _delete_hit_radius = 6
-    _plot_width = 520
-    _plot_height = 360
+    _plot_width = 240
+    _plot_height = 180
+    _large_plot_width = 900
+    _large_plot_height = 650
+    _axis_padding = 5
     _keyboard_nudge_step = 0.1
     _last_touched_point_by_node = {}
+    _large_curve_editor_by_node = set()
     _curve_sets_by_node = {}
     _active_curve_channel_by_node = {}
     _curve_editor_built_by_node = set()
@@ -54,6 +58,11 @@ class CurvesPointsEditorMixin:
 
     def _remember_touched_point(self, node_id, point_tag):
         self._last_touched_point_by_node[str(node_id)] = point_tag
+
+    def _plot_size(self, node_id):
+        if str(node_id) in self._large_curve_editor_by_node:
+            return self._large_plot_width, self._large_plot_height
+        return self._plot_width, self._plot_height
 
     def _default_points(self):
         return [[self._min_val, self._min_val], [self._max_val, self._max_val]]
@@ -419,6 +428,19 @@ class CurvesPointsEditorMixin:
         self._redraw_line(node_id)
         self._on_points_changed(node_id, curve_set)
 
+    def _callback_toggle_large_editor(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id = user_data
+        node_key = str(node_id)
+        if node_key in self._large_curve_editor_by_node:
+            self._large_curve_editor_by_node.remove(node_key)
+        else:
+            self._large_curve_editor_by_node.add(node_key)
+        plot_tag = self._get_tag_plot_name(node_id)
+        if dpg.does_item_exist(plot_tag):
+            width, height = self._plot_size(node_id)
+            dpg.configure_item(plot_tag, width=width, height=height)
+
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         del node_id, before_points, after_points, coalesce
 
@@ -532,16 +554,25 @@ class CurvesPointsEditorMixin:
     def build_curve_points_plot_controls(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
         y_axis_tag = f'{self._node_name(node_id)}:plot_y'
+        width, height = self._plot_size(node_id)
         with dpg.plot(
-            width=self._plot_width,
-            height=self._plot_height,
+            width=width,
+            height=height,
             tag=plot_tag,
             no_menus=True,
         ):
             dpg.add_plot_axis(dpg.mvXAxis, tag=f'{self._node_name(node_id)}:plot_x')
-            dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
+            dpg.set_axis_limits(
+                dpg.last_item(),
+                self._min_val - self._axis_padding,
+                self._max_val + self._axis_padding,
+            )
             dpg.add_plot_axis(dpg.mvYAxis, tag=y_axis_tag)
-            dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
+            dpg.set_axis_limits(
+                dpg.last_item(),
+                self._min_val - self._axis_padding,
+                self._max_val + self._axis_padding,
+            )
             for channel in CURVE_CHANNELS:
                 self._add_curve_line_series(node_id, channel, y_axis_tag, active=False)
             self._add_curve_line_series(
@@ -593,6 +624,12 @@ class CurvesPointsEditorMixin:
                 label='Copy Curves',
                 width=112,
                 callback=self._callback_copy_points,
+                user_data=node_id,
+            )
+            dpg.add_button(
+                label='Large Editor',
+                width=104,
+                callback=self._callback_toggle_large_editor,
                 user_data=node_id,
             )
         with dpg.group(horizontal=True):

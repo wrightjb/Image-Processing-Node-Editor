@@ -7,6 +7,7 @@ import json
 
 import dearpygui.dearpygui as dpg
 
+from node.curve_interpolation import points_to_lut
 from node_editor.util import dpg_get_item_children, dpg_get_value, dpg_set_value
 
 CURVE_CHANNELS = ('White', 'Red', 'Green', 'Blue')
@@ -177,13 +178,21 @@ class CurvesPointsEditorMixin:
         curve_set[self._active_channel(node_id)] = points
         return curve_set
 
-    def _line_values(self, points):
+    def _curve_interpolation(self, node_id):
+        del node_id
+        return 'linear'
+
+    def _line_values(self, points, interpolation='linear'):
+        if interpolation == 'spline' and len(points) >= 3:
+            x_values = tuple(range(256))
+            y_values = tuple(float(value) for value in points_to_lut(points, interpolation))
+            return [x_values, y_values]
         x_values, y_values = zip(*points)
         return [x_values, y_values]
 
-    def _set_line_value_if_exists(self, tag, points):
+    def _set_line_value_if_exists(self, tag, points, interpolation='linear'):
         if dpg.does_item_exist(tag):
-            dpg.set_value(tag, self._line_values(points))
+            dpg.set_value(tag, self._line_values(points, interpolation))
 
     def _redraw_line(self, node_id):
         active_channel = self._active_channel(node_id)
@@ -194,11 +203,13 @@ class CurvesPointsEditorMixin:
             return
         active_line_tag = self._get_tag_plot_series_name(node_id)
         self._bind_line_theme(active_line_tag, CURVE_CHANNEL_COLORS[active_channel])
-        self._set_line_value_if_exists(active_line_tag, points)
+        interpolation = self._curve_interpolation(node_id)
+        self._set_line_value_if_exists(active_line_tag, points, interpolation)
         for channel in CURVE_CHANNELS:
             self._set_line_value_if_exists(
                 self._get_tag_plot_channel_series_name(node_id, channel),
                 curve_set[channel],
+                interpolation,
             )
         display_tag = self._get_tag_points_display_name(node_id)
         if dpg.does_item_exist(display_tag):

@@ -7,9 +7,10 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
+from node.curve_interpolation import points_to_lut as _shared_points_to_lut
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.port_model import OutputPort, PortDataType
-from node_editor.util import dpg_set_value
+from node_editor.util import dpg_get_value, dpg_set_value
 
 _BGR_INDEX_BY_CHANNEL = {
     'Blue': 0,
@@ -19,36 +20,7 @@ _BGR_INDEX_BY_CHANNEL = {
 
 
 def _points_to_lut(points, interpolation='linear'):
-    xs, ys = zip(*points)
-    x_values = np.arange(256, dtype=np.float32)
-    if interpolation != 'spline' or len(points) < 3:
-        return np.interp(x_values, xs, ys).astype(np.uint8)
-    xs = np.asarray(xs, dtype=np.float32)
-    ys = np.asarray(ys, dtype=np.float32)
-    result = np.interp(x_values, xs, ys).astype(np.float32)
-    for index in range(len(xs) - 1):
-        mask = (x_values >= xs[index]) & (x_values <= xs[index + 1])
-        if not np.any(mask):
-            continue
-        x0 = xs[max(0, index - 1)]
-        x1 = xs[index]
-        x2 = xs[index + 1]
-        x3 = xs[min(len(xs) - 1, index + 2)]
-        y0 = ys[max(0, index - 1)]
-        y1 = ys[index]
-        y2 = ys[index + 1]
-        y3 = ys[min(len(ys) - 1, index + 2)]
-        if x2 <= x1:
-            continue
-        t = (x_values[mask] - x1) / (x2 - x1)
-        m1 = 0.0 if x2 == x0 else (y2 - y0) * (x2 - x1) / (x2 - x0)
-        m2 = 0.0 if x3 == x1 else (y3 - y1) * (x2 - x1) / (x3 - x1)
-        h00 = (2 * t**3) - (3 * t**2) + 1
-        h10 = t**3 - (2 * t**2) + t
-        h01 = (-2 * t**3) + (3 * t**2)
-        h11 = t**3 - t**2
-        result[mask] = (h00 * y1) + (h10 * m1) + (h01 * y2) + (h11 * m2)
-    return np.clip(result, 0, 255).astype(np.uint8)
+    return _shared_points_to_lut(points, interpolation=interpolation)
 
 
 def _apply_lut(image, table):
@@ -113,6 +85,17 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     _min_val = 0
     _max_val = 255
     _delete_hit_radius = 6
+
+
+    def _curve_interpolation(self, node_id):
+        try:
+            value_tag = self._parameter_port_ref(
+                node_id,
+                self.parameters[1],
+            ).value_tag
+        except (KeyError, IndexError):
+            return 'linear'
+        return 'spline' if dpg_get_value(value_tag) == 'spline' else 'linear'
 
     def _curves_output_port_ref(self, node_id):
         try:

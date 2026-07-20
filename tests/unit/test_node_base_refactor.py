@@ -411,3 +411,28 @@ def test_curve_points_keyboard_handlers_use_global_handler_registry():
 
     assert 'with dpg.handler_registry()' in source
     assert 'parent=handler' not in key_handler_block.split(')', maxsplit=1)[0]
+
+
+def test_curve_points_spline_line_samples_lut_without_extra_drag_points():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    x_values, y_values = editor._line_values(points, interpolation='spline')
+
+    assert list(x_values) == list(range(256))
+    assert len(y_values) == 256
+    assert [x for x, _y in points] == [0, 64, 128, 255]
+
+
+def test_curve_points_linear_line_uses_only_drag_points():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    x_values, y_values = editor._line_values(points, interpolation='linear')
+
+    assert list(x_values) == [0, 64, 128, 255]
+    assert list(y_values) == [0, 230, 40, 255]

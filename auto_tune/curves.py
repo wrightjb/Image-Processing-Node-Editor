@@ -8,7 +8,7 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
-from node.process_node.node_curves import _points_to_lut as node_points_to_lut
+from node.curve_interpolation import points_to_lut as node_points_to_lut
 from node.process_node.node_curves import image_process
 
 DEFAULT_MAX_POINTS = 20

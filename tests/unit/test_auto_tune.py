@@ -1852,3 +1852,31 @@ def test_tune_curves_spline_dense_reconstruction_does_not_use_all_default_points
     )
 
     assert len(result.best_parameters['points']) < 20
+
+
+def test_tune_curves_spline_dense_reconstruction_prefers_shape_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    shape_points = [
+        [0, 0],
+        [35, 155],
+        [100, 12],
+        [145, 105],
+        [198, 0],
+        [255, 255],
+    ]
+    target = points_to_lut(
+        shape_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        interpolation='spline',
+        refinement_iterations=0,
+    )
+
+    assert len(result.best_parameters['points']) <= 10

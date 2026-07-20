@@ -520,7 +520,13 @@ def fit_spline_points_from_dense_reconstruction(
     """Seed spline controls from inflections in the dense reconstructed LUT."""
     max_points = max(2, int(max_points))
     dense_lut = np.asarray(observed.values, dtype=np.float32)
-    first_derivative = np.gradient(dense_lut)
+    smooth_kernel = np.ones(9, dtype=np.float32) / 9.0
+    smoothed_lut = np.convolve(
+        np.pad(dense_lut, (4, 4), mode='edge'),
+        smooth_kernel,
+        mode='valid',
+    ).astype(np.float32)
+    first_derivative = np.gradient(smoothed_lut)
     second_derivative = np.gradient(first_derivative)
     curvature = np.abs(second_derivative)
     observed_curvature = curvature[observed.observed_mask]
@@ -532,6 +538,14 @@ def fit_spline_points_from_dense_reconstruction(
     sign = np.sign(second_derivative)
     sign[sign == 0] = 1
     inflection_indexes = np.flatnonzero(np.diff(sign) != 0) + 1
+    slope_sign = np.sign(first_derivative)
+    slope_sign[slope_sign == 0] = 1
+    extrema_indexes = np.flatnonzero(np.diff(slope_sign) != 0) + 1
+    extrema_candidates = [
+        int(index)
+        for index in extrema_indexes
+        if observed.observed_mask[int(index)]
+    ]
     local_curvature_maxima = [
         index
         for index in range(1, 255)
@@ -546,11 +560,6 @@ def fit_spline_points_from_dense_reconstruction(
         for index in inflection_indexes
         if observed.observed_mask[int(index)] and curvature[int(index)] >= threshold
     }
-    candidates.update(
-        int(index)
-        for index in local_curvature_maxima
-        if observed.observed_mask[int(index)]
-    )
     rdp_candidates = [
         int(index)
         for index in rdp_curve_x_positions(
@@ -561,13 +570,15 @@ def fit_spline_points_from_dense_reconstruction(
         if int(index) not in (0, 255)
     ]
 
-    curvature_ranked_candidates = sorted(
-        candidates,
-        key=lambda index: curvature[index] * (1.0 + observed.weights[index]),
-        reverse=True,
-    )
     ranked_candidates = []
-    for candidate in rdp_candidates + curvature_ranked_candidates[:32]:
+    for candidate in sorted(extrema_candidates):
+        if candidate not in ranked_candidates:
+            ranked_candidates.append(candidate)
+    inflection_ranked_candidates = sorted(candidates)
+    for candidate in inflection_ranked_candidates:
+        if candidate not in ranked_candidates:
+            ranked_candidates.append(candidate)
+    for candidate in rdp_candidates[:max(0, max_points - 2)]:
         if candidate not in ranked_candidates:
             ranked_candidates.append(candidate)
     selected = [0, 255]

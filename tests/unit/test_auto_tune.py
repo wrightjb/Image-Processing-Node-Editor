@@ -1809,3 +1809,25 @@ def test_tune_curves_spline_uses_additive_fit_without_pruning(monkeypatch):
     )
 
     assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target = source.copy()
+
+    def _fail_additive(*args, **kwargs):
+        raise AssertionError('spline mode should seed from dense reconstruction')
+
+    monkeypatch.setattr(curves_module, 'fit_spline_points_additive', _fail_additive)
+
+    result = curves_module.tune_curves(
+        source,
+        target,
+        max_points=8,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert result.best_parameters['interpolation'] == 'spline'

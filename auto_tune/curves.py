@@ -509,6 +509,93 @@ def fit_spline_points_additive(
     return best_points
 
 
+def fit_spline_points_from_dense_reconstruction(
+    observed,
+    max_points=DEFAULT_MAX_POINTS,
+    metric='balanced_huber',
+    precision=DEFAULT_POINT_PRECISION,
+    progress_callback=None,
+):
+    """Seed spline controls from inflections in the dense reconstructed LUT."""
+    max_points = max(2, int(max_points))
+    dense_lut = np.asarray(observed.values, dtype=np.float32)
+    first_derivative = np.gradient(dense_lut)
+    second_derivative = np.gradient(first_derivative)
+    curvature = np.abs(second_derivative)
+    observed_curvature = curvature[observed.observed_mask]
+    if observed_curvature.size:
+        threshold = max(float(np.percentile(observed_curvature, 80)), 0.25)
+    else:
+        threshold = 0.25
+
+    sign = np.sign(second_derivative)
+    sign[sign == 0] = 1
+    inflection_indexes = np.flatnonzero(np.diff(sign) != 0) + 1
+    local_curvature_maxima = [
+        index
+        for index in range(1, 255)
+        if (
+            curvature[index] >= threshold
+            and curvature[index] >= curvature[index - 1]
+            and curvature[index] >= curvature[index + 1]
+        )
+    ]
+    candidates = {
+        int(index)
+        for index in inflection_indexes
+        if observed.observed_mask[int(index)] and curvature[int(index)] >= threshold
+    }
+    candidates.update(
+        int(index)
+        for index in local_curvature_maxima
+        if observed.observed_mask[int(index)]
+    )
+
+    selected = list(
+        rdp_curve_x_positions(
+            dense_lut,
+            observed.weights,
+            max_points=max_points,
+        )
+    )
+    ranked_candidates = sorted(
+        candidates,
+        key=lambda index: curvature[index] * (1.0 + observed.weights[index]),
+        reverse=True,
+    )
+    min_spacing = 8
+    for candidate in ranked_candidates:
+        if len(selected) >= max_points:
+            break
+        if all(abs(candidate - existing) >= min_spacing for existing in selected):
+            selected.append(candidate)
+
+    selected = sorted(set(selected))
+    points = _refit_points(
+        [[x, float(dense_lut[int(x)])] for x in selected],
+        observed,
+        precision=precision,
+        metric=metric,
+        interpolation='spline',
+    )
+    score = _score_points(
+        points,
+        observed,
+        metric=metric,
+        interpolation='spline',
+    )
+    if progress_callback is not None:
+        progress_callback({
+            'phase': 'spline_inflection',
+            'parameters': {'points': points},
+            'score': float(score),
+            'best_score': float(score),
+            'observed_bins': int(np.count_nonzero(observed.counts)),
+            'point_count': len(points),
+        })
+    return points
+
+
 def refine_curve_points_local_search(
     points,
     observed_lut,
@@ -722,11 +809,10 @@ def tune_curves(
     observed = estimate_curve_lut(source_image, target_image, channel=channel)
     interpolation = 'spline' if interpolation == 'spline' else 'linear'
     if interpolation == 'spline':
-        initial_points = fit_spline_points_additive(
+        initial_points = fit_spline_points_from_dense_reconstruction(
             observed,
             max_points=max_points,
             metric=metric_name,
-            complexity_penalty=complexity_penalty,
             precision=point_precision,
             progress_callback=progress_callback,
         )

@@ -1756,3 +1756,33 @@ def test_tune_curves_reports_requested_spline_interpolation():
     )
 
     assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_refit_improves_spline_generated_target():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (4, 1))
+    spline_points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        spline_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    linear_result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=0,
+        interpolation='linear',
+    )
+    spline_result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert spline_result.best_score < linear_result.best_score
+    assert spline_result.best_parameters['points'] != linear_result.best_parameters['points']

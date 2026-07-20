@@ -350,8 +350,58 @@ def simplify_curve_points_weighted_rdp(values, weights=None, max_points=DEFAULT_
     )
 
 
-def _refit_points(points, observed, precision=DEFAULT_POINT_PRECISION):
-    return fit_curve_y_values(
+def optimize_spline_y_values(
+    points,
+    observed,
+    metric='balanced_huber',
+    precision=DEFAULT_POINT_PRECISION,
+):
+    """Coordinate-refine y-values using the spline-rendered LUT as objective."""
+    best_points = _format_points(points, precision=precision)
+    best_score = _score_points(
+        best_points,
+        observed,
+        metric=metric,
+        interpolation='spline',
+    )
+    radii = (32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25)
+    for radius in radii:
+        improved = True
+        while improved:
+            improved = False
+            for index in range(len(best_points)):
+                current_y = float(best_points[index][1])
+                for candidate_y in (
+                    max(0.0, current_y - radius),
+                    min(255.0, current_y + radius),
+                ):
+                    if candidate_y == current_y:
+                        continue
+                    candidate = [point[:] for point in best_points]
+                    candidate[index][1] = candidate_y
+                    candidate = _format_points(candidate, precision=precision)
+                    score = _score_points(
+                        candidate,
+                        observed,
+                        metric=metric,
+                        interpolation='spline',
+                    )
+                    if score < best_score:
+                        best_points = candidate
+                        best_score = score
+                        improved = True
+                        break
+    return best_points
+
+
+def _refit_points(
+    points,
+    observed,
+    precision=DEFAULT_POINT_PRECISION,
+    metric='balanced_huber',
+    interpolation='linear',
+):
+    fitted = fit_curve_y_values(
         [point[0] for point in points],
         observed.observed_values,
         weights=observed.weights,
@@ -359,6 +409,14 @@ def _refit_points(points, observed, precision=DEFAULT_POINT_PRECISION):
         prior_values=observed.values,
         precision=precision,
     )
+    if interpolation == 'spline':
+        return optimize_spline_y_values(
+            fitted,
+            observed,
+            metric=metric,
+            precision=precision,
+        )
+    return fitted
 
 
 def refine_curve_points_local_search(
@@ -370,6 +428,7 @@ def refine_curve_points_local_search(
     observed_mask=None,
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
+    interpolation='linear',
 ):
     """Locally refine interior point x positions, refitting y-values each time."""
     observed = ObservedCurveLut(
@@ -379,8 +438,20 @@ def refine_curve_points_local_search(
         observed_values=np.asarray(observed_lut, dtype=np.float32),
         observed_mask=(~np.isnan(observed_lut) if observed_mask is None else observed_mask),
     )
-    best_points = _refit_points(points, observed, precision=precision)
-    best_score = _score_points(best_points, observed, metric=metric)
+    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    best_points = _refit_points(
+        points,
+        observed,
+        precision=precision,
+        metric=metric,
+        interpolation=interpolation,
+    )
+    best_score = _score_points(
+        best_points,
+        observed,
+        metric=metric,
+        interpolation=interpolation,
+    )
     radii = (64, 32, 16, 8, 4, 2, 1)
     for _round in range(max(0, int(iterations))):
         improved = False
@@ -399,8 +470,19 @@ def refine_curve_points_local_search(
                         continue
                     candidate = [point[:] for point in best_points]
                     candidate[index][0] = candidate_x
-                    candidate = _refit_points(candidate, observed, precision=precision)
-                    score = _score_points(candidate, observed, metric=metric)
+                    candidate = _refit_points(
+                        candidate,
+                        observed,
+                        precision=precision,
+                        metric=metric,
+                        interpolation=interpolation,
+                    )
+                    score = _score_points(
+                        candidate,
+                        observed,
+                        metric=metric,
+                        interpolation=interpolation,
+                    )
                     if score < best_score:
                         best_points = candidate
                         best_score = score
@@ -427,16 +509,40 @@ def prune_curve_points(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     min_points=2,
     precision=DEFAULT_POINT_PRECISION,
+    interpolation='linear',
 ):
     """Remove points that do not improve observed-fit enough to justify complexity."""
-    best_points = _refit_points(points, observed, precision=precision)
-    best_score = _score_points(best_points, observed, metric=metric)
+    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    best_points = _refit_points(
+        points,
+        observed,
+        precision=precision,
+        metric=metric,
+        interpolation=interpolation,
+    )
+    best_score = _score_points(
+        best_points,
+        observed,
+        metric=metric,
+        interpolation=interpolation,
+    )
     while len(best_points) > max(2, int(min_points)):
         best_removal = None
         for index in range(1, len(best_points) - 1):
             candidate = [point[:] for i, point in enumerate(best_points) if i != index]
-            candidate = _refit_points(candidate, observed, precision=precision)
-            score = _score_points(candidate, observed, metric=metric)
+            candidate = _refit_points(
+                candidate,
+                observed,
+                precision=precision,
+                metric=metric,
+                interpolation=interpolation,
+            )
+            score = _score_points(
+                candidate,
+                observed,
+                metric=metric,
+                interpolation=interpolation,
+            )
             score_increase = score - best_score
             if best_removal is None or score_increase < best_removal[0]:
                 best_removal = (score_increase, score, candidate)
@@ -453,10 +559,23 @@ def prune_close_curve_points(
     min_spacing=2.0,
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     precision=DEFAULT_POINT_PRECISION,
+    interpolation='linear',
 ):
     """Remove nearly overlaid interior points when they do not materially help."""
-    best_points = _refit_points(points, observed, precision=precision)
-    best_score = _score_points(best_points, observed, metric=metric)
+    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    best_points = _refit_points(
+        points,
+        observed,
+        precision=precision,
+        metric=metric,
+        interpolation=interpolation,
+    )
+    best_score = _score_points(
+        best_points,
+        observed,
+        metric=metric,
+        interpolation=interpolation,
+    )
     while len(best_points) > 2:
         close_indexes = [
             index
@@ -473,8 +592,19 @@ def prune_close_curve_points(
         best_removal = None
         for index in close_indexes:
             candidate = [point[:] for i, point in enumerate(best_points) if i != index]
-            candidate = _refit_points(candidate, observed, precision=precision)
-            score = _score_points(candidate, observed, metric=metric)
+            candidate = _refit_points(
+                candidate,
+                observed,
+                precision=precision,
+                metric=metric,
+                interpolation=interpolation,
+            )
+            score = _score_points(
+                candidate,
+                observed,
+                metric=metric,
+                interpolation=interpolation,
+            )
             score_increase = score - best_score
             if best_removal is None or score_increase < best_removal[0]:
                 best_removal = (score_increase, score, candidate)
@@ -540,8 +670,15 @@ def tune_curves(
         observed_mask=observed.observed_mask,
         precision=point_precision,
         progress_callback=progress_callback,
+        interpolation=interpolation,
     )
-    refined_points = _refit_points(refined_points, observed, precision=point_precision)
+    refined_points = _refit_points(
+        refined_points,
+        observed,
+        precision=point_precision,
+        metric=metric_name,
+        interpolation=interpolation,
+    )
     refined_score = _score_points(
         refined_points,
         observed,
@@ -565,6 +702,7 @@ def tune_curves(
         metric=metric_name,
         complexity_penalty=complexity_penalty,
         precision=point_precision,
+        interpolation=interpolation,
     )
     pruned_points = prune_curve_points(
         refined_points,
@@ -572,6 +710,7 @@ def tune_curves(
         metric=metric_name,
         complexity_penalty=complexity_penalty,
         precision=point_precision,
+        interpolation=interpolation,
     )
     lut_score = _score_points(
         pruned_points,

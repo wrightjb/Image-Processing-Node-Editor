@@ -339,6 +339,13 @@ class Node(DpgNodeBase):
                     f"points={update['point_count']} "
                     f"score={update['score']:.6g}"
                 )
+            elif update.get('phase') == 'spline_add':
+                message = (
+                    f"spline add\n"
+                    f"points={update['point_count']} "
+                    f"bins={update['observed_bins']}\n"
+                    f"score={update['score']:.6g}"
+                )
             else:
                 message = (
                     f"candidate {update['candidate_index']}/{update['candidate_count']}\n"

@@ -355,6 +355,7 @@ def optimize_spline_y_values(
     observed,
     metric='balanced_huber',
     precision=DEFAULT_POINT_PRECISION,
+    max_sweeps=2,
 ):
     """Coordinate-refine y-values using the spline-rendered LUT as objective."""
     best_points = _format_points(points, precision=precision)
@@ -366,8 +367,7 @@ def optimize_spline_y_values(
     )
     radii = (32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25)
     for radius in radii:
-        improved = True
-        while improved:
+        for _sweep in range(max(1, int(max_sweeps))):
             improved = False
             for index in range(len(best_points)):
                 current_y = float(best_points[index][1])
@@ -391,6 +391,8 @@ def optimize_spline_y_values(
                         best_score = score
                         improved = True
                         break
+            if not improved:
+                break
     return best_points
 
 
@@ -417,6 +419,94 @@ def _refit_points(
             precision=precision,
         )
     return fitted
+
+
+def fit_spline_points_additive(
+    observed,
+    max_points=DEFAULT_MAX_POINTS,
+    metric='balanced_huber',
+    complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
+    precision=DEFAULT_POINT_PRECISION,
+    progress_callback=None,
+):
+    """Build spline controls additively by inserting the worst residual x bin."""
+    max_points = max(2, int(max_points))
+    selected_x = [0.0, 255.0]
+    best_points = _refit_points(
+        [[0.0, 0.0], [255.0, 255.0]],
+        observed,
+        precision=precision,
+        metric=metric,
+        interpolation='spline',
+    )
+    best_score = _score_points(
+        best_points,
+        observed,
+        metric=metric,
+        interpolation='spline',
+    )
+    while len(selected_x) < max_points:
+        lut = points_to_lut(
+            best_points,
+            quantize=True,
+            interpolation='spline',
+        )
+        residual = np.abs(lut - observed.values)
+        candidate_mask = observed.observed_mask.copy()
+        candidate_indexes = np.arange(256)
+        for x_value in selected_x:
+            candidate_mask &= np.abs(candidate_indexes - int(round(x_value))) >= 8
+        if not np.any(candidate_mask):
+            break
+
+        weighted_residual = np.where(
+            candidate_mask,
+            residual * (1.0 + observed.weights),
+            -1.0,
+        )
+        candidate_order = np.argsort(weighted_residual)[::-1]
+        candidate_x_values = [
+            int(candidate_x)
+            for candidate_x in candidate_order[:min(8, np.count_nonzero(candidate_mask))]
+            if weighted_residual[int(candidate_x)] >= 0.0
+        ]
+        best_candidate = None
+        for candidate_x in candidate_x_values:
+            next_x = sorted({*selected_x, float(candidate_x)})
+            candidate = _refit_points(
+                [[x, float(np.interp(x, _LUT_X, observed.values))] for x in next_x],
+                observed,
+                precision=precision,
+                metric=metric,
+                interpolation='spline',
+            )
+            score = _score_points(
+                candidate,
+                observed,
+                metric=metric,
+                interpolation='spline',
+            )
+            if best_candidate is None or score < best_candidate[0]:
+                best_candidate = (score, next_x, candidate)
+        if best_candidate is None:
+            break
+        score, next_x, candidate = best_candidate
+        improvement = best_score - score
+        if improvement <= complexity_penalty and len(best_points) >= 3:
+            break
+        selected_x = next_x
+        best_points = candidate
+        best_score = score
+        if progress_callback is not None:
+            progress_callback({
+                'phase': 'spline_add',
+                'parameters': {'points': best_points},
+                'score': float(best_score),
+                'best_score': float(best_score),
+                'observed_bins': int(np.count_nonzero(observed.counts)),
+                'point_count': len(best_points),
+            })
+    return best_points
 
 
 def refine_curve_points_local_search(
@@ -630,20 +720,30 @@ def tune_curves(
     """Recover Curves-node points from source/target images."""
     channel = _normalize_channel(channel)
     observed = estimate_curve_lut(source_image, target_image, channel=channel)
-    x_positions = rdp_curve_x_positions(
-        observed.values,
-        observed.weights,
-        max_points=max_points,
-    )
-    initial_points = fit_curve_y_values(
-        x_positions,
-        observed.observed_values,
-        weights=observed.weights,
-        observed_mask=observed.observed_mask,
-        prior_values=observed.values,
-        precision=point_precision,
-    )
     interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    if interpolation == 'spline':
+        initial_points = fit_spline_points_additive(
+            observed,
+            max_points=max_points,
+            metric=metric_name,
+            complexity_penalty=complexity_penalty,
+            precision=point_precision,
+            progress_callback=progress_callback,
+        )
+    else:
+        x_positions = rdp_curve_x_positions(
+            observed.values,
+            observed.weights,
+            max_points=max_points,
+        )
+        initial_points = fit_curve_y_values(
+            x_positions,
+            observed.observed_values,
+            weights=observed.weights,
+            observed_mask=observed.observed_mask,
+            prior_values=observed.values,
+            precision=point_precision,
+        )
     initial_score = _score_points(
         initial_points,
         observed,
@@ -696,22 +796,25 @@ def tune_curves(
             'point_count': len(refined_points),
         })
 
-    refined_points = prune_close_curve_points(
-        refined_points,
-        observed,
-        metric=metric_name,
-        complexity_penalty=complexity_penalty,
-        precision=point_precision,
-        interpolation=interpolation,
-    )
-    pruned_points = prune_curve_points(
-        refined_points,
-        observed,
-        metric=metric_name,
-        complexity_penalty=complexity_penalty,
-        precision=point_precision,
-        interpolation=interpolation,
-    )
+    if interpolation == 'spline':
+        pruned_points = refined_points
+    else:
+        refined_points = prune_close_curve_points(
+            refined_points,
+            observed,
+            metric=metric_name,
+            complexity_penalty=complexity_penalty,
+            precision=point_precision,
+            interpolation=interpolation,
+        )
+        pruned_points = prune_curve_points(
+            refined_points,
+            observed,
+            metric=metric_name,
+            complexity_penalty=complexity_penalty,
+            precision=point_precision,
+            interpolation=interpolation,
+        )
     lut_score = _score_points(
         pruned_points,
         observed,

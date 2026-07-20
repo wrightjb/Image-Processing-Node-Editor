@@ -351,6 +351,9 @@ class Node(DpgNodeBase):
                     f"spline inflections\n"
                     f"points={update['point_count']} "
                     f"bins={update['observed_bins']}\n"
+                    f"candidates={update['candidate_count']} "
+                    f"inflect={update['inflection_candidates']} "
+                    f"curve={update['curvature_candidates']}\n"
                     f"score={update['score']:.6g}"
                 )
             else:

@@ -1780,7 +1780,7 @@ def test_tune_curves_spline_refit_improves_spline_generated_target():
         source,
         target,
         max_points=4,
-        refinement_iterations=0,
+        refinement_iterations=1,
         interpolation='spline',
     )
 
@@ -1831,3 +1831,24 @@ def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
     )
 
     assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_dense_reconstruction_does_not_use_all_default_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    spline_points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        spline_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        interpolation='spline',
+        refinement_iterations=0,
+    )
+
+    assert len(result.best_parameters['points']) < 20

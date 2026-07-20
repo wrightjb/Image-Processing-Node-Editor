@@ -355,7 +355,7 @@ def optimize_spline_y_values(
     observed,
     metric='balanced_huber',
     precision=DEFAULT_POINT_PRECISION,
-    max_sweeps=2,
+    max_sweeps=1,
 ):
     """Coordinate-refine y-values using the spline-rendered LUT as objective."""
     best_points = _format_points(points, precision=precision)
@@ -513,6 +513,7 @@ def fit_spline_points_from_dense_reconstruction(
     observed,
     max_points=DEFAULT_MAX_POINTS,
     metric='balanced_huber',
+    complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
 ):
@@ -550,50 +551,103 @@ def fit_spline_points_from_dense_reconstruction(
         for index in local_curvature_maxima
         if observed.observed_mask[int(index)]
     )
-
-    selected = list(
-        rdp_curve_x_positions(
+    rdp_candidates = [
+        int(index)
+        for index in rdp_curve_x_positions(
             dense_lut,
             observed.weights,
             max_points=max_points,
         )
-    )
-    ranked_candidates = sorted(
+        if int(index) not in (0, 255)
+    ]
+
+    curvature_ranked_candidates = sorted(
         candidates,
         key=lambda index: curvature[index] * (1.0 + observed.weights[index]),
         reverse=True,
     )
-    min_spacing = 8
-    for candidate in ranked_candidates:
-        if len(selected) >= max_points:
-            break
-        if all(abs(candidate - existing) >= min_spacing for existing in selected):
-            selected.append(candidate)
-
-    selected = sorted(set(selected))
-    points = _refit_points(
-        [[x, float(dense_lut[int(x)])] for x in selected],
+    ranked_candidates = []
+    for candidate in rdp_candidates + curvature_ranked_candidates[:32]:
+        if candidate not in ranked_candidates:
+            ranked_candidates.append(candidate)
+    selected = [0, 255]
+    best_points = _refit_points(
+        [[0, float(dense_lut[0])], [255, float(dense_lut[255])]],
         observed,
         precision=precision,
         metric=metric,
         interpolation='spline',
     )
-    score = _score_points(
-        points,
+    best_score = _score_points(
+        best_points,
         observed,
         metric=metric,
         interpolation='spline',
     )
+    min_spacing = 8
+    for candidate in ranked_candidates:
+        if len(selected) >= max_points:
+            break
+        if any(abs(candidate - existing) < min_spacing for existing in selected):
+            continue
+        candidate_x = sorted({*selected, int(candidate)})
+        candidate_points = _refit_points(
+            [[x, float(dense_lut[int(x)])] for x in candidate_x],
+            observed,
+            precision=precision,
+            metric=metric,
+            interpolation='spline',
+        )
+        candidate_score = _score_points(
+            candidate_points,
+            observed,
+            metric=metric,
+            interpolation='spline',
+        )
+        improvement = best_score - candidate_score
+        required_improvement = max(complexity_penalty, best_score * 0.01)
+        if improvement >= required_improvement:
+            selected = candidate_x
+            best_points = candidate_points
+            best_score = candidate_score
+
+    if len(selected) == 2 and max_points > 2:
+        for candidate in rdp_curve_x_positions(
+            dense_lut,
+            observed.weights,
+            max_points=3,
+        ):
+            if candidate in (0, 255):
+                continue
+            selected = sorted({*selected, int(candidate)})
+            best_points = _refit_points(
+                [[x, float(dense_lut[int(x)])] for x in selected],
+                observed,
+                precision=precision,
+                metric=metric,
+                interpolation='spline',
+            )
+            best_score = _score_points(
+                best_points,
+                observed,
+                metric=metric,
+                interpolation='spline',
+            )
+            break
+
     if progress_callback is not None:
         progress_callback({
             'phase': 'spline_inflection',
-            'parameters': {'points': points},
-            'score': float(score),
-            'best_score': float(score),
+            'parameters': {'points': best_points},
+            'score': float(best_score),
+            'best_score': float(best_score),
             'observed_bins': int(np.count_nonzero(observed.counts)),
-            'point_count': len(points),
+            'inflection_candidates': len(inflection_indexes),
+            'curvature_candidates': len(local_curvature_maxima),
+            'candidate_count': len(ranked_candidates),
+            'point_count': len(best_points),
         })
-    return points
+    return best_points
 
 
 def refine_curve_points_local_search(
@@ -813,6 +867,7 @@ def tune_curves(
             observed,
             max_points=max_points,
             metric=metric_name,
+            complexity_penalty=complexity_penalty,
             precision=point_precision,
             progress_callback=progress_callback,
         )

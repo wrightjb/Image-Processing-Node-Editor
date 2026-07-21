@@ -7,6 +7,7 @@ import json
 
 import dearpygui.dearpygui as dpg
 
+from node.curve_interpolation import points_to_lut
 from node_editor.util import dpg_get_item_children, dpg_get_value, dpg_set_value
 
 CURVE_CHANNELS = ('White', 'Red', 'Green', 'Blue')
@@ -28,6 +29,14 @@ class CurvesPointsEditorMixin:
     _min_val = 0
     _max_val = 255
     _delete_hit_radius = 6
+    _plot_width = 240
+    _plot_height = 180
+    _large_plot_width = 900
+    _large_plot_height = 650
+    _axis_padding = 5
+    _keyboard_nudge_step = 0.1
+    _last_touched_point_by_node = {}
+    _large_curve_editor_by_node = set()
     _curve_sets_by_node = {}
     _active_curve_channel_by_node = {}
     _curve_editor_built_by_node = set()
@@ -46,6 +55,14 @@ class CurvesPointsEditorMixin:
 
     def _get_tag_active_channel_name(self, node_id):
         return f'{self._node_name(node_id)}:active_channel'
+
+    def _remember_touched_point(self, node_id, point_tag):
+        self._last_touched_point_by_node[str(node_id)] = point_tag
+
+    def _plot_size(self, node_id):
+        if str(node_id) in self._large_curve_editor_by_node:
+            return self._large_plot_width, self._large_plot_height
+        return self._plot_width, self._plot_height
 
     def _default_points(self):
         return [[self._min_val, self._min_val], [self._max_val, self._max_val]]
@@ -170,13 +187,21 @@ class CurvesPointsEditorMixin:
         curve_set[self._active_channel(node_id)] = points
         return curve_set
 
-    def _line_values(self, points):
+    def _curve_interpolation(self, node_id):
+        del node_id
+        return 'linear'
+
+    def _line_values(self, points, interpolation='linear'):
+        if interpolation == 'spline' and len(points) >= 3:
+            x_values = tuple(range(256))
+            y_values = tuple(float(value) for value in points_to_lut(points, interpolation))
+            return [x_values, y_values]
         x_values, y_values = zip(*points)
         return [x_values, y_values]
 
-    def _set_line_value_if_exists(self, tag, points):
+    def _set_line_value_if_exists(self, tag, points, interpolation='linear'):
         if dpg.does_item_exist(tag):
-            dpg.set_value(tag, self._line_values(points))
+            dpg.set_value(tag, self._line_values(points, interpolation))
 
     def _redraw_line(self, node_id):
         active_channel = self._active_channel(node_id)
@@ -187,11 +212,13 @@ class CurvesPointsEditorMixin:
             return
         active_line_tag = self._get_tag_plot_series_name(node_id)
         self._bind_line_theme(active_line_tag, CURVE_CHANNEL_COLORS[active_channel])
-        self._set_line_value_if_exists(active_line_tag, points)
+        interpolation = self._curve_interpolation(node_id)
+        self._set_line_value_if_exists(active_line_tag, points, interpolation)
         for channel in CURVE_CHANNELS:
             self._set_line_value_if_exists(
                 self._get_tag_plot_channel_series_name(node_id, channel),
                 curve_set[channel],
+                interpolation,
             )
         display_tag = self._get_tag_points_display_name(node_id)
         if dpg.does_item_exist(display_tag):
@@ -249,7 +276,7 @@ class CurvesPointsEditorMixin:
         else:
             x, y = dpg.get_plot_mouse_pos()
 
-        dpg.add_drag_point(
+        point_tag = dpg.add_drag_point(
             parent=plot_tag,
             label='',
             default_value=[x, y],
@@ -257,6 +284,7 @@ class CurvesPointsEditorMixin:
             callback=self._callback_moved_point,
             user_data=(node_id, static_x),
         )
+        self._remember_touched_point(node_id, point_tag)
         self._redraw_line(node_id)
         points = self._get_drag_points(node_id)
         self._on_points_changed(node_id, self._curve_set(node_id))
@@ -265,6 +293,7 @@ class CurvesPointsEditorMixin:
     def _callback_moved_point(self, sender, app_data, user_data):
         del app_data
         node_id, static_x = user_data
+        self._remember_touched_point(node_id, sender)
         before_points = self._get_drag_points(node_id)
         point_value = dpg_get_value(sender)
         if not isinstance(point_value, (list, tuple)) or len(point_value) != 2:
@@ -278,6 +307,7 @@ class CurvesPointsEditorMixin:
             or y > self._max_val
         ):
             dpg.delete_item(sender)
+            self._last_touched_point_by_node.pop(str(node_id), None)
             self._redraw_line(node_id)
             points = self._get_drag_points(node_id)
             self._on_points_changed(node_id, self._store_active_points(node_id, points))
@@ -297,6 +327,37 @@ class CurvesPointsEditorMixin:
         points = self._get_drag_points(node_id)
         self._on_points_changed(node_id, self._store_active_points(node_id, points))
         self._emit_points_changed(node_id, before_points, points, coalesce=True)
+
+    def _callback_nudge_last_point(self, sender, app_data, user_data):
+        del sender, app_data
+        if len(user_data) == 4:
+            node_id, dx, dy, plot_tag = user_data
+            try:
+                if not dpg.is_item_hovered(plot_tag):
+                    return
+            except Exception:
+                return
+        else:
+            node_id, dx, dy = user_data
+        point_tag = self._last_touched_point_by_node.get(str(node_id))
+        if not point_tag or not dpg.does_item_exist(point_tag):
+            return
+        before_points = self._get_drag_points(node_id)
+        point_value = dpg_get_value(point_tag)
+        if not isinstance(point_value, (list, tuple)) or len(point_value) != 2:
+            return
+        point_user_data = dpg.get_item_user_data(point_tag)
+        static_x = point_user_data[1] if point_user_data is not None else None
+        x = static_x if static_x is not None else float(point_value[0]) + dx
+        y = float(point_value[1]) + dy
+        if static_x is None:
+            x = max(self._min_val, min(self._max_val, x))
+        y = max(self._min_val, min(self._max_val, y))
+        dpg.set_value(point_tag, [x, y])
+        self._redraw_line(node_id)
+        points = self._get_drag_points(node_id)
+        self._on_points_changed(node_id, self._store_active_points(node_id, points))
+        self._emit_points_changed(node_id, before_points, points, coalesce=False)
 
     def _callback_delete_point(self, sender, app_data, user_data):
         del sender, app_data
@@ -328,6 +389,8 @@ class CurvesPointsEditorMixin:
 
         if closest_point_tag is not None:
             dpg.delete_item(closest_point_tag)
+            if self._last_touched_point_by_node.get(str(node_id)) == closest_point_tag:
+                self._last_touched_point_by_node.pop(str(node_id), None)
             self._redraw_line(node_id)
             points = self._get_drag_points(node_id)
             self._on_points_changed(node_id, self._store_active_points(node_id, points))
@@ -364,6 +427,19 @@ class CurvesPointsEditorMixin:
         self._load_active_drag_points(node_id, curve_set[channel])
         self._redraw_line(node_id)
         self._on_points_changed(node_id, curve_set)
+
+    def _callback_toggle_large_editor(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id = user_data
+        node_key = str(node_id)
+        if node_key in self._large_curve_editor_by_node:
+            self._large_curve_editor_by_node.remove(node_key)
+        else:
+            self._large_curve_editor_by_node.add(node_key)
+        plot_tag = self._get_tag_plot_name(node_id)
+        if dpg.does_item_exist(plot_tag):
+            width, height = self._plot_size(node_id)
+            dpg.configure_item(plot_tag, width=width, height=height)
 
     def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
         del node_id, before_points, after_points, coalesce
@@ -467,7 +543,7 @@ class CurvesPointsEditorMixin:
     def build_curve_points_channel_selector(self, node_id):
         dpg.add_combo(
             list(CURVE_CHANNELS),
-            label='Edit Channel',
+            label='Channel',
             tag=self._get_tag_active_channel_name(node_id),
             default_value=self._active_channel(node_id),
             width=160,
@@ -478,11 +554,25 @@ class CurvesPointsEditorMixin:
     def build_curve_points_plot_controls(self, node_id):
         plot_tag = self._get_tag_plot_name(node_id)
         y_axis_tag = f'{self._node_name(node_id)}:plot_y'
-        with dpg.plot(width=240, height=180, tag=plot_tag, no_menus=True):
+        width, height = self._plot_size(node_id)
+        with dpg.plot(
+            width=width,
+            height=height,
+            tag=plot_tag,
+            no_menus=True,
+        ):
             dpg.add_plot_axis(dpg.mvXAxis, tag=f'{self._node_name(node_id)}:plot_x')
-            dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
+            dpg.set_axis_limits(
+                dpg.last_item(),
+                self._min_val - self._axis_padding,
+                self._max_val + self._axis_padding,
+            )
             dpg.add_plot_axis(dpg.mvYAxis, tag=y_axis_tag)
-            dpg.set_axis_limits(dpg.last_item(), self._min_val, self._max_val)
+            dpg.set_axis_limits(
+                dpg.last_item(),
+                self._min_val - self._axis_padding,
+                self._max_val + self._axis_padding,
+            )
             for channel in CURVE_CHANNELS:
                 self._add_curve_line_series(node_id, channel, y_axis_tag, active=False)
             self._add_curve_line_series(
@@ -505,6 +595,25 @@ class CurvesPointsEditorMixin:
                 parent=handler,
             )
             dpg.bind_item_handler_registry(plot_tag, handler)
+        with dpg.handler_registry():
+            for key, delta in (
+                (dpg.mvKey_Left, (-self._keyboard_nudge_step, 0.0)),
+                (dpg.mvKey_Right, (self._keyboard_nudge_step, 0.0)),
+                (dpg.mvKey_Up, (0.0, self._keyboard_nudge_step)),
+                (dpg.mvKey_Down, (0.0, -self._keyboard_nudge_step)),
+            ):
+                dpg.add_key_press_handler(
+                    key=key,
+                    callback=self._callback_nudge_last_point,
+                    user_data=(node_id, delta[0], delta[1], plot_tag),
+                )
+        with dpg.group(horizontal=True):
+            dpg.add_button(
+                label='Large Editor',
+                width=104,
+                callback=self._callback_toggle_large_editor,
+                user_data=node_id,
+            )
         with dpg.group(horizontal=True):
             dpg.add_button(
                 label='Import',

@@ -1719,3 +1719,197 @@ def test_auto_tune_node_auto_controls_update_display_values(monkeypatch):
     assert values[node._auto_kernel_value_tag(6)] is False
     assert values[ports.sigma.value_tag] == 2.0
     assert values[ports.auto_kernel.value_tag] is False
+
+
+def test_curves_spline_interpolation_changes_lut_shape():
+    from auto_tune.curves import points_to_lut
+
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    linear = points_to_lut(points, quantize=False, interpolation='linear')
+    spline = points_to_lut(points, quantize=False, interpolation='spline')
+
+    assert linear.shape == (256,)
+    assert spline.shape == (256,)
+    assert not np.array_equal(linear, spline)
+    assert spline.min() >= 0
+    assert spline.max() <= 255
+
+
+def test_tune_curves_reports_requested_spline_interpolation():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (4, 1))
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_refit_improves_spline_generated_target():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (4, 1))
+    spline_points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        spline_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    linear_result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=0,
+        interpolation='linear',
+    )
+    spline_result = tune_curves(
+        source,
+        target,
+        max_points=4,
+        refinement_iterations=1,
+        interpolation='spline',
+    )
+
+    assert spline_result.best_score < linear_result.best_score
+    assert spline_result.best_parameters['points'] != linear_result.best_parameters['points']
+
+
+def test_tune_curves_spline_uses_additive_fit_without_pruning(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target = source.copy()
+
+    def _fail_prune(*args, **kwargs):
+        raise AssertionError('spline mode should not use subtractive pruning')
+
+    monkeypatch.setattr(curves_module, 'prune_curve_points', _fail_prune)
+    monkeypatch.setattr(curves_module, 'prune_close_curve_points', _fail_prune)
+
+    result = curves_module.tune_curves(
+        source,
+        target,
+        max_points=8,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target = source.copy()
+
+    def _fail_additive(*args, **kwargs):
+        raise AssertionError('spline mode should seed from dense reconstruction')
+
+    monkeypatch.setattr(curves_module, 'fit_spline_points_additive', _fail_additive)
+
+    result = curves_module.tune_curves(
+        source,
+        target,
+        max_points=8,
+        refinement_iterations=0,
+        interpolation='spline',
+    )
+
+    assert result.best_parameters['interpolation'] == 'spline'
+
+
+def test_tune_curves_spline_dense_reconstruction_does_not_use_all_default_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    spline_points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+    target = points_to_lut(
+        spline_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        interpolation='spline',
+        refinement_iterations=0,
+    )
+
+    assert len(result.best_parameters['points']) < 20
+
+
+def test_tune_curves_spline_dense_reconstruction_prefers_shape_points():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    shape_points = [
+        [0, 0],
+        [35, 155],
+        [100, 12],
+        [145, 105],
+        [198, 0],
+        [255, 255],
+    ]
+    target = points_to_lut(
+        shape_points,
+        quantize=True,
+        interpolation='spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        interpolation='spline',
+        refinement_iterations=0,
+    )
+
+    assert len(result.best_parameters['points']) <= 10
+
+
+def test_tune_curves_linear_can_skip_point_pruning(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target = source.copy()
+
+    def _fail_prune(*args, **kwargs):
+        raise AssertionError('pruning should be disabled')
+
+    monkeypatch.setattr(curves_module, 'prune_curve_points', _fail_prune)
+    monkeypatch.setattr(curves_module, 'prune_close_curve_points', _fail_prune)
+
+    result = curves_module.tune_curves(
+        source,
+        target,
+        max_points=100,
+        refinement_iterations=0,
+        interpolation='linear',
+        prune_points=False,
+    )
+
+    assert result.best_parameters['prune_points'] is False
+
+
+def test_auto_tune_curves_prune_points_defaults_to_disabled(monkeypatch):
+    import node.input_node.node_auto_tune_curves as auto_tune_curves_node_module
+
+    node = auto_tune_curves_node_module.Node()
+    monkeypatch.setattr(auto_tune_curves_node_module, 'dpg_get_value', lambda tag: None)
+
+    assert node._prune_points_value(7) is False

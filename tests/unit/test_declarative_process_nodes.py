@@ -1860,3 +1860,15 @@ def test_gaussian_blur_auto_sigma_toggle_updates_sigma_display(monkeypatch):
     assert values['8:GaussianBlur:Float:Input03Value:Input'] == 1.1
     assert configured['8:GaussianBlur:Float:Input03Value']['enabled'] is False
     assert configured['8:GaussianBlur:Int:Input02Value']['enabled'] is True
+
+
+def test_curves_interpolation_combo_uses_declarative_items_key():
+    interpolation = next(
+        parameter
+        for parameter in CurvesNode.parameters
+        if parameter['name'] == 'interpolation'
+    )
+
+    assert interpolation['widget'] == 'combo'
+    assert interpolation['items'] == ['linear', 'spline']
+    assert 'options' not in interpolation

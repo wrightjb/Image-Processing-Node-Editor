@@ -347,3 +347,123 @@ def test_curve_points_clear_channel_and_all_reset_curve_sets():
 
     assert editor._curve_set(7) == editor._default_curve_set()
     assert editor.changed[-1] == (7, editor._default_curve_set())
+
+
+def test_curve_points_editor_defaults_to_compact_canvas_with_large_mode():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+
+    assert editor._plot_width == 240
+    assert editor._plot_height == 180
+    assert editor._large_plot_width >= 800
+    assert editor._large_plot_height >= 600
+    assert editor._axis_padding > 0
+    assert editor._keyboard_nudge_step <= 0.1
+
+
+def test_curve_points_keyboard_nudges_last_touched_point(monkeypatch):
+    from node import curves_points_ui as curves_ui
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    class TestEditor(CurvesPointsEditorMixin):
+        def __init__(self):
+            self.values = {'point-tag': [128.0, 128.0]}
+            self.changed = []
+            self.emitted = []
+            self._last_touched_point_by_node = {'7': 'point-tag'}
+
+        def _node_name(self, node_id):
+            return f'{node_id}:TestCurves'
+
+        def _get_drag_points(self, node_id):
+            del node_id
+            return [self.values['point-tag']]
+
+        def _redraw_line(self, node_id):
+            del node_id
+
+        def _on_points_changed(self, node_id, points):
+            self.changed.append((node_id, points))
+
+        def _emit_points_changed(self, node_id, before_points, after_points, coalesce=False):
+            self.emitted.append((node_id, before_points, after_points, coalesce))
+
+    editor = TestEditor()
+    monkeypatch.setattr(curves_ui.dpg, 'does_item_exist', lambda tag: tag == 'point-tag')
+    monkeypatch.setattr(curves_ui.dpg, 'get_item_user_data', lambda tag: (7, None))
+    monkeypatch.setattr(curves_ui, 'dpg_get_value', lambda tag: editor.values[tag])
+    monkeypatch.setattr(
+        curves_ui.dpg,
+        'set_value',
+        lambda tag, value: editor.values.__setitem__(tag, value),
+    )
+
+    editor._callback_nudge_last_point(None, None, (7, 0.1, -0.1))
+
+    assert editor.values['point-tag'] == [128.1, 127.9]
+    assert editor.changed[-1][0] == 7
+    assert editor.emitted[-1][3] is False
+
+
+def test_curve_points_keyboard_handlers_use_global_handler_registry():
+    from pathlib import Path
+
+    source = Path('node/curves_points_ui.py').read_text(encoding='utf-8')
+    key_handler_block = source.split('dpg.add_key_press_handler', maxsplit=1)[1]
+
+    assert 'with dpg.handler_registry()' in source
+    assert 'parent=handler' not in key_handler_block.split(')', maxsplit=1)[0]
+
+
+def test_curve_points_spline_line_samples_lut_without_extra_drag_points():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    x_values, y_values = editor._line_values(points, interpolation='spline')
+
+    assert list(x_values) == list(range(256))
+    assert len(y_values) == 256
+    assert [x for x, _y in points] == [0, 64, 128, 255]
+
+
+def test_curve_points_linear_line_uses_only_drag_points():
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    editor = CurvesPointsEditorMixin()
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    x_values, y_values = editor._line_values(points, interpolation='linear')
+
+    assert list(x_values) == [0, 64, 128, 255]
+    assert list(y_values) == [0, 230, 40, 255]
+
+
+def test_curve_points_large_editor_toggle_changes_plot_size(monkeypatch):
+    from node import curves_points_ui as curves_ui
+    from node.curves_points_ui import CurvesPointsEditorMixin
+
+    class TestEditor(CurvesPointsEditorMixin):
+        def _node_name(self, node_id):
+            return f'{node_id}:TestCurves'
+
+    configured = {}
+    editor = TestEditor()
+    monkeypatch.setattr(curves_ui.dpg, 'does_item_exist', lambda tag: True)
+    monkeypatch.setattr(
+        curves_ui.dpg,
+        'configure_item',
+        lambda tag, **kwargs: configured.update({tag: kwargs}),
+    )
+
+    editor._callback_toggle_large_editor(None, None, 7)
+
+    assert configured['7:TestCurves:plot'] == {'width': 900, 'height': 650}
+    assert editor._plot_size(7) == (900, 650)
+
+    editor._callback_toggle_large_editor(None, None, 7)
+
+    assert configured['7:TestCurves:plot'] == {'width': 240, 'height': 180}
+    assert editor._plot_size(7) == (240, 180)

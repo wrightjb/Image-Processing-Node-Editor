@@ -7,9 +7,10 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
+from node.curve_interpolation import points_to_lut as _shared_points_to_lut
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.port_model import OutputPort, PortDataType
-from node_editor.util import dpg_set_value
+from node_editor.util import dpg_get_value, dpg_set_value
 
 _BGR_INDEX_BY_CHANNEL = {
     'Blue': 0,
@@ -18,9 +19,8 @@ _BGR_INDEX_BY_CHANNEL = {
 }
 
 
-def _points_to_lut(points):
-    xs, ys = zip(*points)
-    return np.interp(np.arange(256), xs, ys).astype(np.uint8)
+def _points_to_lut(points, interpolation='linear'):
+    return _shared_points_to_lut(points, interpolation=interpolation)
 
 
 def _apply_lut(image, table):
@@ -30,7 +30,7 @@ def _apply_lut(image, table):
         return table[np.asarray(image)]
 
 
-def image_process(image, curves, channel=None):
+def image_process(image, curves, channel=None, interpolation='linear'):
     """Apply White first, then per-channel RGB curves."""
     helper = CurvesPointsEditorMixin()
     if channel in CURVE_CHANNELS:
@@ -38,14 +38,14 @@ def image_process(image, curves, channel=None):
         curve_set[channel] = helper._parse_points(curves)
     else:
         curve_set = helper._normalize_curve_set(curves)
-    white_lut = _points_to_lut(curve_set['White'])
+    white_lut = _points_to_lut(curve_set['White'], interpolation=interpolation)
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return _apply_lut(image, white_lut)
 
     output = image.copy()
     color_channels = output[:, :, :3]
     for channel, channel_index in _BGR_INDEX_BY_CHANNEL.items():
-        channel_lut = _points_to_lut(curve_set[channel])
+        channel_lut = _points_to_lut(curve_set[channel], interpolation=interpolation)
         composed_lut = channel_lut[white_lut]
         color_channels[:, :, channel_index] = _apply_lut(
             image[:, :, channel_index],
@@ -68,6 +68,15 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             'widget': 'custom',
             'default': '{"curves": {}}',
         },
+        {
+            'name': 'interpolation',
+            'type': PortDataType.TEXT,
+            'port': 'Input03',
+            'label': 'Interp',
+            'widget': 'combo',
+            'items': ['linear', 'spline'],
+            'default': 'linear',
+        },
     ]
 
     node_label = 'Curves'
@@ -76,6 +85,17 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     _min_val = 0
     _max_val = 255
     _delete_hit_radius = 6
+
+
+    def _curve_interpolation(self, node_id):
+        try:
+            value_tag = self._parameter_port_ref(
+                node_id,
+                self.parameters[1],
+            ).value_tag
+        except (KeyError, IndexError):
+            return 'linear'
+        return 'spline' if dpg_get_value(value_tag) == 'spline' else 'linear'
 
     def _curves_output_port_ref(self, node_id):
         try:
@@ -216,7 +236,15 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         return parameter_values
 
     def process(self, frame, **parameter_values):
-        frame = image_process(frame, parameter_values['curves'])
+        interpolation = parameter_values.get('interpolation', 'linear')
+        if interpolation == 'spline':
+            frame = image_process(
+                frame,
+                parameter_values['curves'],
+                interpolation=interpolation,
+            )
+        else:
+            frame = image_process(frame, parameter_values['curves'])
         return frame, None
 
     def get_custom_setting_dict(self, tag_node_name, node_id):

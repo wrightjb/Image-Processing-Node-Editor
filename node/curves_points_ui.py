@@ -543,7 +543,7 @@ class CurvesPointsEditorMixin:
     def build_curve_points_channel_selector(self, node_id):
         dpg.add_combo(
             list(CURVE_CHANNELS),
-            label='Edit Channel',
+            label='Channel',
             tag=self._get_tag_active_channel_name(node_id),
             default_value=self._active_channel(node_id),
             width=160,
@@ -609,6 +609,13 @@ class CurvesPointsEditorMixin:
                 )
         with dpg.group(horizontal=True):
             dpg.add_button(
+                label='Large Editor',
+                width=104,
+                callback=self._callback_toggle_large_editor,
+                user_data=node_id,
+            )
+        with dpg.group(horizontal=True):
+            dpg.add_button(
                 label='Import',
                 width=58,
                 callback=self._callback_show_import_dialog,
@@ -624,12 +631,6 @@ class CurvesPointsEditorMixin:
                 label='Copy Curves',
                 width=112,
                 callback=self._callback_copy_points,
-                user_data=node_id,
-            )
-            dpg.add_button(
-                label='Large Editor',
-                width=104,
-                callback=self._callback_toggle_large_editor,
                 user_data=node_id,
             )
         with dpg.group(horizontal=True):

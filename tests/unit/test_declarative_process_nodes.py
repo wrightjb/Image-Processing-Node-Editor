@@ -1677,6 +1677,37 @@ def test_hue_saturation_adjustment_blend_zero_uses_one_hot_band_weights():
     assert np.all(np.count_nonzero(weights, axis=1) == 1)
 
 
+def test_hue_saturation_adjustment_blend_one_uses_polish_smoothstep_anchors():
+    weights = hue_saturation_adjustment_module._get_blend_weight_lut(1.0)
+    band_index = {
+        name: index
+        for index, (name, _center) in enumerate(hue_saturation_adjustment_module._BANDS)
+    }
+
+    # OpenCV hue is half of degrees. 254 degrees sits just below halfway between
+    # Polish's blue (240 degrees) and purple (270 degrees) anchors.
+    assert np.isclose(weights[127, band_index['blue']], 0.5499, atol=0.0001)
+    assert np.isclose(weights[127, band_index['purple']], 0.4501, atol=0.0001)
+
+    assert np.isclose(weights[0, band_index['red']], 1.0)
+    assert np.isclose(weights[15, band_index['orange']], 1.0)
+    assert np.isclose(weights[179, band_index['red']], 0.9967, atol=0.0001)
+    assert np.isclose(weights[179, band_index['magenta']], 0.0033, atol=0.0001)
+
+
+def test_hue_saturation_adjustment_blend_zero_uses_polish_anchor_midpoints():
+    weights = hue_saturation_adjustment_module._get_blend_weight_lut(0.0)
+    band_index = {
+        name: index
+        for index, (name, _center) in enumerate(hue_saturation_adjustment_module._BANDS)
+    }
+
+    assert np.isclose(weights[7, band_index['red']], 1.0)
+    assert np.isclose(weights[8, band_index['orange']], 1.0)
+    assert np.isclose(weights[127, band_index['blue']], 1.0)
+    assert np.isclose(weights[128, band_index['purple']], 1.0)
+
+
 def test_hue_saturation_adjustment_uses_eight_photo_editor_bands():
     assert hue_saturation_adjustment_module._BANDS == (
         ('red', 0.0),

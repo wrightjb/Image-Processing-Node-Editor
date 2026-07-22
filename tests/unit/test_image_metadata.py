@@ -91,3 +91,35 @@ def test_format_metadata_report_explains_progressive_and_optimize():
 
     assert 'Progressive JPEG: yes' in report
     assert 'Optimize JPEG: not stored in JPEG metadata' in report
+
+
+def test_compression_roundtrip_can_return_encoded_bytes(monkeypatch):
+    calls = {}
+
+    def fake_png_roundtrip(image, **kwargs):
+        calls['image'] = image
+        calls['kwargs'] = kwargs
+        return image, {'codec': 'PNG', 'encoded_bytes': b'png bytes'}
+
+    monkeypatch.setattr(image_metadata, 'png_roundtrip', fake_png_roundtrip)
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    _, metadata = image_metadata.compression_roundtrip(
+        image,
+        'PNG',
+        png_compression=1,
+        include_encoded_bytes=True,
+    )
+
+    assert metadata['codec'] == 'PNG'
+    assert metadata['encoded_bytes'] == b'png bytes'
+    assert calls['kwargs']['include_encoded_bytes'] is True
+
+
+def test_write_encoded_image_adds_parent_directories(tmp_path):
+    output_path = tmp_path / 'nested' / 'image.bin'
+
+    written_path = image_metadata.write_encoded_image(str(output_path), b'abc')
+
+    assert written_path == str(output_path)
+    assert output_path.read_bytes() == b'abc'

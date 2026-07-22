@@ -293,6 +293,7 @@ def jpeg_roundtrip(
     progressive=False,
     optimize=False,
     generation=1,
+    include_encoded_bytes=False,
 ):
     quality = int(max(1, min(100, quality)))
     generation = int(max(1, generation))
@@ -322,7 +323,7 @@ def jpeg_roundtrip(
             raise RuntimeError('JPEG decode failed')
         result = decoded
     encode_metadata = parse_jpeg_metadata(encoded_bytes or b'')
-    return result, {
+    metadata = {
         'codec': 'JPEG',
         'quality': quality,
         'subsampling': subsampling,
@@ -332,32 +333,40 @@ def jpeg_roundtrip(
         'encoded_size_bytes': encoded_size,
         'jpeg': encode_metadata,
     }
+    if include_encoded_bytes:
+        metadata['encoded_bytes'] = encoded_bytes
+    return result, metadata
 
 
-def png_roundtrip(image, compression=3, generation=1):
+def png_roundtrip(image, compression=3, generation=1, include_encoded_bytes=False):
     compression = int(max(0, min(9, compression)))
     generation = int(max(1, generation))
     params = [int(cv2.IMWRITE_PNG_COMPRESSION), compression]
     result = image.copy()
     encoded_size = None
+    encoded_bytes = None
     for _ in range(generation):
         ok, encoded = cv2.imencode('.png', result, params)
         if not ok:
             raise RuntimeError('PNG encode failed')
-        encoded_size = len(encoded.tobytes())
+        encoded_bytes = encoded.tobytes()
+        encoded_size = len(encoded_bytes)
         decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
         if decoded is None:
             raise RuntimeError('PNG decode failed')
         result = decoded
-    return result, {
+    metadata = {
         'codec': 'PNG',
         'compression': compression,
         'generation': generation,
         'encoded_size_bytes': encoded_size,
     }
+    if include_encoded_bytes:
+        metadata['encoded_bytes'] = encoded_bytes
+    return result, metadata
 
 
-def webp_roundtrip(image, quality=90, generation=1):
+def webp_roundtrip(image, quality=90, generation=1, include_encoded_bytes=False):
     quality = int(max(1, min(100, quality)))
     generation = int(max(1, generation))
     if not hasattr(cv2, 'IMWRITE_WEBP_QUALITY'):
@@ -365,21 +374,26 @@ def webp_roundtrip(image, quality=90, generation=1):
     params = [int(cv2.IMWRITE_WEBP_QUALITY), quality]
     result = image.copy()
     encoded_size = None
+    encoded_bytes = None
     for _ in range(generation):
         ok, encoded = cv2.imencode('.webp', result, params)
         if not ok:
             raise RuntimeError('WebP encode failed')
-        encoded_size = len(encoded.tobytes())
+        encoded_bytes = encoded.tobytes()
+        encoded_size = len(encoded_bytes)
         decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
         if decoded is None:
             raise RuntimeError('WebP decode failed')
         result = decoded
-    return result, {
+    metadata = {
         'codec': 'WEBP',
         'quality': quality,
         'generation': generation,
         'encoded_size_bytes': encoded_size,
     }
+    if include_encoded_bytes:
+        metadata['encoded_bytes'] = encoded_bytes
+    return result, metadata
 
 
 def compression_parameters_from_metadata(metadata):
@@ -451,6 +465,11 @@ def match_metadata_compression(image, metadata):
 
 def compression_roundtrip(image, codec, **params):
     codec_normalized = str(codec or 'JPEG').upper()
+    encoded_flag = (
+        {'include_encoded_bytes': True}
+        if params.get('include_encoded_bytes', False)
+        else {}
+    )
     if codec_normalized == 'JPEG':
         return jpeg_roundtrip(
             image,
@@ -459,17 +478,47 @@ def compression_roundtrip(image, codec, **params):
             progressive=params.get('progressive', False),
             optimize=params.get('optimize', False),
             generation=params.get('generation', 1),
+            **encoded_flag,
         )
     if codec_normalized == 'PNG':
         return png_roundtrip(
             image,
             compression=params.get('png_compression', params.get('quality', 3)),
             generation=params.get('generation', 1),
+            **encoded_flag,
         )
     if codec_normalized == 'WEBP':
         return webp_roundtrip(
             image,
             quality=params.get('quality', 90),
             generation=params.get('generation', 1),
+            **encoded_flag,
         )
     raise ValueError(f'Unsupported compression codec: {codec}')
+
+
+def image_extension_for_codec(codec):
+    codec_normalized = str(codec or 'JPEG').upper()
+    return {
+        'JPEG': '.jpg',
+        'PNG': '.png',
+        'WEBP': '.webp',
+    }.get(codec_normalized)
+
+
+def ensure_image_extension(path, codec):
+    extension = image_extension_for_codec(codec)
+    if not extension or os.path.splitext(path)[1]:
+        return path
+    return path + extension
+
+
+def write_encoded_image(path, encoded_bytes):
+    if not encoded_bytes:
+        raise ValueError('No encoded image bytes are available to save')
+    directory = os.path.dirname(os.path.abspath(path))
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(path, 'wb') as file_obj:
+        file_obj.write(encoded_bytes)
+    return path

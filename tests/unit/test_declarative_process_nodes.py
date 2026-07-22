@@ -1903,3 +1903,22 @@ def test_curves_interpolation_combo_uses_declarative_items_key():
     assert interpolation['widget'] == 'combo'
     assert interpolation['items'] == ['linear', 'spline']
     assert 'options' not in interpolation
+
+
+def test_image_compression_save_uses_last_encoded_bytes(monkeypatch, tmp_path):
+    node = ImageCompressionNode()
+    writes = {}
+    monkeypatch.setattr(
+        image_compression_module,
+        'dpg_set_value',
+        lambda tag, value: writes.setdefault(tag, value),
+    )
+    node._last_encoded_bytes_by_node['5'] = b'encoded image'
+    node._last_codec_by_node['5'] = 'PNG'
+
+    output_path = node._save_image(5, str(tmp_path / 'export'))
+
+    assert output_path == str(tmp_path / 'export.png')
+    assert (tmp_path / 'export.png').read_bytes() == b'encoded image'
+    assert writes[node._save_path_value_tag(5)] == output_path
+    assert writes[node._save_status_value_tag(5)] == f'Saved: {output_path}'

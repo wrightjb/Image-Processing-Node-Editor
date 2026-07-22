@@ -10,13 +10,19 @@ from node.port_model import InputPort, OutputPort, PortDataType, enum_value
 from node_editor.image_metadata import (
     compression_parameters_from_metadata,
     compression_roundtrip,
+    ensure_image_extension,
     summarize_metadata,
+    write_encoded_image,
 )
-from node_editor.util import convert_cv_to_dpg, dpg_set_value
+from node_editor.util import convert_cv_to_dpg, dpg_get_value, dpg_set_value
 
 
 class Node(DeclarativeImageProcessNodeBase):
-    _ver = '0.0.1'
+    _ver = '0.0.2'
+
+    _save_path_setting_key = '__save_path__'
+    _last_encoded_bytes_by_node = {}
+    _last_codec_by_node = {}
 
     node_label = 'Image Compression'
     node_tag = 'ImageCompression'
@@ -115,13 +121,56 @@ class Node(DeclarativeImageProcessNodeBase):
         return self.ports(node_id)
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
-        del tag_node_name, width, callback
+        del tag_node_name, callback
         ports = self.ports(node_id)
         with dpg.node_attribute(
             tag=ports.metadata_input.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Input,
         ):
             dpg.add_text('match metadata')
+        save_path_value_tag = self._save_path_value_tag(node_id)
+        save_status_value_tag = self._save_status_value_tag(node_id)
+        save_dialog_tag = self._save_dialog_tag(node_id)
+
+        with dpg.file_dialog(
+            directory_selector=False,
+            show=False,
+            modal=True,
+            callback=self._callback_save_image,
+            tag=save_dialog_tag,
+            user_data=node_id,
+        ):
+            dpg.add_file_extension('JPEG (*.jpg *.jpeg){.jpg,.jpeg}')
+            dpg.add_file_extension('PNG (*.png){.png}')
+            dpg.add_file_extension('WebP (*.webp){.webp}')
+            dpg.add_file_extension('', color=(150, 255, 150, 255))
+
+        with dpg.node_attribute(
+            tag=self._save_control_tag(node_id),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            dpg.add_input_text(
+                label='Save path',
+                tag=save_path_value_tag,
+                default_value='',
+                width=width,
+            )
+            dpg.add_button(
+                label='Browse save...',
+                width=width,
+                callback=lambda: dpg.show_item(save_dialog_tag),
+            )
+            dpg.add_button(
+                label='Save current compressed image',
+                width=width,
+                callback=self._save_image_button,
+                user_data=node_id,
+            )
+            dpg.add_text(
+                tag=save_status_value_tag,
+                default_value='Save status: waiting for image',
+            )
+
         with dpg.node_attribute(
             tag=ports.metadata.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Output,
@@ -194,6 +243,13 @@ class Node(DeclarativeImageProcessNodeBase):
         if isinstance(result, dict):
             compression_metadata = result.get('compression_metadata')
         if compression_metadata is not None:
+            encoded_bytes = compression_metadata.pop('encoded_bytes', None)
+            if encoded_bytes is not None:
+                self._last_encoded_bytes_by_node[str(node_id)] = encoded_bytes
+                self._last_codec_by_node[str(node_id)] = compression_metadata.get(
+                    'codec',
+                    parameter_values.get('codec', 'JPEG'),
+                )
             dpg_set_value(
                 self.ports(node_id).metadata.value_tag,
                 summarize_metadata({
@@ -202,6 +258,90 @@ class Node(DeclarativeImageProcessNodeBase):
                 }),
             )
         return frame, result
+
+    def get_custom_setting_dict(self, tag_node_name, node_id):
+        del tag_node_name
+        return {
+            self._save_path_setting_key: dpg_get_value(
+                self._save_path_value_tag(node_id)
+            ),
+        }
+
+    def set_custom_setting_dict(self, tag_node_name, node_id, setting_dict):
+        del tag_node_name
+        save_path = setting_dict.get(self._save_path_setting_key, '')
+        dpg_set_value(self._save_path_value_tag(node_id), save_path)
+
+    def close(self, node_id):
+        self._last_encoded_bytes_by_node.pop(str(node_id), None)
+        self._last_codec_by_node.pop(str(node_id), None)
+
+    def _save_control_tag(self, node_id):
+        return self._control_tag(
+            self._node_name(node_id),
+            self.TYPE_TEXT,
+            'SaveImage',
+        )
+
+    def _save_path_value_tag(self, node_id):
+        return self._control_value_tag(
+            self._node_name(node_id),
+            self.TYPE_TEXT,
+            'SavePath',
+        )
+
+    def _save_status_value_tag(self, node_id):
+        return self._control_value_tag(
+            self._node_name(node_id),
+            self.TYPE_TEXT,
+            'SaveStatus',
+        )
+
+    def _save_dialog_tag(self, node_id):
+        return f'image_compression_save:{node_id}'
+
+    def _callback_save_image(self, sender, app_data, user_data):
+        del sender
+        path = self._file_dialog_path(app_data)
+        if path:
+            dpg_set_value(self._save_path_value_tag(user_data), path)
+        self._save_image(user_data, path)
+
+    def _save_image_button(self, sender, app_data, user_data):
+        del sender, app_data
+        path = dpg_get_value(self._save_path_value_tag(user_data))
+        self._save_image(user_data, path)
+
+    def _save_image(self, node_id, path):
+        status_tag = self._save_status_value_tag(node_id)
+        if not path:
+            dpg_set_value(status_tag, 'Save status: choose a file path')
+            return None
+        encoded_bytes = self._last_encoded_bytes_by_node.get(str(node_id))
+        if not encoded_bytes:
+            dpg_set_value(status_tag, 'Save status: no image to save yet')
+            return None
+        codec = self._last_codec_by_node.get(str(node_id), 'JPEG')
+        output_path = ensure_image_extension(path, codec)
+        try:
+            write_encoded_image(output_path, encoded_bytes)
+        except (OSError, ValueError) as exc:
+            dpg_set_value(status_tag, f'Save failed: {exc}')
+            return None
+        dpg_set_value(self._save_path_value_tag(node_id), output_path)
+        dpg_set_value(status_tag, f'Saved: {output_path}')
+        return output_path
+
+    @staticmethod
+    def _file_dialog_path(app_data):
+        if isinstance(app_data, dict):
+            return (
+                app_data.get('file_path_name')
+                or app_data.get('current_path')
+                or app_data.get('current_file')
+                or ''
+            )
+        return app_data or ''
 
     def _linked_metadata(self, node_id, connection_list, node_result_dict):
         ports = self._ensure_declarative_port_handles(node_id)
@@ -269,6 +409,7 @@ class Node(DeclarativeImageProcessNodeBase):
             optimize=parameter_values.get('optimize', False),
             png_compression=parameter_values.get('png_compression', 3),
             generation=parameter_values.get('generation', 1),
+            include_encoded_bytes=True,
         )
         return output, {
             'compression_metadata': compression_metadata,

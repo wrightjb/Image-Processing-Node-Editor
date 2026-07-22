@@ -17,53 +17,67 @@ _BANDS = (
     ('purple', 135.0),
     ('magenta', 150.0),
 )
-_BAND_HALF_WIDTH = 30.0
+_BAND_ANCHORS_DEGREES = np.array(
+    [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0, 360.0],
+    dtype=np.float32,
+)
 _BAND_NAME_TO_INDEX = {band_name: index for index, (band_name, _) in enumerate(_BANDS)}
 HUE_SHIFT_MIN = -90
 HUE_SHIFT_MAX = 90
 
 
-def _build_band_weight_lut():
-    hue_values = np.arange(180, dtype=np.float32)[:, None]
-    centers = np.array([center for _, center in _BANDS], dtype=np.float32)[None, :]
+def _smoothstep_with_blend(t, blend):
+    blend = float(np.clip(blend, 0.0, 1.0))
+    if blend == 0.0:
+        return np.where(t >= 0.5, 1.0, 0.0).astype(np.float32)
 
-    delta = np.abs(hue_values - centers)
-    distance = np.minimum(delta, 180.0 - delta)
-    weights = np.clip(1.0 - (distance / _BAND_HALF_WIDTH), 0.0, 1.0)
-
-    total = np.sum(weights, axis=1, keepdims=True)
-    total[total == 0.0] = 1.0
-    return weights / total
+    t_low = 0.5 - (blend / 2.0)
+    t_high = 0.5 + (blend / 2.0)
+    x = np.clip((t - t_low) / (t_high - t_low), 0.0, 1.0)
+    return (x * x * (3.0 - (2.0 * x))).astype(np.float32)
 
 
-_BAND_WEIGHT_LUT = _build_band_weight_lut()
+def _build_polish_band_weight_lut(blend):
+    hue_degrees = np.arange(180, dtype=np.float32) * 2.0
+    weights = np.zeros((180, len(_BANDS)), dtype=np.float32)
+
+    for lower_index in range(len(_BAND_ANCHORS_DEGREES) - 1):
+        lower_anchor = _BAND_ANCHORS_DEGREES[lower_index]
+        upper_anchor = _BAND_ANCHORS_DEGREES[lower_index + 1]
+        if lower_index == len(_BANDS) - 1:
+            upper_band_index = 0
+        else:
+            upper_band_index = lower_index + 1
+        lower_band_index = lower_index
+
+        if lower_index == len(_BAND_ANCHORS_DEGREES) - 2:
+            in_interval = (hue_degrees >= lower_anchor) & (hue_degrees < upper_anchor)
+        else:
+            in_interval = (hue_degrees >= lower_anchor) & (hue_degrees <= upper_anchor)
+        if not np.any(in_interval):
+            continue
+
+        t = (hue_degrees[in_interval] - lower_anchor) / (upper_anchor - lower_anchor)
+        upper_weight = _smoothstep_with_blend(t, blend)
+        weights[in_interval, lower_band_index] = 1.0 - upper_weight
+        weights[in_interval, upper_band_index] = upper_weight
+
+    return weights
+
+
+_BAND_WEIGHT_LUT = _build_polish_band_weight_lut(1.0)
 _BLEND_WEIGHT_LUT_CACHE = {}
 
 
 def _get_blend_weight_lut(blend):
     blend = float(np.clip(blend, 0.0, 1.0))
     key = int(round(blend * 200.0))
-    if key in _BLEND_WEIGHT_LUT_CACHE:
-        return _BLEND_WEIGHT_LUT_CACHE[key]
+    if key not in _BLEND_WEIGHT_LUT_CACHE:
+        _BLEND_WEIGHT_LUT_CACHE[key] = _build_polish_band_weight_lut(
+            key / 200.0,
+        )
+    return _BLEND_WEIGHT_LUT_CACHE[key]
 
-    if key == 0:
-        weights = np.zeros_like(_BAND_WEIGHT_LUT, dtype=np.float32)
-        dominant_band = np.argmax(_BAND_WEIGHT_LUT, axis=1)
-        weights[np.arange(_BAND_WEIGHT_LUT.shape[0]), dominant_band] = 1.0
-        _BLEND_WEIGHT_LUT_CACHE[key] = weights
-        return weights
-
-    blend_quantized = key / 200.0
-    hardness = (1.0 - blend_quantized) ** 2
-    gamma = 1.0 + (31.0 * hardness)
-
-    weights = np.power(_BAND_WEIGHT_LUT, gamma)
-    total = np.sum(weights, axis=1, keepdims=True)
-    total[total == 0.0] = 1.0
-    weights = (weights / total).astype(np.float32)
-
-    _BLEND_WEIGHT_LUT_CACHE[key] = weights
-    return weights
 
 def _active_adjustments(adjustments):
     active = []
@@ -93,8 +107,6 @@ def image_process(image, blend=0.0, **adjustments):
     sat_channel = hsv_image[:, :, 1]
 
     hue_indices = np.clip(hue_channel.astype(np.int16), 0, 179)
-    weights = _BAND_WEIGHT_LUT[hue_indices]
-
     hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
     saturation_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
 

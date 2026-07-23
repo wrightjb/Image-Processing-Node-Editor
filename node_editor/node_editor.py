@@ -109,6 +109,8 @@ class DpgNodeEditor(object):
         self._suspend_parameter_history = False
         self._suspend_result_node_toggle_events = False
         self._history_node_id_remap = {}
+        self._node_base_label_dict = {}
+        self._node_propagation_marker_dict = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -2433,6 +2435,24 @@ class DpgNodeEditor(object):
 
     def get_sorted_node_connection_refs(self):
         return self._node_connection_ref_dict
+
+    def set_node_propagation_marker(self, node_id_name, marker):
+        if node_id_name not in self._node_list:
+            return
+        _, node_name = node_id_name.split(':', 1)
+        node_instance = self.get_node_instance(node_name)
+        base_label = self._node_base_label_dict.get(node_id_name)
+        if base_label is None:
+            base_label = getattr(node_instance, 'node_label', node_name)
+            self._node_base_label_dict[node_id_name] = base_label
+        if marker:
+            self._node_propagation_marker_dict[node_id_name] = marker
+            label = f'{marker} {base_label}'
+        else:
+            self._node_propagation_marker_dict.pop(node_id_name, None)
+            label = base_label
+        if dpg.does_item_exist(node_id_name):
+            dpg.configure_item(node_id_name, label=label)
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

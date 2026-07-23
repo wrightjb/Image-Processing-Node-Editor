@@ -255,3 +255,39 @@ def test_trace_reports_slow_settings_poll():
     tracer.expensive_operation('settings', '1:SlowSettings', 0.2)
 
     assert events == ['[runtime] slow settings 1:SlowSettings 200.0 ms']
+
+
+def test_runtime_marks_changed_node_and_downstream_propagation():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+    source_node.get_setting_dict.return_value = {'value': 1}
+
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+
+    nodes = ['1:SourceNode', '2:ProcessNode']
+    conn_dict = OrderedDict([
+        ('1:SourceNode', []),
+        ('2:ProcessNode', [(
+            '1:SourceNode:Image:Output01',
+            '2:ProcessNode:Image:Input01',
+        )]),
+    ])
+    editor = FakeEditor(
+        nodes,
+        conn_dict,
+        {'SourceNode': source_node, 'ProcessNode': process_node},
+    )
+    editor.set_node_propagation_marker = Mock()
+
+    runtime = GraphRuntime(cache_source_nodes=True)
+    runtime.step(editor, mode_async=False)
+    source_node.get_setting_dict.return_value = {'value': 2}
+
+    runtime.step(editor, mode_async=False)
+
+    marker = runtime.node_propagation_marker_dict['1:SourceNode']
+    assert runtime.node_propagation_marker_dict['2:ProcessNode'] == marker
+    editor.set_node_propagation_marker.assert_any_call('1:SourceNode', marker)
+    editor.set_node_propagation_marker.assert_any_call('2:ProcessNode', marker)

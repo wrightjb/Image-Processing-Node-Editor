@@ -23,6 +23,9 @@ class GraphRuntime:
         self.node_result_dict = {}
         self.node_cache_dict = {}
         self.node_version_dict = {}
+        self.node_propagation_marker_dict = {}
+        self.node_setting_fingerprint_dict = {}
+        self._propagation_sequence = 0
         self.cache_enabled = cache_enabled
         self.cache_source_nodes = cache_source_nodes
         self.tracer = RuntimeTracePrinter(
@@ -42,7 +45,16 @@ class GraphRuntime:
             cache_enabled=self.cache_enabled,
             cache_source_nodes=self.cache_source_nodes,
             tracer=self.tracer,
+            propagation_marker_dict=self.node_propagation_marker_dict,
+            node_setting_fingerprint_dict=self.node_setting_fingerprint_dict,
+            next_propagation_marker=self._next_propagation_marker,
         )
+
+    def _next_propagation_marker(self):
+        markers = ('A', 'B', 'C', 'D', 'E', 'F', 'G')
+        marker = markers[self._propagation_sequence % len(markers)]
+        self._propagation_sequence += 1
+        return marker
 
 
 class RuntimeTracePrinter:
@@ -366,6 +378,9 @@ def update_node_info(
     cache_enabled=True,
     cache_source_nodes=False,
     tracer=None,
+    propagation_marker_dict=None,
+    node_setting_fingerprint_dict=None,
+    next_propagation_marker=None,
 ):
     """
     Update all nodes in topological order with optional in-memory caching.
@@ -383,6 +398,12 @@ def update_node_info(
         node_version_dict = {}
     if tracer is None:
         tracer = RuntimeTracePrinter()
+    if propagation_marker_dict is None:
+        propagation_marker_dict = {}
+    if node_setting_fingerprint_dict is None:
+        node_setting_fingerprint_dict = {}
+    if next_propagation_marker is None:
+        next_propagation_marker = lambda: 'A'
 
     if not cache_enabled and node_cache_dict:
         node_cache_dict.clear()
@@ -418,6 +439,8 @@ def update_node_info(
     for deleted_node_id_name in deleted_result_node_id_name_list:
         del node_result_dict[deleted_node_id_name]
         node_version_dict.pop(deleted_node_id_name, None)
+        propagation_marker_dict.pop(deleted_node_id_name, None)
+        node_setting_fingerprint_dict.pop(deleted_node_id_name, None)
 
     if hasattr(node_editor, 'get_sorted_node_connection_refs'):
         sorted_node_connection_dict = node_editor.get_sorted_node_connection_refs()
@@ -510,6 +533,18 @@ def update_node_info(
             use_cache = True
 
         compute_setting = _compute_node_setting(node_setting)
+        setting_fingerprint = hashlib.sha1(
+            pickle.dumps(_freeze_cache_value(compute_setting))
+        ).hexdigest()
+        previous_setting_fingerprint = node_setting_fingerprint_dict.get(
+            node_id_name
+        )
+        node_setting_changed = (
+            previous_setting_fingerprint is not None and
+            previous_setting_fingerprint != setting_fingerprint
+        )
+        if previous_setting_fingerprint is None:
+            node_setting_fingerprint_dict[node_id_name] = setting_fingerprint
 
         if use_cache:
             for source_tag, _ in connection_list:
@@ -644,6 +679,23 @@ def update_node_info(
                 node_version_dict[node_id_name] = cache_signature
                 continue
 
+        upstream_markers = []
+        for connection_info in connection_list:
+            source_node_id_name, _ = _connection_info_node_names(connection_info)
+            marker = propagation_marker_dict.get(source_node_id_name)
+            if marker is not None and marker not in upstream_markers:
+                upstream_markers.append(marker)
+        if node_setting_changed:
+            propagation_marker_dict[node_id_name] = next_propagation_marker()
+            node_setting_fingerprint_dict[node_id_name] = setting_fingerprint
+        elif upstream_markers:
+            propagation_marker_dict[node_id_name] = upstream_markers[0]
+        if hasattr(node_editor, 'set_node_propagation_marker'):
+            node_editor.set_node_propagation_marker(
+                node_id_name,
+                propagation_marker_dict.get(node_id_name),
+            )
+
         update_started_at, update_announced = (
             tracer.update_started(node_id_name, update_reason)
             if tracer.enabled else (None, False)
@@ -716,6 +768,8 @@ def update_node_info(
         elif node_id_name in node_cache_dict:
             del node_cache_dict[node_id_name]
             node_version_dict.pop(node_id_name, None)
+
+        node_setting_fingerprint_dict[node_id_name] = setting_fingerprint
 
         if not use_cache:
             frame_token = _extract_frame_token(result)

@@ -51,7 +51,7 @@ class GraphRuntime:
         )
 
     def _next_propagation_marker(self):
-        markers = ('🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '🟤')
+        markers = ('A', 'B', 'C', 'D', 'E', 'F', 'G')
         marker = markers[self._propagation_sequence % len(markers)]
         self._propagation_sequence += 1
         return marker
@@ -403,7 +403,7 @@ def update_node_info(
     if node_setting_fingerprint_dict is None:
         node_setting_fingerprint_dict = {}
     if next_propagation_marker is None:
-        next_propagation_marker = lambda: '●'
+        next_propagation_marker = lambda: 'A'
 
     if not cache_enabled and node_cache_dict:
         node_cache_dict.clear()

@@ -111,6 +111,7 @@ class DpgNodeEditor(object):
         self._history_node_id_remap = {}
         self._node_base_label_dict = {}
         self._node_propagation_marker_dict = {}
+        self._propagation_marker_theme_dict = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -2436,6 +2437,41 @@ class DpgNodeEditor(object):
     def get_sorted_node_connection_refs(self):
         return self._node_connection_ref_dict
 
+    def _vw_get_propagation_marker_theme(self, marker):
+        marker_colors = {
+            'A': (235, 92, 84, 255),
+            'B': (239, 151, 55, 255),
+            'C': (215, 184, 61, 255),
+            'D': (83, 168, 94, 255),
+            'E': (80, 145, 230, 255),
+            'F': (150, 105, 220, 255),
+            'G': (154, 106, 79, 255),
+        }
+        if marker in self._propagation_marker_theme_dict:
+            return self._propagation_marker_theme_dict[marker]
+        color = marker_colors.get(marker, (180, 180, 180, 255))
+        active_color = tuple(min(255, channel + 20) for channel in color[:3]) + (255,)
+        hovered_color = tuple(min(255, channel + 35) for channel in color[:3]) + (255,)
+        with dpg.theme() as theme_id:
+            with dpg.theme_component(dpg.mvNode):
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_TitleBar,
+                    color,
+                    category=dpg.mvThemeCat_Nodes,
+                )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_TitleBarHovered,
+                    hovered_color,
+                    category=dpg.mvThemeCat_Nodes,
+                )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_TitleBarSelected,
+                    active_color,
+                    category=dpg.mvThemeCat_Nodes,
+                )
+        self._propagation_marker_theme_dict[marker] = theme_id
+        return theme_id
+
     def set_node_propagation_marker(self, node_id_name, marker):
         if node_id_name not in self._node_list:
             return
@@ -2447,12 +2483,19 @@ class DpgNodeEditor(object):
             self._node_base_label_dict[node_id_name] = base_label
         if marker:
             self._node_propagation_marker_dict[node_id_name] = marker
-            label = f'{marker} {base_label}'
+            label = f'[{marker}] {base_label}'
         else:
             self._node_propagation_marker_dict.pop(node_id_name, None)
             label = base_label
         if dpg.does_item_exist(node_id_name):
             dpg.configure_item(node_id_name, label=label)
+            if marker:
+                dpg.bind_item_theme(
+                    node_id_name,
+                    self._vw_get_propagation_marker_theme(marker),
+                )
+            else:
+                dpg.bind_item_theme(node_id_name, 0)
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

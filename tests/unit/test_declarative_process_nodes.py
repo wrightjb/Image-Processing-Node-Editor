@@ -1940,33 +1940,29 @@ def test_photo_editor_color_macgyver_parity_matches_reference_math():
         hue=25,
     )
 
-    def clamp(val):
-        return max(0.0, min(255.0, val))
-
     def reference_pixel(b, g, r):
         r, g, b = float(r), float(g), float(b)
         gain = 2.0 ** (32 / 127.0)
-        r, g, b = clamp(r * gain), clamp(g * gain), clamp(b * gain)
+        r, g, b = r * gain, g * gain, b * gain
         r += -20 * (r / 255.0)
         g += -20 * (g / 255.0)
         b += -20 * (b / 255.0)
-        r, g, b = clamp(r), clamp(g), clamp(b)
         slope = 1.0 + (40 / 126.0)
-        r, g, b = [clamp(127.0 + (channel - 127.0) * slope) for channel in (r, g, b)]
+        r, g, b = [127.0 + (channel - 127.0) * slope for channel in (r, g, b)]
         factor = (8000 - 6500.0) / 3500.0
         r, g, b = (
-            clamp(r * (1.0 - factor * 0.094)),
-            clamp(g * (1.0 - factor * 0.016)),
-            clamp(b * (1.0 + factor * 0.148)),
+            r * (1.0 - factor * 0.094),
+            g * (1.0 - factor * 0.016),
+            b * (1.0 + factor * 0.148),
         )
         factor = 30 / 100.0
         r, g, b = (
-            clamp(r * (1.0 - factor * 0.242)),
-            clamp(g * (1.0 + factor * 0.195)),
-            clamp(b * (1.0 - factor * 0.242)),
+            r * (1.0 - factor * 0.242),
+            g * (1.0 + factor * 0.195),
+            b * (1.0 - factor * 0.242),
         )
         luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        r, g, b = [clamp(luma + (channel - luma) * 1.4) for channel in (r, g, b)]
+        r, g, b = [luma + (channel - luma) * 1.4 for channel in (r, g, b)]
         theta = np.deg2rad(25)
         c = np.cos(theta)
         s = np.sin(theta)

@@ -32,7 +32,6 @@ def _apply_macgyver_rgb(
 
     if exposure != 0:
         rgb *= 2.0 ** (float(exposure) / 127.0)
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if brightness != 0:
         brightness = float(brightness)
@@ -40,12 +39,10 @@ def _apply_macgyver_rgb(
             rgb += brightness * ((255.0 - rgb) / 255.0)
         else:
             rgb += brightness * (rgb / 255.0)
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if contrast != 0:
         slope = 1.0 + (float(contrast) / 126.0)
         rgb = 127.0 + (rgb - 127.0) * slope
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if temperature != 6500:
         dt = float(temperature) - 6500.0
@@ -61,7 +58,6 @@ def _apply_macgyver_rgb(
                 dtype=np.float32,
             )
         rgb *= scales
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if tint != 0:
         factor = float(tint) / 100.0
@@ -70,7 +66,6 @@ def _apply_macgyver_rgb(
             dtype=np.float32,
         )
         rgb *= scales
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if saturation != 100:
         luma = (
@@ -80,7 +75,6 @@ def _apply_macgyver_rgb(
         )
         sat_factor = float(saturation) / 100.0
         rgb = luma[:, :, None] + (rgb - luma[:, :, None]) * sat_factor
-        rgb = np.clip(rgb, 0.0, 255.0)
 
     if hue != 0:
         theta = np.deg2rad(float(hue))
@@ -107,9 +101,8 @@ def _apply_macgyver_rgb(
             dtype=np.float32,
         )
         rgb = np.tensordot(rgb, matrix.T, axes=([2], [0]))
-        rgb = np.clip(rgb, 0.0, 255.0)
 
-    return rgb
+    return np.clip(rgb, 0.0, 255.0)
 
 
 def _apply_standard_bgr(

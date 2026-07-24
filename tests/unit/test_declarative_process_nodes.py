@@ -1922,3 +1922,85 @@ def test_image_compression_save_uses_last_encoded_bytes(monkeypatch, tmp_path):
     assert (tmp_path / 'export.png').read_bytes() == b'encoded image'
     assert writes[node._save_path_value_tag(5)] == output_path
     assert writes[node._save_status_value_tag(5)] == f'Saved: {output_path}'
+
+
+def test_photo_editor_color_macgyver_parity_matches_reference_math():
+    import node.process_node.node_photo_editor_color as photo_editor_color_module
+
+    image = np.array([[[30, 80, 120], [200, 150, 40]]], dtype=np.uint8)
+    out = photo_editor_color_module.image_process(
+        image,
+        mode='MacGyver parity',
+        exposure=32,
+        brightness=-20,
+        contrast=40,
+        saturation=140,
+        temperature=8000,
+        tint=30,
+        hue=25,
+    )
+
+    def clamp(val):
+        return max(0.0, min(255.0, val))
+
+    def reference_pixel(b, g, r):
+        r, g, b = float(r), float(g), float(b)
+        gain = 2.0 ** (32 / 127.0)
+        r, g, b = clamp(r * gain), clamp(g * gain), clamp(b * gain)
+        r += -20 * (r / 255.0)
+        g += -20 * (g / 255.0)
+        b += -20 * (b / 255.0)
+        r, g, b = clamp(r), clamp(g), clamp(b)
+        slope = 1.0 + (40 / 126.0)
+        r, g, b = [clamp(127.0 + (channel - 127.0) * slope) for channel in (r, g, b)]
+        factor = (8000 - 6500.0) / 3500.0
+        r, g, b = (
+            clamp(r * (1.0 - factor * 0.094)),
+            clamp(g * (1.0 - factor * 0.016)),
+            clamp(b * (1.0 + factor * 0.148)),
+        )
+        factor = 30 / 100.0
+        r, g, b = (
+            clamp(r * (1.0 - factor * 0.242)),
+            clamp(g * (1.0 + factor * 0.195)),
+            clamp(b * (1.0 - factor * 0.242)),
+        )
+        luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        r, g, b = [clamp(luma + (channel - luma) * 1.4) for channel in (r, g, b)]
+        theta = np.deg2rad(25)
+        c = np.cos(theta)
+        s = np.sin(theta)
+        matrix = np.array([
+            [
+                0.213 + 0.787 * c - 0.213 * s,
+                0.715 - 0.715 * c - 0.715 * s,
+                0.072 - 0.072 * c + 0.928 * s,
+            ],
+            [
+                0.213 - 0.213 * c + 0.143 * s,
+                0.715 + 0.285 * c + 0.140 * s,
+                0.072 - 0.072 * c - 0.283 * s,
+            ],
+            [
+                0.213 - 0.213 * c - 0.787 * s,
+                0.715 - 0.715 * c + 0.715 * s,
+                0.072 + 0.928 * c + 0.072 * s,
+            ],
+        ])
+        r, g, b = np.clip(matrix @ np.array([r, g, b]), 0, 255)
+        return [int(np.rint(b)), int(np.rint(g)), int(np.rint(r))]
+
+    expected = np.array(
+        [[reference_pixel(*image[0, 0]), reference_pixel(*image[0, 1])]],
+        dtype=np.uint8,
+    )
+    np.testing.assert_array_equal(out, expected)
+
+
+def test_photo_editor_color_preserves_alpha_and_identity():
+    import node.process_node.node_photo_editor_color as photo_editor_color_module
+
+    image = np.array([[[10, 20, 30, 40], [50, 60, 70, 80]]], dtype=np.uint8)
+    out = photo_editor_color_module.image_process(image)
+
+    np.testing.assert_array_equal(out, image)

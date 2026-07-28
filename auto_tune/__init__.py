@@ -12,6 +12,7 @@ from auto_tune.service import (
 )
 from auto_tune.gaussian_blur import tune_gaussian_blur
 from auto_tune.curves import tune_curve_set, tune_curves
+from auto_tune.photo_editor_color import tune_photo_editor_color
 
 __all__ = [
     'EvaluationPlan',
@@ -25,4 +26,5 @@ __all__ = [
     'tune_gaussian_blur',
     'tune_curve_set',
     'tune_curves',
+    'tune_photo_editor_color',
 ]

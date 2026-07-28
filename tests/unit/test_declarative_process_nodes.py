@@ -929,6 +929,21 @@ def test_hue_saturation_adjustment_parameters_use_half_step_float_controls():
     assert node._cast_parameter_value(red_hue, -12.25) == -12.5
 
 
+def test_hue_bands_summary_uses_font_safe_expand_markers(monkeypatch):
+    node = HueSaturationAdjustmentNode()
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module,
+        'dpg_get_value',
+        lambda _tag: 0,
+    )
+
+    assert node._band_summary(111, 'red').startswith('[+] Red')
+
+    node._expanded_bands_by_node['111'] = {'red'}
+
+    assert node._band_summary(111, 'red').startswith('[-] Red')
+
+
 def test_hue_bands_luminance_polish_parity_includes_achromatic_red(monkeypatch):
     converted_hsv = []
     monkeypatch.setattr(

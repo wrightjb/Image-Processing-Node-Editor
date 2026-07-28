@@ -272,15 +272,15 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def _add_parameter_ui(self, node_id, parameter, width, callback):
         parameter_name = parameter['name']
-        super()._add_parameter_ui(node_id, parameter, width, callback)
         if parameter_name == 'achromatic_mode':
+            super()._add_parameter_ui(node_id, parameter, width, callback)
             self._add_band_controls(node_id, width)
             return
         band_name = next(
             (
                 name
                 for name, _center in _BANDS
-                if parameter_name == f'{name}_luminance'
+                if parameter_name == f'{name}_hue_shift'
             ),
             None,
         )
@@ -296,6 +296,7 @@ class Node(DeclarativeImageProcessNodeBase):
                     callback=self._toggle_band_callback,
                     user_data=(node_id, band_name),
                 )
+        super()._add_parameter_ui(node_id, parameter, width, callback)
 
     def process(self, frame, **parameter_values):
         frame = image_process(frame, **parameter_values)
@@ -408,7 +409,7 @@ class Node(DeclarativeImageProcessNodeBase):
         expanded = band_name in self._expanded_bands_by_node.get(
             str(node_id), set()
         )
-        marker = '▾' if expanded else '▸'
+        marker = '[-]' if expanded else '[+]'
         return f'{marker} {band_name.title()}    ' + '   '.join(values)
 
     def _set_band_visibility(self, node_id, band_name, expanded):

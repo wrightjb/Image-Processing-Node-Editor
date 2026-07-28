@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import numpy as np
 
@@ -10,6 +10,7 @@ from auto_tune.photo_editor_color import (
     tune_photo_editor_color,
 )
 from node.input_node.node_auto_tune_photo_editor_color import Node
+import node.input_node.node_auto_tune_photo_editor_color as tuner_node_module
 from node.process_node.node_photo_editor_color import image_process
 from node.process_node.node_photo_editor_color import Node as PhotoEditorColorNode
 
@@ -90,6 +91,22 @@ def test_photo_editor_color_tuner_honors_integer_checkbox_values(monkeypatch):
     assert 'brightness' not in enabled
     assert 'tint' not in enabled
     assert set(enabled) == set(PARAMETER_NAMES) - {'brightness', 'tint'}
+
+
+def test_photo_editor_color_tuner_value_field_hides_builtin_step_buttons(
+    monkeypatch,
+):
+    dpg = MagicMock()
+    monkeypatch.setattr(tuner_node_module, 'dpg', dpg)
+    port = Mock(dpg_tag='3:Tuner:Int:Output01', value_tag='exposure-value')
+
+    Node()._add_parameter_output(3, port, 'exposure', 0, None)
+
+    assert dpg.add_input_int.call_args.kwargs['step'] == 0
+    assert [call.kwargs['label'] for call in dpg.add_button.call_args_list] == [
+        '-',
+        '+',
+    ]
 
 
 def test_photo_editor_color_add_tuner_button_requests_spawn():

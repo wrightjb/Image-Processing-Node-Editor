@@ -226,6 +226,7 @@ class Node(DpgNodeBase):
                     tag=port.value_tag,
                     default_value=default,
                     width=70,
+                    step=0,
                     callback=callback,
                 )
                 dpg.add_button(

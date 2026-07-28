@@ -908,6 +908,10 @@ def test_hue_saturation_adjustment_parameters_use_half_step_float_controls():
         parameter for parameter in node.parameters
         if parameter['name'] == 'red_saturation'
     )
+    red_luminance = next(
+        parameter for parameter in node.parameters
+        if parameter['name'] == 'red_luminance'
+    )
 
     assert red_hue['type'] == node.TYPE_FLOAT
     assert red_hue['widget'] == 'slider_float'
@@ -915,9 +919,77 @@ def test_hue_saturation_adjustment_parameters_use_half_step_float_controls():
     assert red_hue['quantize'] == 0.5
     assert red_sat['type'] == node.TYPE_FLOAT
     assert red_sat['step'] == 0.5
+    assert red_luminance['port'] == 'Input19'
+    assert red_luminance['step'] == 0.5
     assert node._cast_parameter_value(red_hue, 12.24) == 12.0
     assert node._cast_parameter_value(red_hue, 12.25) == 12.5
     assert node._cast_parameter_value(red_hue, -12.25) == -12.5
+
+
+def test_hue_bands_luminance_polish_parity_includes_achromatic_red(monkeypatch):
+    converted_hsv = []
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2, 'COLOR_BGR2HSV', 21, raising=False
+    )
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2, 'COLOR_HSV2BGR', 22, raising=False
+    )
+
+    def _cvt_color_stub(image, code):
+        if code == hue_saturation_adjustment_module.cv2.COLOR_BGR2HSV:
+            return np.array([[[0, 0, 100], [0, 100, 100]]], dtype=np.uint8)
+        converted_hsv.append(image.copy())
+        return np.zeros((1, 2, 3), dtype=np.float32)
+
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2,
+        'cvtColor',
+        _cvt_color_stub,
+        raising=False,
+    )
+
+    image = np.zeros((1, 2, 3), dtype=np.uint8)
+    hue_saturation_adjustment_module.image_process(
+        image,
+        red_luminance=50,
+        achromatic_mode=hue_saturation_adjustment_module.ACHROMATIC_POLISH_PARITY,
+    )
+
+    assert converted_hsv[0][0, 0, 2] == pytest.approx(150 / 255)
+    assert converted_hsv[0][0, 1, 2] == pytest.approx(150 / 255)
+
+
+def test_hue_bands_luminance_standard_excludes_achromatic_pixels(monkeypatch):
+    converted_hsv = []
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2, 'COLOR_BGR2HSV', 21, raising=False
+    )
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2, 'COLOR_HSV2BGR', 22, raising=False
+    )
+
+    def _cvt_color_stub(image, code):
+        if code == hue_saturation_adjustment_module.cv2.COLOR_BGR2HSV:
+            return np.array([[[0, 0, 100], [0, 100, 100]]], dtype=np.uint8)
+        converted_hsv.append(image.copy())
+        return np.zeros((1, 2, 3), dtype=np.float32)
+
+    monkeypatch.setattr(
+        hue_saturation_adjustment_module.cv2,
+        'cvtColor',
+        _cvt_color_stub,
+        raising=False,
+    )
+
+    image = np.zeros((1, 2, 3), dtype=np.uint8)
+    hue_saturation_adjustment_module.image_process(
+        image,
+        red_luminance=50,
+        achromatic_mode=hue_saturation_adjustment_module.ACHROMATIC_STANDARD,
+    )
+
+    assert converted_hsv[0][0, 0, 2] == pytest.approx(100 / 255)
+    assert converted_hsv[0][0, 1, 2] == pytest.approx(150 / 255)
 
 def test_hue_saturation_adjustment_process_targets_band_and_preserves_alpha(monkeypatch):
     node = HueSaturationAdjustmentNode()

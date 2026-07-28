@@ -102,6 +102,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             ):
                 pass
 
+            self.build_parameter_ui_header(
+                tag_node_name, node_id, small_window_w, callback
+            )
             for parameter in self.parameters:
                 self._add_parameter_ui(node_id, parameter, small_window_w, callback)
 
@@ -383,6 +386,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         self.on_settings_applied(tag_node_name)
 
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
+        del tag_node_name, node_id, width, callback
+
+    def build_parameter_ui_header(self, tag_node_name, node_id, width, callback):
         del tag_node_name, node_id, width, callback
 
     def get_custom_setting_dict(self, tag_node_name, node_id):

@@ -5,6 +5,7 @@ import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
+from node_editor.util import dpg_get_value
 
 
 _BANDS = (
@@ -24,6 +25,10 @@ _BAND_ANCHORS_DEGREES = np.array(
 _BAND_NAME_TO_INDEX = {band_name: index for index, (band_name, _) in enumerate(_BANDS)}
 HUE_SHIFT_MIN = -90
 HUE_SHIFT_MAX = 90
+LUMINANCE_MIN = -100
+LUMINANCE_MAX = 100
+ACHROMATIC_POLISH_PARITY = 'Polish parity'
+ACHROMATIC_STANDARD = 'Standard'
 
 
 def _smoothstep_with_blend(t, blend):
@@ -84,13 +89,19 @@ def _active_adjustments(adjustments):
     for band_name, index in _BAND_NAME_TO_INDEX.items():
         hue_delta = float(adjustments.get(f'{band_name}_hue_shift', 0))
         saturation_delta = float(adjustments.get(f'{band_name}_saturation', 0))
-        if hue_delta == 0.0 and saturation_delta == 0.0:
+        luminance_delta = float(adjustments.get(f'{band_name}_luminance', 0))
+        if hue_delta == 0.0 and saturation_delta == 0.0 and luminance_delta == 0.0:
             continue
-        active.append((index, hue_delta, saturation_delta))
+        active.append((index, hue_delta, saturation_delta, luminance_delta))
     return active
 
 
-def image_process(image, blend=0.0, **adjustments):
+def image_process(
+    image,
+    blend=0.0,
+    achromatic_mode=ACHROMATIC_POLISH_PARITY,
+    **adjustments,
+):
     if image is None or image.ndim != 3 or image.shape[2] < 3:
         return image
 
@@ -105,16 +116,21 @@ def image_process(image, blend=0.0, **adjustments):
 
     hue_channel = hsv_image[:, :, 0]
     sat_channel = hsv_image[:, :, 1]
+    value_channel = hsv_image[:, :, 2]
 
     hue_indices = np.clip(hue_channel.astype(np.int16), 0, 179)
     hue_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
     saturation_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
+    luminance_delta_by_band = np.zeros(len(_BANDS), dtype=np.float32)
 
-    for index, hue_delta, saturation_delta in active_adjustments:
+    for index, hue_delta, saturation_delta, luminance_delta in active_adjustments:
         hue_delta_by_band[index] = hue_delta
         saturation_delta_by_band[index] = saturation_delta / 100.0
+        luminance_delta_by_band[index] = luminance_delta / 100.0
 
     blend_weights = _get_blend_weight_lut(blend)[hue_indices]
+    if achromatic_mode == ACHROMATIC_STANDARD:
+        blend_weights = blend_weights * (sat_channel > 0.0)[..., None]
 
     hue_shift = np.sum(blend_weights * hue_delta_by_band[None, None, :], axis=2)
     saturation_scale = 1.0 + np.sum(
@@ -122,8 +138,13 @@ def image_process(image, blend=0.0, **adjustments):
         axis=2,
     )
 
+    luminance_scale = 1.0 + np.sum(
+        blend_weights * luminance_delta_by_band[None, None, :], axis=2
+    )
+
     hsv_image[:, :, 0] = np.mod(hue_channel + hue_shift, 180.0)
     hsv_image[:, :, 1] = np.clip(sat_channel * saturation_scale, 0.0, 255.0)
+    hsv_image[:, :, 2] = np.clip(value_channel * luminance_scale, 0.0, 255.0)
 
     hsv_for_bgr = hsv_image.astype(np.float32, copy=True)
     hsv_for_bgr[:, :, 0] *= 2.0
@@ -149,13 +170,14 @@ def image_process(image, blend=0.0, **adjustments):
 
 
 class Node(DeclarativeImageProcessNodeBase):
-    _ver = '0.0.3'
+    _ver = '0.0.4'
 
     node_label = 'Hue Bands'
     node_tag = 'HueSaturationAdjustment'
 
     _last_touched_slider_tag_by_node = {}
     _last_touched_node_id = None
+    _expanded_bands_by_node = {}
 
     parameters = [
         {
@@ -169,6 +191,16 @@ class Node(DeclarativeImageProcessNodeBase):
             'max': 1.0,
             'cast': float,
             'precision': 2,
+        },
+        {
+            'name': 'achromatic_mode',
+            'type': DeclarativeImageProcessNodeBase.TYPE_TEXT,
+            'port': 'Input27',
+            'widget': 'combo',
+            'label': 'achromatic pixels',
+            'items': [ACHROMATIC_POLISH_PARITY, ACHROMATIC_STANDARD],
+            'default': ACHROMATIC_POLISH_PARITY,
+            'cast': str,
         },
     ]
     for index, (band_name, _) in enumerate(_BANDS):
@@ -201,7 +233,67 @@ class Node(DeclarativeImageProcessNodeBase):
                 'quantize': 0.5,
                 'step': 0.5,
             },
+            {
+                'name': f'{band_name}_luminance',
+                'type': DeclarativeImageProcessNodeBase.TYPE_FLOAT,
+                'port': f'Input{index + 19:02d}',
+                'widget': 'slider_float',
+                'label': f'{band_name[:3]} lum',
+                'default': 0.0,
+                'min': LUMINANCE_MIN,
+                'max': LUMINANCE_MAX,
+                'cast': float,
+                'precision': 1,
+                'quantize': 0.5,
+                'step': 0.5,
+            },
         ])
+
+    def build_parameter_ui_header(self, tag_node_name, node_id, width, callback):
+        del tag_node_name, callback
+        self._expanded_bands_by_node[str(node_id)] = set()
+        with dpg.node_attribute(
+            tag=self._band_controls_tag(node_id),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(horizontal=True):
+                button_width = max(80, (width - 88) // 2)
+                dpg.add_button(
+                    label='Expand all',
+                    width=button_width,
+                    callback=self._set_all_bands_callback,
+                    user_data=(node_id, True),
+                )
+                dpg.add_button(
+                    label='Collapse all',
+                    width=button_width,
+                    callback=self._set_all_bands_callback,
+                    user_data=(node_id, False),
+                )
+
+    def _add_parameter_ui(self, node_id, parameter, width, callback):
+        parameter_name = parameter['name']
+        band_name = next(
+            (
+                name
+                for name, _center in _BANDS
+                if parameter_name == f'{name}_hue_shift'
+            ),
+            None,
+        )
+        if band_name is not None:
+            with dpg.node_attribute(
+                tag=self._band_header_tag(node_id, band_name),
+                attribute_type=dpg.mvNode_Attr_Static,
+            ):
+                dpg.add_button(
+                    tag=self._band_button_tag(node_id, band_name),
+                    label=self._band_summary(node_id, band_name),
+                    width=width - 40,
+                    callback=self._toggle_band_callback,
+                    user_data=(node_id, band_name),
+                )
+        super()._add_parameter_ui(node_id, parameter, width, callback)
 
     def process(self, frame, **parameter_values):
         frame = image_process(frame, **parameter_values)
@@ -228,12 +320,16 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def on_node_added(self, tag_node_name):
         node_id = int(tag_node_name.split(':')[0])
+        for band_name, _center in _BANDS:
+            self._set_band_visibility(node_id, band_name, False)
         if not dpg.does_item_exist('_hsa_arrow_keys'):
             with dpg.handler_registry(tag='_hsa_arrow_keys'):
                 dpg.add_key_press_handler(dpg.mvKey_Left, callback=self._nudge_slider, user_data=-1)
                 dpg.add_key_press_handler(dpg.mvKey_Right, callback=self._nudge_slider, user_data=1)
 
         for parameter in self.parameters:
+            if not parameter['widget'].startswith('slider_'):
+                continue
             slider_tag = self._value_tag(
                 self._port_tag(tag_node_name, parameter['type'], parameter['port'])
             )
@@ -258,6 +354,104 @@ class Node(DeclarativeImageProcessNodeBase):
                     'after_value': app_data,
                 },
             )
+        self._refresh_band_summary_for_value_tag(user_data, slider_tag)
+
+    def _on_parameter_widget_changed(self, sender, app_data, user_data):
+        super()._on_parameter_widget_changed(sender, app_data, user_data)
+        value_tag = user_data.get('value_tag') if isinstance(user_data, dict) else None
+        if not value_tag:
+            return
+        node_id_name = user_data.get('node_id_name', '')
+        try:
+            node_id = int(node_id_name.split(':', 1)[0])
+        except (TypeError, ValueError):
+            return
+        self._refresh_band_summary_for_value_tag(node_id, value_tag)
+
+    def _band_controls_tag(self, node_id):
+        return self._control_tag(
+            self._node_name(node_id), self.TYPE_TEXT, 'BandControls'
+        )
+
+    def _band_header_tag(self, node_id, band_name):
+        return self._control_tag(
+            self._node_name(node_id),
+            self.TYPE_TEXT,
+            f'Band{band_name.title()}',
+        )
+
+    def _band_button_tag(self, node_id, band_name):
+        return f'{self._band_header_tag(node_id, band_name)}:Button'
+
+    def _band_parameter(self, band_name, suffix):
+        return next(
+            parameter
+            for parameter in self.parameters
+            if parameter['name'] == f'{band_name}_{suffix}'
+        )
+
+    def _band_summary(self, node_id, band_name):
+        values = []
+        for short_label, suffix in (
+            ('H', 'hue_shift'),
+            ('S', 'saturation'),
+            ('L', 'luminance'),
+        ):
+            parameter = self._band_parameter(band_name, suffix)
+            value_tag = self._parameter_port_ref(node_id, parameter).value_tag
+            value = dpg_get_value(value_tag)
+            if value is None:
+                value = parameter['default']
+            values.append(f'{short_label} {float(value):+.1f}')
+        expanded = band_name in self._expanded_bands_by_node.get(
+            str(node_id), set()
+        )
+        marker = '▾' if expanded else '▸'
+        return f'{marker} {band_name.title()}    ' + '   '.join(values)
+
+    def _set_band_visibility(self, node_id, band_name, expanded):
+        expanded_bands = self._expanded_bands_by_node.setdefault(
+            str(node_id), set()
+        )
+        if expanded:
+            expanded_bands.add(band_name)
+        else:
+            expanded_bands.discard(band_name)
+        for suffix in ('hue_shift', 'saturation', 'luminance'):
+            parameter = self._band_parameter(band_name, suffix)
+            dpg.configure_item(
+                self._parameter_port_ref(node_id, parameter).dpg_tag,
+                show=expanded,
+            )
+        dpg.configure_item(
+            self._band_button_tag(node_id, band_name),
+            label=self._band_summary(node_id, band_name),
+        )
+
+    def _toggle_band_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id, band_name = user_data
+        expanded = band_name not in self._expanded_bands_by_node.get(
+            str(node_id), set()
+        )
+        self._set_band_visibility(node_id, band_name, expanded)
+
+    def _set_all_bands_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id, expanded = user_data
+        for band_name, _center in _BANDS:
+            self._set_band_visibility(node_id, band_name, expanded)
+
+    def _refresh_band_summary_for_value_tag(self, node_id, value_tag):
+        for band_name, _center in _BANDS:
+            for suffix in ('hue_shift', 'saturation', 'luminance'):
+                parameter = self._band_parameter(band_name, suffix)
+                if self._parameter_port_ref(node_id, parameter).value_tag == value_tag:
+                    dpg.configure_item(
+                        self._band_button_tag(node_id, band_name),
+                        label=self._band_summary(node_id, band_name),
+                    )
+                    return
 
     def _nudge_slider(self, sender, app_data, user_data):
         del sender, app_data

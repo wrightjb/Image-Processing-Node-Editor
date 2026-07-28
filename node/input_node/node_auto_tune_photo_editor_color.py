@@ -12,6 +12,7 @@ from auto_tune.photo_editor_color import (
 )
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
+from node.process_node.node_photo_editor_color import Node as PhotoEditorColorNode
 from node_editor.image_metadata import match_metadata_compression
 from node_editor.util import dpg_get_value, dpg_set_value
 
@@ -114,14 +115,6 @@ class Node(DpgNodeBase):
                 False,
                 callback,
             )
-            for name in PARAMETER_NAMES:
-                self._add_checkbox_control(
-                    node_id,
-                    f'Tune{name.title()}',
-                    f'Tune {name}',
-                    True,
-                    callback,
-                )
             with dpg.node_attribute(
                 tag=source_image,
                 attribute_type=dpg.mvNode_Attr_Input,
@@ -134,10 +127,12 @@ class Node(DpgNodeBase):
                 dpg.add_text('target image')
             self._add_text_output(ports.mode, 'mode', 'MacGyver parity')
             for name in PARAMETER_NAMES:
-                self._add_int_output(
+                self._add_parameter_output(
+                    node_id,
                     getattr(ports, name),
                     name,
                     DEFAULT_PARAMETERS[name],
+                    callback,
                 )
             self._add_float_output(ports.best_score, 'score', 0.0)
         return self._node_name(node_id)
@@ -207,19 +202,66 @@ class Node(DpgNodeBase):
                 callback=callback,
             )
 
-    @staticmethod
-    def _add_int_output(port, label, default):
+    def _add_parameter_output(
+        self, node_id, port, name, default, callback,
+    ):
+        parameter = next(
+            parameter for parameter in PhotoEditorColorNode.parameters
+            if parameter.get('name') == name
+        )
         with dpg.node_attribute(
             tag=port.dpg_tag,
             attribute_type=dpg.mvNode_Attr_Output,
         ):
-            dpg.add_input_int(
-                tag=port.value_tag,
-                label=label,
-                default_value=default,
-                width=120,
-                readonly=True,
-            )
+            with dpg.group(horizontal=True):
+                dpg.add_checkbox(
+                    tag=self._control_value_tag(
+                        node_id,
+                        f'Tune{name.title()}',
+                    ),
+                    default_value=True,
+                    callback=callback,
+                )
+                dpg.add_input_int(
+                    tag=port.value_tag,
+                    default_value=default,
+                    width=70,
+                    callback=callback,
+                )
+                dpg.add_button(
+                    label='-',
+                    width=24,
+                    callback=self._nudge_parameter,
+                    user_data=(
+                        port.value_tag,
+                        -1,
+                        int(parameter['min']),
+                        int(parameter['max']),
+                    ),
+                )
+                dpg.add_button(
+                    label='+',
+                    width=24,
+                    callback=self._nudge_parameter,
+                    user_data=(
+                        port.value_tag,
+                        1,
+                        int(parameter['min']),
+                        int(parameter['max']),
+                    ),
+                )
+                dpg.add_text(name)
+
+    @staticmethod
+    def _nudge_parameter(sender, app_data, user_data):
+        del sender, app_data
+        value_tag, delta, minimum, maximum = user_data
+        value = dpg_get_value(value_tag)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 0
+        dpg_set_value(value_tag, max(minimum, min(maximum, value + delta)))
 
     @staticmethod
     def _add_text_output(port, label, default):
@@ -259,6 +301,14 @@ class Node(DpgNodeBase):
         del sender, app_data
         self._run_requested_node_ids.add(str(user_data))
         self._set_status(user_data, 'queued')
+
+    def _enabled_parameters(self, node_id):
+        return [
+            name for name in PARAMETER_NAMES
+            if bool(dpg_get_value(
+                self._control_value_tag(node_id, f'Tune{name.title()}')
+            ))
+        ]
 
     def _linked_image_result(
         self, port_ref, connection_list, node_image_dict, node_result_dict,
@@ -306,12 +356,7 @@ class Node(DpgNodeBase):
         if mode not in ('MacGyver parity', 'Standard'):
             mode = 'MacGyver parity'
         dpg_set_value(ports.mode.value_tag, mode)
-        enabled = [
-            name for name in PARAMETER_NAMES
-            if dpg_get_value(
-                self._control_value_tag(node_id, f'Tune{name.title()}')
-            ) is True
-        ]
+        enabled = self._enabled_parameters(node_id)
         current = {
             name: dpg_get_value(getattr(ports, name).value_tag)
             for name in PARAMETER_NAMES

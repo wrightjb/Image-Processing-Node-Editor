@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from unittest.mock import Mock
+
 import numpy as np
 
 from auto_tune.photo_editor_color import (
@@ -9,6 +11,7 @@ from auto_tune.photo_editor_color import (
 )
 from node.input_node.node_auto_tune_photo_editor_color import Node
 from node.process_node.node_photo_editor_color import image_process
+from node.process_node.node_photo_editor_color import Node as PhotoEditorColorNode
 
 
 def _color_fixture():
@@ -68,4 +71,35 @@ def test_photo_editor_color_tuner_node_defaults_cover_all_controls():
     assert set(PARAMETER_NAMES).issubset(output_names)
     assert {'source_image', 'target_image', 'mode', 'best_score'}.issubset(
         output_names
+    )
+
+
+def test_photo_editor_color_tuner_honors_integer_checkbox_values(monkeypatch):
+    node = Node()
+
+    def _value(tag):
+        return 0 if 'TuneBrightness' in tag or 'TuneTint' in tag else 1
+
+    monkeypatch.setattr(
+        'node.input_node.node_auto_tune_photo_editor_color.dpg_get_value',
+        _value,
+    )
+
+    enabled = node._enabled_parameters(3)
+
+    assert 'brightness' not in enabled
+    assert 'tint' not in enabled
+    assert set(enabled) == set(PARAMETER_NAMES) - {'brightness', 'tint'}
+
+
+def test_photo_editor_color_add_tuner_button_requests_spawn():
+    node = PhotoEditorColorNode()
+    callback = Mock()
+    node._ui_callback = callback
+
+    node._add_tuner_callback(None, None, 7)
+
+    callback.assert_called_once_with(
+        'spawn_photo_editor_color_tuner_requested',
+        {'node_id_name': '7:PhotoEditorColor'},
     )

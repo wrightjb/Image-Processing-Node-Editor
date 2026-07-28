@@ -921,6 +921,9 @@ def test_hue_saturation_adjustment_parameters_use_half_step_float_controls():
     assert red_sat['step'] == 0.5
     assert red_luminance['port'] == 'Input19'
     assert red_luminance['step'] == 0.5
+    assert node._slider_group_tag(
+        '111:HueSaturationAdjustment:Float:Input19Value'
+    ) == '111:HueSaturationAdjustment:Float:Input19Value:Controls'
     assert node._cast_parameter_value(red_hue, 12.24) == 12.0
     assert node._cast_parameter_value(red_hue, 12.25) == 12.5
     assert node._cast_parameter_value(red_hue, -12.25) == -12.5

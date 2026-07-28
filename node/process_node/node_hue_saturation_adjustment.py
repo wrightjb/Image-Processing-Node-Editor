@@ -249,15 +249,14 @@ class Node(DeclarativeImageProcessNodeBase):
             },
         ])
 
-    def build_parameter_ui_header(self, tag_node_name, node_id, width, callback):
-        del tag_node_name, callback
+    def _add_band_controls(self, node_id, width):
         self._expanded_bands_by_node[str(node_id)] = set()
         with dpg.node_attribute(
             tag=self._band_controls_tag(node_id),
             attribute_type=dpg.mvNode_Attr_Static,
         ):
             with dpg.group(horizontal=True):
-                button_width = max(80, (width - 88) // 2)
+                button_width = max(104, (width - 12) // 2)
                 dpg.add_button(
                     label='Expand all',
                     width=button_width,
@@ -273,11 +272,15 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def _add_parameter_ui(self, node_id, parameter, width, callback):
         parameter_name = parameter['name']
+        super()._add_parameter_ui(node_id, parameter, width, callback)
+        if parameter_name == 'achromatic_mode':
+            self._add_band_controls(node_id, width)
+            return
         band_name = next(
             (
                 name
                 for name, _center in _BANDS
-                if parameter_name == f'{name}_hue_shift'
+                if parameter_name == f'{name}_luminance'
             ),
             None,
         )
@@ -289,11 +292,10 @@ class Node(DeclarativeImageProcessNodeBase):
                 dpg.add_button(
                     tag=self._band_button_tag(node_id, band_name),
                     label=self._band_summary(node_id, band_name),
-                    width=width - 40,
+                    width=(width * 2) - 40,
                     callback=self._toggle_band_callback,
                     user_data=(node_id, band_name),
                 )
-        super()._add_parameter_ui(node_id, parameter, width, callback)
 
     def process(self, frame, **parameter_values):
         frame = image_process(frame, **parameter_values)
@@ -419,8 +421,9 @@ class Node(DeclarativeImageProcessNodeBase):
             expanded_bands.discard(band_name)
         for suffix in ('hue_shift', 'saturation', 'luminance'):
             parameter = self._band_parameter(band_name, suffix)
+            value_tag = self._parameter_port_ref(node_id, parameter).value_tag
             dpg.configure_item(
-                self._parameter_port_ref(node_id, parameter).dpg_tag,
+                self._slider_group_tag(value_tag),
                 show=expanded,
             )
         dpg.configure_item(

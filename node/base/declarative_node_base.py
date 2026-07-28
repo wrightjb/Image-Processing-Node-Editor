@@ -102,9 +102,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
             ):
                 pass
 
-            self.build_parameter_ui_header(
-                tag_node_name, node_id, small_window_w, callback
-            )
             for parameter in self.parameters:
                 self._add_parameter_ui(node_id, parameter, small_window_w, callback)
 
@@ -388,9 +385,6 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
     def build_custom_ui(self, tag_node_name, node_id, width, callback):
         del tag_node_name, node_id, width, callback
 
-    def build_parameter_ui_header(self, tag_node_name, node_id, width, callback):
-        del tag_node_name, node_id, width, callback
-
     def get_custom_setting_dict(self, tag_node_name, node_id):
         del tag_node_name, node_id
         return {}
@@ -653,7 +647,10 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         button_width = 24
         input_width = 72 if is_float else 56
         slider_width = max(80, width - input_width - (button_width * 2) - 96)
-        with dpg.group(horizontal=True):
+        with dpg.group(
+            horizontal=True,
+            tag=self._slider_group_tag(value_tag),
+        ):
             dpg.add_button(
                 label='-',
                 width=button_width,
@@ -713,6 +710,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
     def _slider_input_tag(self, value_tag):
         return f'{value_tag}:Input'
+
+    def _slider_group_tag(self, value_tag):
+        return f'{value_tag}:Controls'
 
     def _get_parameter_step(self, parameter):
         if 'step' in parameter:

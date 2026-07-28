@@ -15,6 +15,7 @@ from node.port_model import (
     LinkRef,
     NodeRef,
     OutputPort,
+    ParameterPort,
     PortDataType,
     PortRef,
     PortSpecs,
@@ -117,6 +118,46 @@ class PortDeclaringDummyNode(DpgNodeBase):
         pass
 
 
+_PHOTO_COLOR_PARAMETER_NAMES = (
+    'mode', 'exposure', 'brightness', 'contrast', 'saturation',
+    'temperature', 'tint', 'hue',
+)
+
+
+class PhotoColorDummyNode(PortDeclaringDummyNode):
+    node_tag = 'PhotoEditorColor'
+    parameters = [
+        {'name': name} for name in _PHOTO_COLOR_PARAMETER_NAMES
+    ]
+    port_specs = PortSpecs(
+        image_input=InputPort(PortDataType.IMAGE, index=1),
+        mode=ParameterPort(PortDataType.TEXT, index=1),
+        exposure=ParameterPort(PortDataType.INT, index=1),
+        brightness=ParameterPort(PortDataType.INT, index=2),
+        contrast=ParameterPort(PortDataType.INT, index=3),
+        saturation=ParameterPort(PortDataType.INT, index=4),
+        temperature=ParameterPort(PortDataType.INT, index=5),
+        tint=ParameterPort(PortDataType.INT, index=6),
+        hue=ParameterPort(PortDataType.INT, index=7),
+    )
+
+
+class PhotoColorTunerDummyNode(PortDeclaringDummyNode):
+    node_tag = 'AutoTunePhotoEditorColor'
+    port_specs = PortSpecs(
+        source_image=InputPort(PortDataType.IMAGE, index=1),
+        target_image=InputPort(PortDataType.IMAGE, index=2),
+        mode=OutputPort(PortDataType.TEXT, index=1),
+        exposure=OutputPort(PortDataType.INT, index=1),
+        brightness=OutputPort(PortDataType.INT, index=2),
+        contrast=OutputPort(PortDataType.INT, index=3),
+        saturation=OutputPort(PortDataType.INT, index=4),
+        temperature=OutputPort(PortDataType.INT, index=5),
+        tint=OutputPort(PortDataType.INT, index=6),
+        hue=OutputPort(PortDataType.INT, index=7),
+    )
+
+
 def _typed_link_pairs(editor):
     return [link_ref.legacy_pair for link_ref in editor._link_refs]
 
@@ -181,8 +222,61 @@ def test_import_suppresses_result_node_toggle_callbacks(editor_and_dpg):
             'enabled': True,
         },
     )
-
     editor._cntrl_toggle_result_node.assert_not_called()
+
+
+def test_photo_editor_color_spawn_event_is_dispatched(editor_and_dpg):
+    editor, _dpg = editor_and_dpg
+    editor._cntrl_spawn_photo_editor_color_tuner = Mock()
+
+    editor._cntrl_node_callback(
+        'spawn_photo_editor_color_tuner_requested',
+        {'node_id_name': '2:PhotoEditorColor'},
+    )
+
+    editor._cntrl_spawn_photo_editor_color_tuner.assert_called_once_with(
+        '2:PhotoEditorColor'
+    )
+
+
+def test_spawn_photo_editor_color_tuner_connects_parameters_and_source(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    source = PortDeclaringDummyNode()
+    color = PhotoColorDummyNode()
+    tuner = PhotoColorTunerDummyNode()
+    editor._node_instance_list.update({
+        'TestNode': source,
+        'PhotoEditorColor': color,
+        'AutoTunePhotoEditorColor': tuner,
+    })
+    editor._node_id = 2
+    editor._node_list = ['1:TestNode', '2:PhotoEditorColor']
+    for node, node_id in ((source, 1), (color, 2)):
+        node.set_port_registration_callback(editor._mdl_register_port_ref)
+        node.create_ports(node_id)
+        editor._mdl_register_node_ref(NodeRef(str(node_id), node.node_tag))
+        editor._mdl_register_node_declared_ports(node, node_id)
+
+    dpg.does_item_exist.return_value = True
+    dpg.get_item_pos.return_value = [500, 100]
+    dpg.add_node_link.side_effect = lambda *_args, **_kwargs: Mock()
+    source_image = source.ports(1).image.dpg_tag
+    color_image = color.ports(2).image_input.dpg_tag
+    assert editor._cntrl_add_link_by_tags(source_image, color_image)
+
+    editor._cntrl_spawn_photo_editor_color_tuner('2:PhotoEditorColor')
+
+    tuner_ports = tuner.ports(3)
+    link_pairs = _typed_link_pairs(editor)
+    assert [source_image, color_image] in link_pairs
+    assert [source_image, tuner_ports.source_image.dpg_tag] in link_pairs
+    for name in _PHOTO_COLOR_PARAMETER_NAMES:
+        assert [
+            getattr(tuner_ports, name).dpg_tag,
+            getattr(color.ports(2), name).dpg_tag,
+        ] in link_pairs
 
 
 def test_result_node_toggle_callbacks_run_after_import(editor_and_dpg):

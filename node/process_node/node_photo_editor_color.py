@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import cv2
+import dearpygui.dearpygui as dpg
 import numpy as np
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
@@ -218,3 +219,27 @@ class Node(DeclarativeImageProcessNodeBase):
 
     def process(self, frame, **parameter_values):
         return image_process(frame, **parameter_values), None
+
+    def build_custom_ui(
+        self, tag_node_name, node_id, width, callback,
+    ):
+        del tag_node_name, width, callback
+        with dpg.node_attribute(
+            tag=self._node_control_tag(node_id, self.TYPE_TEXT, 'AddTuner'),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            dpg.add_button(
+                label='Add Tuner',
+                width=120,
+                callback=self._add_tuner_callback,
+                user_data=node_id,
+            )
+
+    def _add_tuner_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        if self._ui_callback is None:
+            return
+        self._ui_callback(
+            'spawn_photo_editor_color_tuner_requested',
+            {'node_id_name': self._node_name(user_data)},
+        )

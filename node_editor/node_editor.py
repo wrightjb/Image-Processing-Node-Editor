@@ -1021,6 +1021,13 @@ class DpgNodeEditor(object):
             if node_id_name:
                 self._cntrl_spawn_hue_bands_tuner(node_id_name)
             return
+        if event_name == 'spawn_photo_editor_color_tuner_requested':
+            if not isinstance(data, dict):
+                return
+            node_id_name = str(data.get('node_id_name', ''))
+            if node_id_name:
+                self._cntrl_spawn_photo_editor_color_tuner(node_id_name)
+            return
         if event_name == 'parameter_changed':
             if not isinstance(data, dict):
                 return
@@ -1504,6 +1511,109 @@ class DpgNodeEditor(object):
             node_id_name=node_id_name,
         ):
             if port_ref.spec_key == parameter_name:
+                return port_ref
+        return None
+
+    def _cntrl_spawn_photo_editor_color_tuner(self, color_node_id_name):
+        if color_node_id_name not in self._node_registry:
+            self._vw_set_link_feedback(
+                'Cannot add Photo Editor Color tuner: node is not registered.'
+            )
+            return
+        tuner_tag = 'AutoTunePhotoEditorColor'
+        if tuner_tag not in self._node_instance_list:
+            self._vw_set_link_feedback(
+                'Cannot add Photo Editor Color tuner: tuner node is not available.'
+            )
+            return
+
+        source_pos = dpg.get_item_pos(color_node_id_name)
+        new_pos = [source_pos[0] - 360, source_pos[1] + 40]
+        new_id, new_node_id_name = self._mdl_add_node(tuner_tag)
+        self._mdl_register_node_ref(NodeRef(str(new_id), tuner_tag))
+        self._vw_add_node(tuner_tag, new_id, new_pos)
+        self._node_list.append(new_node_id_name)
+        self._cntrl_update_node_position_cache(new_node_id_name)
+
+        tuner = self.get_node_instance(tuner_tag)
+        tuner_ports = tuner.ports(new_id)
+        color_node = self.get_node_instance('PhotoEditorColor')
+        parameter_names = [
+            parameter['name']
+            for parameter in getattr(color_node, 'parameters', [])
+        ]
+        link_payloads = []
+        for parameter_name in parameter_names:
+            source_port = getattr(tuner_ports, parameter_name, None)
+            destination_port = self._cntrl_find_registered_spec_port(
+                color_node_id_name,
+                PortDirection.INPUT,
+                parameter_name,
+            )
+            if source_port is None or destination_port is None:
+                continue
+            existing_link = self._mdl_get_link_by_destination(
+                destination_port.dpg_tag
+            )
+            if existing_link is not None:
+                self._cntrl_remove_link_by_tags(
+                    existing_link[0],
+                    existing_link[1],
+                    record_history=False,
+                )
+            if self._cntrl_add_link_by_tags(
+                source_port.dpg_tag,
+                destination_port.dpg_tag,
+            ):
+                link_payloads.append(self._cntrl_history_link_payload(
+                    source_port.dpg_tag,
+                    destination_port.dpg_tag,
+                ))
+
+        color_image_input = self._cntrl_find_registered_spec_port(
+            color_node_id_name,
+            PortDirection.INPUT,
+            'image_input',
+        )
+        if color_image_input is not None:
+            image_link = self._mdl_get_link_by_destination(
+                color_image_input.dpg_tag
+            )
+            if image_link is not None:
+                tuner_source = tuner_ports.source_image
+                if self._cntrl_add_link_by_tags(
+                    image_link[0],
+                    tuner_source.dpg_tag,
+                ):
+                    link_payloads.append(self._cntrl_history_link_payload(
+                        image_link[0],
+                        tuner_source.dpg_tag,
+                    ))
+
+        self._mdl_sort_node_graph()
+        node_setting = tuner.get_setting_dict(str(new_id))
+        self._cntrl_push_undo_command(
+            AddNodeCommand(
+                new_id,
+                tuner_tag,
+                list(new_pos),
+                copy.deepcopy(node_setting),
+                link_payloads,
+                [],
+            )
+        )
+        self._vw_set_link_feedback(
+            'Added Photo Editor Color tuner and connected available ports.'
+        )
+
+    def _cntrl_find_registered_spec_port(
+        self, node_id_name, direction, spec_key,
+    ):
+        for port_ref in self._mdl_iter_registered_ports(
+            direction=direction,
+            node_id_name=node_id_name,
+        ):
+            if port_ref.spec_key == spec_key:
                 return port_ref
         return None
 

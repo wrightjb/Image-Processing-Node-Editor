@@ -1059,10 +1059,12 @@ def test_hue_bands_parameters_quantize_to_half_steps():
     parameters = hue_bands._initial_parameters({
         'red_hue_shift': 12.24,
         'red_saturation': -7.26,
+        'red_luminance': 18.26,
     })
 
     assert parameters['red_hue_shift'] == 12.0
     assert parameters['red_saturation'] == -7.5
+    assert parameters['red_luminance'] == 18.5
     assert hue_bands._clamp_to_step(12.25, -90, 90) == 12.5
     assert hue_bands._clamp_to_step(-12.25, -90, 90) == -12.5
     assert hue_bands._coordinate_candidate_values(12.0, 0.5, -90, 90) == [11.5, 12.5]
@@ -1120,6 +1122,33 @@ def test_hue_bands_full_blend_estimate_keeps_real_saturation_change(monkeypatch)
 
     assert all(abs(value - 25.0) <= 2.0 for value in saturation_values), (
         saturation_values
+    )
+
+
+def test_hue_bands_full_blend_estimate_keeps_real_luminance_change(monkeypatch):
+    import auto_tune.hue_bands as hue_bands
+
+    height, width = 32, 180
+    source_hsv = np.zeros((height, width, 3), dtype=np.float32)
+    source_hsv[:, :, 0] = np.arange(width, dtype=np.float32)[None, :]
+    source_hsv[:, :, 1] = 180
+    source_hsv[:, :, 2] = 160
+    target_hsv = source_hsv.copy()
+    target_hsv[:, :, 2] = source_hsv[:, :, 2] * 1.25
+    monkeypatch.setattr(
+        hue_bands,
+        '_hsv_pair',
+        lambda _source, _target: (source_hsv, target_hsv),
+    )
+
+    parameters = hue_bands._estimate_parameters_from_hsv(None, None, blend=1.0)
+    luminance_values = [
+        parameters[f'{band_name}_luminance']
+        for band_name, _center in hue_bands._BANDS
+    ]
+
+    assert all(abs(value - 25.0) <= 2.0 for value in luminance_values), (
+        luminance_values
     )
 
 
@@ -1216,7 +1245,7 @@ def test_hue_bands_refinement_tunes_hue_before_saturation(monkeypatch):
 
     assert result.best_parameters['red_saturation'] == 6.0
     assert result.best_score == 0.0
-    assert result.evaluated_count < 100
+    assert result.evaluated_count < 150
     hue_updates = [
         index for index, update in enumerate(progress_updates)
         if update['phase'] == 'refine 1 hue'
@@ -1376,6 +1405,48 @@ def test_auto_tune_hue_bands_node_declares_all_parameter_outputs():
     assert ports.purple_hue_shift.dpg_tag == '42:AutoTuneHueBands:Float:Output14'
     assert ports.magenta_saturation.dpg_tag == '42:AutoTuneHueBands:Float:Output17'
     assert ports.best_score.dpg_tag == '42:AutoTuneHueBands:Float:Output18'
+    assert ports.red_luminance.dpg_tag == '42:AutoTuneHueBands:Float:Output19'
+    assert ports.magenta_luminance.dpg_tag == '42:AutoTuneHueBands:Float:Output26'
+    assert ports.achromatic_mode.dpg_tag == '42:AutoTuneHueBands:Text:Output27'
+
+
+def test_auto_tune_hue_bands_reads_luminance_and_achromatic_outputs(monkeypatch):
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+    ports = node.create_ports(42)
+    values = {
+        ports.blend.value_tag: 0.5,
+        ports.red_luminance.value_tag: 22.5,
+        ports.achromatic_mode.value_tag: 'Standard',
+    }
+    monkeypatch.setattr(
+        auto_tune_hue_bands_module,
+        'dpg_get_value',
+        lambda tag: values.get(tag),
+    )
+
+    parameters = node._current_output_parameters(ports)
+
+    assert parameters['blend'] == 0.5
+    assert parameters['red_luminance'] == 22.5
+    assert parameters['achromatic_mode'] == 'Standard'
+
+
+def test_auto_tune_hue_bands_summary_uses_font_safe_markers(monkeypatch):
+    import node.input_node.node_auto_tune_hue_bands as auto_tune_hue_bands_module
+
+    node = auto_tune_hue_bands_module.Node()
+    node.create_ports(42)
+    monkeypatch.setattr(
+        auto_tune_hue_bands_module,
+        'dpg_get_value',
+        lambda _tag: 0,
+    )
+
+    assert node._band_summary(42, 'red').startswith('[+] Red')
+    node._expanded_bands_by_node['42'] = {'red'}
+    assert node._band_summary(42, 'red').startswith('[-] Red')
 
 
 def test_hue_bands_simplification_prunes_low_value_parameters(monkeypatch):
@@ -1429,8 +1500,9 @@ def test_hue_bands_estimate_candidates_do_not_tune_blend_by_default(monkeypatch)
 
     seen_blends = []
 
-    def fake_estimate(source, target, blend):
+    def fake_estimate(source, target, blend, achromatic_mode=None):
         del source, target
+        assert achromatic_mode == hue_bands.ACHROMATIC_POLISH_PARITY
         seen_blends.append(blend)
         return {'blend': blend, 'blue_hue_shift': int(blend * 10)}
 
@@ -1543,7 +1615,8 @@ def test_hue_bands_tune_stops_after_scaled_polish(monkeypatch):
     monkeypatch.setattr(
         hue_bands,
         '_estimate_candidate_parameters',
-        lambda source_image, target_image, tune_blend=False, fixed_blend=0.0: [
+        lambda source_image, target_image, tune_blend=False, fixed_blend=0.0,
+        achromatic_mode=None: [
             {'blend': fixed_blend, 'blue_hue_shift': 88}
         ],
     )

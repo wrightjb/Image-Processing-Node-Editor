@@ -7,8 +7,12 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_absolute_error, normalize_image_for_metric
 from node.process_node.node_hue_saturation_adjustment import (
+    ACHROMATIC_POLISH_PARITY,
+    ACHROMATIC_STANDARD,
     HUE_SHIFT_MAX,
     HUE_SHIFT_MIN,
+    LUMINANCE_MAX,
+    LUMINANCE_MIN,
     _BANDS,
     _get_blend_weight_lut,
     image_process,
@@ -84,6 +88,11 @@ def _hsv_component_score(image, target_hsv, component):
             candidate_hsv[:, :, 1] - target_hsv[:, :, 1]
         ) / 255.0
         return float(np.mean(np.abs(difference)))
+    if component == 'luminance':
+        difference = (
+            candidate_hsv[:, :, 2] - target_hsv[:, :, 2]
+        ) / 255.0
+        return float(np.mean(np.abs(difference)))
     raise ValueError(f'unsupported HSV score component: {component}')
 
 
@@ -117,7 +126,11 @@ def _band_weight_map(source, band_name, blend):
 
 
 def _band_parameter_names(band_name):
-    return f'{band_name}_hue_shift', f'{band_name}_saturation'
+    return (
+        f'{band_name}_hue_shift',
+        f'{band_name}_saturation',
+        f'{band_name}_luminance',
+    )
 
 
 def _quantize_to_step(value, step):
@@ -143,9 +156,17 @@ def _local_values(center, radius, minimum, maximum, include_zero=True):
 
 
 def _initial_parameters(current_parameters):
-    parameters = {'blend': float(current_parameters.get('blend', 1.0))}
+    achromatic_mode = current_parameters.get(
+        'achromatic_mode', ACHROMATIC_POLISH_PARITY
+    )
+    if achromatic_mode not in (ACHROMATIC_POLISH_PARITY, ACHROMATIC_STANDARD):
+        achromatic_mode = ACHROMATIC_POLISH_PARITY
+    parameters = {
+        'blend': float(current_parameters.get('blend', 1.0)),
+        'achromatic_mode': achromatic_mode,
+    }
     for band_name, _center in _BANDS:
-        hue_name, sat_name = _band_parameter_names(band_name)
+        hue_name, sat_name, luminance_name = _band_parameter_names(band_name)
         parameters[hue_name] = _clamp_to_step(
             current_parameters.get(hue_name, 0),
             HUE_SHIFT_MIN,
@@ -156,15 +177,21 @@ def _initial_parameters(current_parameters):
             -100,
             100,
         )
+        parameters[luminance_name] = _clamp_to_step(
+            current_parameters.get(luminance_name, 0),
+            LUMINANCE_MIN,
+            LUMINANCE_MAX,
+        )
     return parameters
 
 
 def _parameter_penalty(parameters):
     penalty = abs(float(parameters.get('blend', 1.0)) - 1.0) * 0.01
     for band_name, _center in _BANDS:
-        hue_name, sat_name = _band_parameter_names(band_name)
+        hue_name, sat_name, luminance_name = _band_parameter_names(band_name)
         penalty += abs(float(parameters.get(hue_name, 0))) / 180.0
         penalty += abs(float(parameters.get(sat_name, 0))) / 100.0
+        penalty += abs(float(parameters.get(luminance_name, 0))) / 100.0
     return penalty * 1.0e-7
 
 
@@ -205,11 +232,18 @@ def _weighted_least_squares(matrix, observed, sample_weight, ridge=1.0e-3):
     return solution.astype(np.float32)
 
 
-def _estimate_parameters_from_hsv(source, target, blend):
+def _estimate_parameters_from_hsv(
+    source,
+    target,
+    blend,
+    achromatic_mode=ACHROMATIC_POLISH_PARITY,
+):
     source_hsv, target_hsv = _hsv_pair(source, target)
     source_hue = np.clip(source_hsv[:, :, 0].astype(np.int16), 0, 179)
     source_sat = source_hsv[:, :, 1].astype(np.float32)
     target_sat = target_hsv[:, :, 1].astype(np.float32)
+    source_value = source_hsv[:, :, 2].astype(np.float32)
+    target_value = target_hsv[:, :, 2].astype(np.float32)
     weights = _get_blend_weight_lut(blend)[source_hue].reshape(-1, len(_BANDS))
 
     hue_delta = target_hsv[:, :, 0] - source_hsv[:, :, 0]
@@ -235,15 +269,37 @@ def _estimate_parameters_from_hsv(source, target, blend):
         ridge=0.002,
     )
 
-    parameters = {'blend': float(blend)}
+    reliable_source_value = np.maximum(source_value, 16.0)
+    luminance_ratio = (target_value - source_value) / reliable_source_value
+    luminance_observed = np.clip(luminance_ratio, -1.0, 1.0).reshape(-1)
+    luminance_sample_weight = np.ones(source_value.size, dtype=np.float32)
+    luminance_sample_weight[source_value.reshape(-1) < 16.0] = 0.0
+    if achromatic_mode == ACHROMATIC_STANDARD:
+        luminance_sample_weight[source_sat.reshape(-1) <= 0.0] = 0.0
+    luminance_solution = _weighted_least_squares(
+        weights,
+        luminance_observed,
+        luminance_sample_weight,
+        ridge=0.002,
+    )
+
+    parameters = {
+        'blend': float(blend),
+        'achromatic_mode': achromatic_mode,
+    }
     for index, (band_name, _center) in enumerate(_BANDS):
-        hue_name, sat_name = _band_parameter_names(band_name)
+        hue_name, sat_name, luminance_name = _band_parameter_names(band_name)
         parameters[hue_name] = _clamp_to_step(
             hue_solution[index],
             HUE_SHIFT_MIN,
             HUE_SHIFT_MAX,
         )
         parameters[sat_name] = _clamp_to_step(sat_solution[index] * 100.0, -100, 100)
+        parameters[luminance_name] = _clamp_to_step(
+            luminance_solution[index] * 100.0,
+            LUMINANCE_MIN,
+            LUMINANCE_MAX,
+        )
     return parameters
 
 
@@ -252,13 +308,19 @@ def _estimate_candidate_parameters(
     target,
     tune_blend=False,
     fixed_blend=1.0,
+    achromatic_mode=ACHROMATIC_POLISH_PARITY,
 ):
     candidates = []
     seen = set()
     fixed_blend = float(np.clip(fixed_blend, 0.0, 1.0))
     blend_candidates = BLEND_CANDIDATES if tune_blend else (fixed_blend,)
     for blend in blend_candidates:
-        parameters = _estimate_parameters_from_hsv(source, target, blend)
+        parameters = _estimate_parameters_from_hsv(
+            source,
+            target,
+            blend,
+            achromatic_mode=achromatic_mode,
+        )
         key = tuple(parameters.items())
         if key not in seen:
             seen.add(key)
@@ -276,6 +338,7 @@ def _tunable_parameter_names():
     names = ['blend']
     names.extend(f'{band_name}_hue_shift' for band_name, _center in _BANDS)
     names.extend(f'{band_name}_saturation' for band_name, _center in _BANDS)
+    names.extend(f'{band_name}_luminance' for band_name, _center in _BANDS)
     return names
 
 
@@ -284,6 +347,8 @@ def _parameter_bounds(parameter_name):
         return HUE_SHIFT_MIN, HUE_SHIFT_MAX
     if parameter_name.endswith('_saturation'):
         return -100, 100
+    if parameter_name.endswith('_luminance'):
+        return LUMINANCE_MIN, LUMINANCE_MAX
     if parameter_name == 'blend':
         return 0.0, 1.0
     raise KeyError(f'unknown hue bands parameter: {parameter_name}')
@@ -581,7 +646,6 @@ def tune_hue_bands(
         _score_with_transform(best_image, work_target, score_image_transform)
     )
     best_image = best_scored_image
-    original_visual_score = best_visual_score
     best_objective = best_visual_score + _parameter_penalty(best_parameters)
     evaluated_count = 1
     scaled_polish_changed_names = None
@@ -623,6 +687,7 @@ def tune_hue_bands(
             work_target,
             tune_blend=tune_blend,
             fixed_blend=fixed_blend,
+            achromatic_mode=best_parameters['achromatic_mode'],
         )
         for index, parameters in enumerate(estimate_candidates, start=1):
             evaluate(parameters, 'estimate', None, index, len(estimate_candidates))
@@ -636,6 +701,7 @@ def tune_hue_bands(
     ):
         hue_radius = max(2, 12 // (round_index + 1))
         sat_radius = max(2, 12 // (round_index + 1))
+        luminance_radius = max(2, 12 // (round_index + 1))
         parameter_phases = (
             (
                 'hue',
@@ -650,6 +716,13 @@ def tune_hue_bands(
                 sat_radius,
                 -100,
                 100,
+            ),
+            (
+                'luminance',
+                [f'{band_name}_luminance' for band_name, _center in _BANDS],
+                luminance_radius,
+                LUMINANCE_MIN,
+                LUMINANCE_MAX,
             ),
         )
         for component, parameter_names, radius, minimum, maximum in parameter_phases:

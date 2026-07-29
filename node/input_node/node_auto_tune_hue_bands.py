@@ -3,7 +3,11 @@
 import dearpygui.dearpygui as dpg
 
 from auto_tune.hue_bands import DEFAULT_REFINEMENT_ITERATIONS, tune_hue_bands
-from node.process_node.node_hue_saturation_adjustment import _BANDS
+from node.process_node.node_hue_saturation_adjustment import (
+    ACHROMATIC_POLISH_PARITY,
+    ACHROMATIC_STANDARD,
+    _BANDS,
+)
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
 from node_editor.image_metadata import match_metadata_compression
@@ -11,10 +15,11 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.5'
+    _ver = '0.0.6'
 
     def __init__(self):
         self._run_requested_modes = {}
+        self._expanded_bands_by_node = {}
 
     node_label = 'Auto Tune (Hue Bands)'
     node_tag = 'AutoTuneHueBands'
@@ -31,7 +36,11 @@ class Node(DpgNodeBase):
         _specs[f'{_band_name}_saturation'] = OutputPort(
             PortDataType.FLOAT, index=(_index * 2) + 3,
         )
+        _specs[f'{_band_name}_luminance'] = OutputPort(
+            PortDataType.FLOAT, index=_index + 19,
+        )
     _specs['best_score'] = OutputPort(PortDataType.FLOAT, index=(len(_BANDS) * 2) + 2)
+    _specs['achromatic_mode'] = OutputPort(PortDataType.TEXT, index=27)
     port_specs = PortSpecs(**_specs)
 
     def add_node(self, parent, node_id, pos=[0, 0], opencv_setting_dict=None, callback=None):
@@ -84,7 +93,10 @@ class Node(DpgNodeBase):
             with dpg.node_attribute(tag=target_image, attribute_type=dpg.mvNode_Attr_Input):
                 dpg.add_text('target image')
             self._add_float_output(ports.blend, 'blend', 0.0)
+            self._add_achromatic_output(ports.achromatic_mode)
+            self._add_band_controls(node_id)
             for band_name, _center in _BANDS:
+                self._add_band_header(node_id, band_name)
                 self._add_float_output(
                     getattr(ports, f'{band_name}_hue_shift'),
                     f'{band_name[:3]} hue',
@@ -95,7 +107,14 @@ class Node(DpgNodeBase):
                     f'{band_name[:3]} sat',
                     0.0,
                 )
+                self._add_float_output(
+                    getattr(ports, f'{band_name}_luminance'),
+                    f'{band_name[:3]} lum',
+                    0.0,
+                )
             self._add_float_output(ports.best_score, 'score', 0.0)
+        for band_name, _center in _BANDS:
+            self._set_band_visibility(node_id, band_name, False)
         return self._node_name(node_id)
 
     def _add_int_output(self, port, label, default):
@@ -104,7 +123,131 @@ class Node(DpgNodeBase):
 
     def _add_float_output(self, port, label, default):
         with dpg.node_attribute(tag=port.dpg_tag, attribute_type=dpg.mvNode_Attr_Output):
-            dpg.add_input_float(tag=port.value_tag, label=label, default_value=default, width=120, readonly=True)
+            with dpg.group(tag=self._output_group_tag(port.value_tag)):
+                dpg.add_input_float(
+                    tag=port.value_tag,
+                    label=label,
+                    default_value=default,
+                    width=120,
+                    readonly=True,
+                )
+
+    def _add_achromatic_output(self, port):
+        with dpg.node_attribute(
+            tag=port.dpg_tag,
+            attribute_type=dpg.mvNode_Attr_Output,
+        ):
+            dpg.add_combo(
+                [ACHROMATIC_POLISH_PARITY, ACHROMATIC_STANDARD],
+                tag=port.value_tag,
+                label='achromatic pixels',
+                default_value=ACHROMATIC_POLISH_PARITY,
+                width=120,
+            )
+
+    def _add_band_controls(self, node_id):
+        self._expanded_bands_by_node[str(node_id)] = set()
+        with dpg.node_attribute(
+            tag=self._band_controls_tag(node_id),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            with dpg.group(horizontal=True):
+                dpg.add_button(
+                    label='Expand all',
+                    width=104,
+                    callback=self._set_all_bands_callback,
+                    user_data=(node_id, True),
+                )
+                dpg.add_button(
+                    label='Collapse all',
+                    width=104,
+                    callback=self._set_all_bands_callback,
+                    user_data=(node_id, False),
+                )
+
+    def _add_band_header(self, node_id, band_name):
+        with dpg.node_attribute(
+            tag=self._band_header_tag(node_id, band_name),
+            attribute_type=dpg.mvNode_Attr_Static,
+        ):
+            dpg.add_button(
+                tag=self._band_button_tag(node_id, band_name),
+                label=self._band_summary(node_id, band_name),
+                width=440,
+                callback=self._toggle_band_callback,
+                user_data=(node_id, band_name),
+            )
+
+    def _output_group_tag(self, value_tag):
+        return f'{value_tag}:Controls'
+
+    def _band_controls_tag(self, node_id):
+        return self._node_control_tag(node_id, self.TYPE_TEXT, 'BandControls')
+
+    def _band_header_tag(self, node_id, band_name):
+        return self._node_control_tag(
+            node_id,
+            self.TYPE_TEXT,
+            f'Band{band_name.title()}',
+        )
+
+    def _band_button_tag(self, node_id, band_name):
+        return f'{self._band_header_tag(node_id, band_name)}:Button'
+
+    def _band_summary(self, node_id, band_name):
+        ports = self.ports(node_id)
+        values = []
+        for short_label, suffix in (
+            ('H', 'hue_shift'),
+            ('S', 'saturation'),
+            ('L', 'luminance'),
+        ):
+            value = dpg_get_value(
+                getattr(ports, f'{band_name}_{suffix}').value_tag
+            )
+            values.append(f'{short_label} {float(value or 0.0):+.1f}')
+        expanded = band_name in self._expanded_bands_by_node.get(
+            str(node_id), set()
+        )
+        marker = '[-]' if expanded else '[+]'
+        return f'{marker} {band_name.title()}    ' + '   '.join(values)
+
+    def _set_band_visibility(self, node_id, band_name, expanded):
+        expanded_bands = self._expanded_bands_by_node.setdefault(
+            str(node_id), set()
+        )
+        if expanded:
+            expanded_bands.add(band_name)
+        else:
+            expanded_bands.discard(band_name)
+        ports = self.ports(node_id)
+        for suffix in ('hue_shift', 'saturation', 'luminance'):
+            value_tag = getattr(ports, f'{band_name}_{suffix}').value_tag
+            dpg.configure_item(
+                self._output_group_tag(value_tag),
+                show=expanded,
+            )
+        self._refresh_band_summary(node_id, band_name)
+
+    def _refresh_band_summary(self, node_id, band_name):
+        dpg.configure_item(
+            self._band_button_tag(node_id, band_name),
+            label=self._band_summary(node_id, band_name),
+        )
+
+    def _toggle_band_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id, band_name = user_data
+        expanded = band_name not in self._expanded_bands_by_node.get(
+            str(node_id), set()
+        )
+        self._set_band_visibility(node_id, band_name, expanded)
+
+    def _set_all_bands_callback(self, sender, app_data, user_data):
+        del sender, app_data
+        node_id, expanded = user_data
+        for band_name, _center in _BANDS:
+            self._set_band_visibility(node_id, band_name, expanded)
 
     def _status_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'Status')
@@ -270,10 +413,17 @@ class Node(DpgNodeBase):
 
     def _current_output_parameters(self, ports):
         parameters = {}
-        for name in ['blend'] + [f'{b}_{kind}' for b, _ in _BANDS for kind in ('hue_shift', 'saturation')]:
+        for name in ['blend'] + [
+            f'{band_name}_{kind}'
+            for band_name, _center in _BANDS
+            for kind in ('hue_shift', 'saturation', 'luminance')
+        ]:
             value = dpg_get_value(getattr(ports, name).value_tag)
             if value is not None:
                 parameters[name] = float(value)
+        achromatic_mode = dpg_get_value(ports.achromatic_mode.value_tag)
+        if achromatic_mode in (ACHROMATIC_POLISH_PARITY, ACHROMATIC_STANDARD):
+            parameters['achromatic_mode'] = achromatic_mode
         return parameters
 
     def _run_parameters(self, ports, run_mode, tune_blend, fixed_blend):
@@ -369,7 +519,10 @@ class Node(DpgNodeBase):
         for name, value in result.best_parameters.items():
             port = getattr(ports, name, None)
             if port is not None:
-                dpg_set_value(port.value_tag, float(value))
+                if name == 'achromatic_mode':
+                    dpg_set_value(port.value_tag, value)
+                else:
+                    dpg_set_value(port.value_tag, float(value))
         dpg_set_value(ports.best_score.value_tag, float(result.best_score))
         status_prefix = 'done' if run_mode == 'tune' else f'{running_label} done'
         status_detail = f'{status_prefix}: {result.evaluated_count} candidates'

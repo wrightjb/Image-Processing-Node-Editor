@@ -647,7 +647,10 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
         button_width = 24
         input_width = 72 if is_float else 56
         slider_width = max(80, width - input_width - (button_width * 2) - 96)
-        with dpg.group(horizontal=True):
+        with dpg.group(
+            horizontal=True,
+            tag=self._slider_group_tag(value_tag),
+        ):
             dpg.add_button(
                 label='-',
                 width=button_width,
@@ -707,6 +710,9 @@ class DeclarativeImageProcessNodeBase(DpgNodeBase):
 
     def _slider_input_tag(self, value_tag):
         return f'{value_tag}:Input'
+
+    def _slider_group_tag(self, value_tag):
+        return f'{value_tag}:Controls'
 
     def _get_parameter_step(self, parameter):
         if 'step' in parameter:

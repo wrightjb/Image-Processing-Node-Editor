@@ -459,9 +459,10 @@ def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
     monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
     monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         calls['kernel'] = kernel
         calls['sigma'] = sigma
+        calls['border_type'] = borderType
         return image
 
     monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
@@ -479,6 +480,7 @@ def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
 
     assert calls['kernel'] == (5, 5)
     assert calls['sigma'] == 0.0
+    assert calls['border_type'] == gaussian_blur_module.GAUSSIAN_BORDER_TYPE
 
 
 def test_crop_node_normalizes_crossed_bounds(monkeypatch):
@@ -1824,9 +1826,10 @@ def test_gaussian_blur_auto_kernel_uses_configurable_factor(monkeypatch):
     node = GaussianBlurNode()
     calls = {}
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         calls['kernel'] = kernel
         calls['sigma'] = sigma
+        calls['border_type'] = borderType
         return image
 
     monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
@@ -1843,6 +1846,7 @@ def test_gaussian_blur_auto_kernel_uses_configurable_factor(monkeypatch):
 
     assert result is frame
     assert calls['kernel'] == (11, 11)
+    assert calls['border_type'] == gaussian_blur_module.GAUSSIAN_BORDER_TYPE
     assert calls['sigma'] == 2.0
 
 

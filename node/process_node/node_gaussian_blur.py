@@ -43,6 +43,7 @@ class Node(DeclarativeImageProcessNodeBase):
 
     node_label = 'Gaussian Blur'
     node_tag = 'GaussianBlur'
+    show_in_menu = False
 
     parameters = [
         {

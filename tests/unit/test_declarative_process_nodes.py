@@ -244,6 +244,33 @@ def test_blur_node_update_with_typed_connection_adapters(monkeypatch):
     assert written['2:Blur:Image:Output01Value'][0] == 'texture'
 
 
+def test_blur_node_exposes_all_three_methods_and_routes_stack_blur(monkeypatch):
+    node = BlurNode()
+    captured = {}
+
+    def _stack_stub(frame, radius):
+        captured['frame'] = frame
+        captured['radius'] = radius
+        return frame
+
+    monkeypatch.setattr(blur_module, 'stack_blur', _stack_stub)
+    frame = np.zeros((4, 6, 4), dtype=np.uint8)
+
+    result, _ = node.process(
+        frame,
+        method='Stack Blur',
+        kernel_size=5,
+        sigma=0.0,
+        radius=150,
+    )
+
+    method = next(parameter for parameter in node.parameters
+                  if parameter['name'] == 'method')
+    assert tuple(method['items']) == blur_module.BLUR_METHODS
+    assert result is frame
+    assert captured == {'frame': frame, 'radius': 150}
+
+
 def test_brightness_node_get_set_settings(monkeypatch):
     node = BrightnessNode()
 
@@ -1366,14 +1393,20 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
         '6:Blur:Image:Input01',
         '6:Blur:Image:Output01',
         '6:Blur:TimeMS:Output02',
+        '6:Blur:Text:Input03',
         '6:Blur:Int:Input02',
+        '6:Blur:Float:Input04',
+        '6:Blur:Int:Input05',
     ]
     assert registered_ports == node.get_declared_port_refs(6)
     assert [attr['tag'] for attr in dpg_recorder.node_attributes] == [
         '6:Blur:ToolbarAttr',
         '6:Blur:Image:Input01',
         '6:Blur:Image:Output01',
+        '6:Blur:Text:Input03',
         '6:Blur:Int:Input02',
+        '6:Blur:Float:Input04',
+        '6:Blur:Int:Input05',
         '6:Blur:TimeMS:Output02',
     ]
 

@@ -47,3 +47,12 @@ def test_stack_blur_clamps_edges_and_runs_horizontal_then_vertical():
 def test_stack_blur_rejects_non_8_bit_input():
     with pytest.raises(TypeError, match='8-bit'):
         stack_blur(np.zeros((2, 2), dtype=np.float32), 3)
+
+
+def test_stack_blur_supports_radius_1000():
+    source = np.array([[0, 255]], dtype=np.uint8)
+
+    result = stack_blur(source, 1000)
+
+    assert result.shape == source.shape
+    assert result.dtype == np.uint8

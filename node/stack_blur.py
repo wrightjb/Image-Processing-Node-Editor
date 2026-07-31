@@ -1,22 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import math
-
 import numpy as np
 
 
-MAX_RADIUS = 254
+MAX_RADIUS = 1000
 
 
 def _normalization_for_radius(radius):
     """Return the classic Stack Blur reciprocal multiplier and shift."""
     divisor = (radius + 1) ** 2
     shift = max(0, divisor.bit_length() + 8)
-    multiplier = math.ceil((1 << shift) / divisor)
+    multiplier = ((1 << shift) + divisor - 1) // divisor
     while multiplier > 512:
         shift -= 1
-        multiplier = math.ceil((1 << shift) / divisor)
+        multiplier = ((1 << shift) + divisor - 1) // divisor
     return multiplier, shift
 
 

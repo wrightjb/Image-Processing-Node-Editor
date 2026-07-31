@@ -244,7 +244,7 @@ def test_blur_node_update_with_typed_connection_adapters(monkeypatch):
     assert written['2:Blur:Image:Output01Value'][0] == 'texture'
 
 
-def test_blur_node_exposes_all_three_methods_and_routes_stack_blur(monkeypatch):
+def test_blur_node_exposes_all_methods_and_routes_stack_blur(monkeypatch):
     node = BlurNode()
     captured = {}
 
@@ -269,6 +269,35 @@ def test_blur_node_exposes_all_three_methods_and_routes_stack_blur(monkeypatch):
     assert tuple(method['items']) == blur_module.BLUR_METHODS
     assert result is frame
     assert captured == {'frame': frame, 'radius': 150}
+
+
+def test_blur_node_preserves_gaussian_auto_options(monkeypatch):
+    captured = {}
+
+    def _gaussian_stub(frame, kernel, sigma, **kwargs):
+        captured.update(kernel=kernel, sigma=sigma, **kwargs)
+        return frame
+
+    monkeypatch.setattr(blur_module, 'gaussian_blur', _gaussian_stub)
+    frame = np.zeros((2, 2, 3), dtype=np.uint8)
+
+    result = blur_module.image_process(
+        frame,
+        5,
+        method='Gaussian Blur',
+        sigma=2.5,
+        auto_sigma=False,
+        auto_kernel=True,
+        kernel_factor=4.0,
+    )
+
+    assert result is frame
+    assert captured == {
+        'kernel': 5,
+        'sigma': 2.5,
+        'auto_kernel': True,
+        'kernel_factor': 4.0,
+    }
 
 
 def test_brightness_node_get_set_settings(monkeypatch):
@@ -1397,6 +1426,10 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
         '6:Blur:Int:Input02',
         '6:Blur:Float:Input04',
         '6:Blur:Int:Input05',
+        '6:Blur:Int:Input09',
+        '6:Blur:Int:Input06',
+        '6:Blur:Int:Input07',
+        '6:Blur:Float:Input08',
     ]
     assert registered_ports == node.get_declared_port_refs(6)
     assert [attr['tag'] for attr in dpg_recorder.node_attributes] == [
@@ -1407,6 +1440,10 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
         '6:Blur:Int:Input02',
         '6:Blur:Float:Input04',
         '6:Blur:Int:Input05',
+        '6:Blur:Int:Input09',
+        '6:Blur:Int:Input06',
+        '6:Blur:Int:Input07',
+        '6:Blur:Float:Input08',
         '6:Blur:TimeMS:Output02',
     ]
 

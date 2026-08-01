@@ -113,7 +113,7 @@ def test_tune_gaussian_blur_searches_odd_kernels_and_auto_sigma(monkeypatch):
     source = np.zeros((4, 4, 1), dtype=np.uint8)
     target = np.full((4, 4, 1), 5, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         calls.append((kernel, sigma))
         return np.full_like(image, kernel[0])
 
@@ -139,7 +139,7 @@ def test_tune_gaussian_blur_tunes_sigma_when_auto_sigma_disabled(monkeypatch):
     source = np.zeros((2, 2, 1), dtype=np.uint8)
     target = np.full((2, 2, 1), 2, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del kernel
         return np.full_like(image, int(round(sigma * 10)))
 
@@ -320,7 +320,7 @@ def test_tune_gaussian_blur_does_not_constrain_first_run_to_prior_kernel(monkeyp
     source = np.zeros((4, 4, 1), dtype=np.uint8)
     target = np.full((4, 4, 1), 117, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del sigma
         return np.full_like(image, min(kernel[0], 255))
 
@@ -348,7 +348,7 @@ def test_tune_gaussian_blur_refines_downscaled_kernel_to_original_scale(monkeypa
     source = np.zeros((600, 600, 1), dtype=np.uint8)
     target = np.full((600, 600, 1), 117, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del sigma
         original_scale = source.shape[0] / image.shape[0]
         value = int(round(kernel[0] * original_scale))
@@ -417,7 +417,7 @@ def test_tune_gaussian_blur_manual_sigma_avoids_cartesian_grid(monkeypatch):
     source = np.zeros((2, 2, 1), dtype=np.uint8)
     target = np.full((2, 2, 1), 25, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del kernel
         return np.full_like(image, int(round(sigma * 10)))
 
@@ -500,7 +500,7 @@ def test_tune_gaussian_blur_manual_sigma_can_recover_from_bad_prior(monkeypatch)
     source = np.zeros((2, 2, 1), dtype=np.uint8)
     target = np.full((2, 2, 1), 60, dtype=np.uint8)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del kernel
         return np.full_like(image, int(round(sigma)))
 
@@ -605,7 +605,7 @@ def test_smoothness_metric_reports_per_candidate_diagnostics(monkeypatch):
     source = np.zeros((4, 4, 1), dtype=np.uint8)
     target = np.tile(np.arange(4, dtype=np.uint8), (4, 1)).reshape(4, 4, 1)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         del sigma
         return np.full_like(image, kernel[0])
 

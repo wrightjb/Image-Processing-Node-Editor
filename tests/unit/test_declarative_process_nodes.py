@@ -244,6 +244,62 @@ def test_blur_node_update_with_typed_connection_adapters(monkeypatch):
     assert written['2:Blur:Image:Output01Value'][0] == 'texture'
 
 
+def test_blur_node_exposes_all_methods_and_routes_stack_blur(monkeypatch):
+    node = BlurNode()
+    captured = {}
+
+    def _stack_stub(frame, radius):
+        captured['frame'] = frame
+        captured['radius'] = radius
+        return frame
+
+    monkeypatch.setattr(blur_module, 'stack_blur', _stack_stub)
+    frame = np.zeros((4, 6, 4), dtype=np.uint8)
+
+    result, _ = node.process(
+        frame,
+        method='Stack Blur',
+        kernel_size=5,
+        sigma=0.0,
+        radius=150,
+    )
+
+    method = next(parameter for parameter in node.parameters
+                  if parameter['name'] == 'method')
+    assert tuple(method['items']) == blur_module.BLUR_METHODS
+    assert result is frame
+    assert captured == {'frame': frame, 'radius': 150}
+
+
+def test_blur_node_preserves_gaussian_auto_options(monkeypatch):
+    captured = {}
+
+    def _gaussian_stub(frame, kernel, sigma, **kwargs):
+        captured.update(kernel=kernel, sigma=sigma, **kwargs)
+        return frame
+
+    monkeypatch.setattr(blur_module, 'gaussian_blur', _gaussian_stub)
+    frame = np.zeros((2, 2, 3), dtype=np.uint8)
+
+    result = blur_module.image_process(
+        frame,
+        5,
+        method='Gaussian Blur',
+        sigma=2.5,
+        auto_sigma=False,
+        auto_kernel=True,
+        kernel_factor=4.0,
+    )
+
+    assert result is frame
+    assert captured == {
+        'kernel': 5,
+        'sigma': 2.5,
+        'auto_kernel': True,
+        'kernel_factor': 4.0,
+    }
+
+
 def test_brightness_node_get_set_settings(monkeypatch):
     node = BrightnessNode()
 
@@ -459,9 +515,10 @@ def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
     monkeypatch.setattr(base_module, 'dpg_set_value', lambda tag, value: None)
     monkeypatch.setattr(base_module, 'convert_cv_to_dpg', lambda frame, w, h: frame)
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         calls['kernel'] = kernel
         calls['sigma'] = sigma
+        calls['border_type'] = borderType
         return image
 
     monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
@@ -479,6 +536,7 @@ def test_gaussian_blur_auto_sigma_sets_zero(monkeypatch):
 
     assert calls['kernel'] == (5, 5)
     assert calls['sigma'] == 0.0
+    assert calls['border_type'] == gaussian_blur_module.GAUSSIAN_BORDER_TYPE
 
 
 def test_crop_node_normalizes_crossed_bounds(monkeypatch):
@@ -1364,14 +1422,28 @@ def test_declarative_add_node_declares_typed_ports(monkeypatch):
         '6:Blur:Image:Input01',
         '6:Blur:Image:Output01',
         '6:Blur:TimeMS:Output02',
+        '6:Blur:Text:Input03',
         '6:Blur:Int:Input02',
+        '6:Blur:Float:Input04',
+        '6:Blur:Int:Input05',
+        '6:Blur:Int:Input09',
+        '6:Blur:Int:Input06',
+        '6:Blur:Int:Input07',
+        '6:Blur:Float:Input08',
     ]
     assert registered_ports == node.get_declared_port_refs(6)
     assert [attr['tag'] for attr in dpg_recorder.node_attributes] == [
         '6:Blur:ToolbarAttr',
         '6:Blur:Image:Input01',
         '6:Blur:Image:Output01',
+        '6:Blur:Text:Input03',
         '6:Blur:Int:Input02',
+        '6:Blur:Float:Input04',
+        '6:Blur:Int:Input05',
+        '6:Blur:Int:Input09',
+        '6:Blur:Int:Input06',
+        '6:Blur:Int:Input07',
+        '6:Blur:Float:Input08',
         '6:Blur:TimeMS:Output02',
     ]
 
@@ -1824,9 +1896,10 @@ def test_gaussian_blur_auto_kernel_uses_configurable_factor(monkeypatch):
     node = GaussianBlurNode()
     calls = {}
 
-    def _gaussian_stub(image, kernel, sigma):
+    def _gaussian_stub(image, kernel, sigma, borderType=None):
         calls['kernel'] = kernel
         calls['sigma'] = sigma
+        calls['border_type'] = borderType
         return image
 
     monkeypatch.setattr(gaussian_blur_module.cv2, 'GaussianBlur', _gaussian_stub, raising=False)
@@ -1843,6 +1916,7 @@ def test_gaussian_blur_auto_kernel_uses_configurable_factor(monkeypatch):
 
     assert result is frame
     assert calls['kernel'] == (11, 11)
+    assert calls['border_type'] == gaussian_blur_module.GAUSSIAN_BORDER_TYPE
     assert calls['sigma'] == 2.0
 
 

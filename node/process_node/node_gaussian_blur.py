@@ -7,6 +7,12 @@ import dearpygui.dearpygui as dpg
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
 
 
+# Android image editors generally sample beyond the image with clamp-to-edge
+# behavior. OpenCV's default reflects interior pixels, which pulls visible
+# detail back toward the perimeter and produces a stretched-looking edge.
+GAUSSIAN_BORDER_TYPE = getattr(cv2, 'BORDER_REPLICATE', 1)
+
+
 def auto_kernel_size(sigma, kernel_factor=3.0):
     kernel_size = int(round(float(sigma) * float(kernel_factor)) * 2 + 1)
     return max(1, kernel_size)
@@ -23,7 +29,12 @@ def image_process(image, kernel_size, sigma, auto_kernel=False, kernel_factor=3.
         kernel_size = auto_kernel_size(sigma, kernel_factor)
     elif kernel_size % 2 == 0:
         kernel_size += 1
-    image = cv2.GaussianBlur(image, (kernel_size, kernel_size), sigma)
+    image = cv2.GaussianBlur(
+        image,
+        (kernel_size, kernel_size),
+        sigma,
+        borderType=GAUSSIAN_BORDER_TYPE,
+    )
     return image
 
 
@@ -32,6 +43,7 @@ class Node(DeclarativeImageProcessNodeBase):
 
     node_label = 'Gaussian Blur'
     node_tag = 'GaussianBlur'
+    show_in_menu = False
 
     parameters = [
         {

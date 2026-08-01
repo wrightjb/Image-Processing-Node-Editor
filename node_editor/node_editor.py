@@ -856,11 +856,12 @@ class DpgNodeEditor(object):
                 module = import_module(import_path)
                 node = module.Node()
                 self._node_instance_list[node.node_tag] = node
-                self._menu_nodes[menu_label].append({
-                    'tag': node.node_tag,
-                    'label': node.node_label,
-                    'source_path': node_source,
-                })
+                if getattr(node, 'show_in_menu', True):
+                    self._menu_nodes[menu_label].append({
+                        'tag': node.node_tag,
+                        'label': node.node_label,
+                        'source_path': node_source,
+                    })
                 self._node_port_capabilities[node.node_tag] = \
                     self._cntrl_extract_node_port_capabilities(node, node_source)
 

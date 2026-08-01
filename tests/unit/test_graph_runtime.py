@@ -109,6 +109,56 @@ def test_graph_runtime_persists_state_between_steps():
     assert runtime.node_result_dict['2:ProcessNode'] == {'v': 1}
 
 
+def test_graph_pause_skips_all_nodes_but_can_run_selected_node():
+    source_node = Mock()
+    source_node.update.return_value = ('src-img', {'source': 1})
+    process_node = Mock()
+    process_node.update.return_value = ('img1', {'v': 1})
+    process_node.get_setting_dict.return_value = {'alpha': 0.5}
+    editor = FakeEditor(
+        ['1:SourceNode', '2:ProcessNode'],
+        OrderedDict([
+            ('1:SourceNode', []),
+            ('2:ProcessNode', [[
+                '1:SourceNode:Image:Output01',
+                '2:ProcessNode:Image:Input01',
+            ]]),
+        ]),
+        {'SourceNode': source_node, 'ProcessNode': process_node},
+    )
+    runtime = GraphRuntime()
+
+    runtime.set_graph_paused(True)
+    runtime.step(editor, mode_async=False)
+    source_node.update.assert_not_called()
+    process_node.update.assert_not_called()
+
+    runtime.set_node_paused('2:ProcessNode', False)
+    runtime.step(editor, mode_async=False)
+    source_node.update.assert_not_called()
+    process_node.update.assert_called_once()
+
+
+def test_node_pause_override_survives_graph_resume_until_cleared():
+    node = Mock()
+    node.update.return_value = ('img', {'value': 1})
+    editor = FakeEditor(
+        ['1:SourceNode'],
+        OrderedDict([('1:SourceNode', [])]),
+        {'SourceNode': node},
+    )
+    runtime = GraphRuntime()
+
+    runtime.set_node_paused('1:SourceNode', True)
+    runtime.set_graph_paused(False)
+    runtime.step(editor, mode_async=False)
+    node.update.assert_not_called()
+
+    runtime.clear_node_pause_override('1:SourceNode')
+    runtime.step(editor, mode_async=False)
+    node.update.assert_called_once()
+
+
 def test_graph_runtime_trace_does_not_turn_cache_hits_into_updates():
     source_node = Mock()
     source_node.update.return_value = ('src-img', {'source': 1})

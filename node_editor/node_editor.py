@@ -49,6 +49,7 @@ class DpgNodeEditor(object):
     _history_window_tag = _node_editor_tag + 'HistoryWindow'
     _history_undo_text_tag = _node_editor_tag + 'HistoryUndoText'
     _history_redo_text_tag = _node_editor_tag + 'HistoryRedoText'
+    _runtime_graph_pause_tag = _node_editor_tag + 'RuntimeGraphPause'
 
     _node_id = 0
     _node_instance_list = {}
@@ -112,6 +113,7 @@ class DpgNodeEditor(object):
         self._node_base_label_dict = {}
         self._node_propagation_marker_dict = {}
         self._propagation_marker_theme_dict = {}
+        self._runtime = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -447,6 +449,7 @@ class DpgNodeEditor(object):
                     )
                 self._vw_create_node_menus()
                 self._vw_create_insert_link_menu()
+                self._vw_create_runtime_menu()
             dpg.add_text(
                 default_value='',
                 tag=self._link_feedback_tag,
@@ -531,6 +534,28 @@ class DpgNodeEditor(object):
                                 callback=self._cntrl_insert_node_into_selected_link,
                                 user_data=node_info['tag'],
                             )
+
+    def _vw_create_runtime_menu(self):
+        with dpg.menu(label='Runtime'):
+            dpg.add_menu_item(
+                tag=self._runtime_graph_pause_tag,
+                label='Pause graph',
+                check=True,
+                callback=self._cntrl_set_graph_paused,
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label='Run selected nodes',
+                callback=self._cntrl_run_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Pause selected nodes',
+                callback=self._cntrl_pause_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Selected nodes follow graph',
+                callback=self._cntrl_reset_selected_nodes,
+            )
 
     def _vw_create_insert_link_popup_menu(self):
         dpg.add_text('Insert Node')
@@ -719,6 +744,7 @@ class DpgNodeEditor(object):
             callback=self._cntrl_node_callback,
         )
         self._mdl_register_node_declared_ports(node, new_id)
+        self._refresh_runtime_node_labels()
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -1372,6 +1398,44 @@ class DpgNodeEditor(object):
             self._vw_hide_add_node_popup()
         self._pending_add_from_output_tag = None
         self._pending_add_to_input_tag = None
+
+    def _cntrl_set_graph_paused(self, sender, app_data, user_data=None):
+        del sender, user_data
+        if self._runtime is None:
+            return
+        self._runtime.set_graph_paused(bool(app_data))
+        self._refresh_runtime_node_labels()
+
+    def _selected_node_names(self):
+        return [
+            node_id_name for node_id_name in dpg.get_selected_nodes(
+                self._node_editor_tag
+            )
+            if node_id_name in self._node_list
+        ]
+
+    def _set_selected_nodes_paused(self, paused):
+        if self._runtime is None:
+            return
+        for node_id_name in self._selected_node_names():
+            self._runtime.set_node_paused(node_id_name, paused)
+        self._refresh_runtime_node_labels()
+
+    def _cntrl_run_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._set_selected_nodes_paused(False)
+
+    def _cntrl_pause_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._set_selected_nodes_paused(True)
+
+    def _cntrl_reset_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        if self._runtime is None:
+            return
+        for node_id_name in self._selected_node_names():
+            self._runtime.clear_node_pause_override(node_id_name)
+        self._refresh_runtime_node_labels()
 
     def _cntrl_get_target_link_for_context_insert(self):
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -2536,6 +2600,34 @@ class DpgNodeEditor(object):
             self._vw_delete_item(node_tag)
 
     # Public functions
+    def set_runtime(self, runtime):
+        """Attach runtime controls after the editor view has been created."""
+        self._runtime = runtime
+        dpg.set_value(self._runtime_graph_pause_tag, runtime.graph_paused)
+        self._refresh_runtime_node_labels()
+
+    def _refresh_runtime_node_labels(self):
+        if self._runtime is None:
+            return
+        for node_id_name in self._node_list:
+            _, node_name = node_id_name.split(':', 1)
+            node_instance = self.get_node_instance(node_name)
+            base_label = self._node_base_label_dict.get(node_id_name)
+            if base_label is None:
+                base_label = getattr(node_instance, 'node_label', node_name)
+                self._node_base_label_dict[node_id_name] = base_label
+            marker = self._node_propagation_marker_dict.get(node_id_name)
+            marker_prefix = f'[{marker}] ' if marker else ''
+            runtime_prefix = (
+                '' if self._runtime.should_run_node(node_id_name)
+                else '[PAUSED] '
+            )
+            if dpg.does_item_exist(node_id_name):
+                dpg.configure_item(
+                    node_id_name,
+                    label=f'{runtime_prefix}{marker_prefix}{base_label}',
+                )
+
     def get_node_list(self):
         return self._node_list
 
@@ -2598,6 +2690,10 @@ class DpgNodeEditor(object):
         else:
             self._node_propagation_marker_dict.pop(node_id_name, None)
             label = base_label
+        if self._runtime is not None and not self._runtime.should_run_node(
+            node_id_name
+        ):
+            label = f'[PAUSED] {label}'
         if dpg.does_item_exist(node_id_name):
             dpg.configure_item(node_id_name, label=label)
             if marker:

@@ -986,6 +986,50 @@ def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
     assert undo_command.calls == [('undo', editor), ('redo', editor)]
 
 
+def test_runtime_selected_nodes_resolve_dearpygui_ids_to_aliases(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    editor._runtime = Mock()
+    dpg.get_selected_nodes.return_value = [101, 202]
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode',
+        202: '2:TestNode',
+    }.get
+
+    editor._cntrl_pause_selected_nodes(None, None)
+
+    assert editor._runtime.set_node_paused.call_count == 2
+    editor._runtime.set_node_paused.assert_any_call('1:TestNode', True)
+    editor._runtime.set_node_paused.assert_any_call('2:TestNode', True)
+
+
+def test_runtime_keyboard_shortcuts_control_graph_and_selected_nodes(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode']
+    editor._runtime = Mock(graph_paused=False)
+    dpg.get_selected_nodes.return_value = [101]
+    dpg.get_item_alias.side_effect = lambda value: (
+        '1:TestNode' if value == 101 else value
+    )
+
+    _configure_shortcut_keys(dpg, {'LControl'})
+    editor._cntrl_keyboard_pause_shortcut(None, None)
+    editor._runtime.set_graph_paused.assert_called_once_with(True)
+    dpg.set_value.assert_called_with(editor._runtime_graph_pause_tag, True)
+
+    _configure_shortcut_keys(dpg, {'RControl', 'LShift'})
+    editor._cntrl_keyboard_pause_shortcut(None, None)
+    editor._runtime.set_node_paused.assert_called_with('1:TestNode', True)
+
+    editor._cntrl_keyboard_run_selected_shortcut(None, None)
+    editor._runtime.set_node_paused.assert_called_with('1:TestNode', False)
+
+    editor._cntrl_keyboard_follow_graph_shortcut(None, None)
+    editor._runtime.clear_node_pause_override.assert_called_with('1:TestNode')
+
+
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True

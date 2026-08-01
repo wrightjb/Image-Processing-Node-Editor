@@ -539,21 +539,21 @@ class DpgNodeEditor(object):
         with dpg.menu(label='Runtime'):
             dpg.add_menu_item(
                 tag=self._runtime_graph_pause_tag,
-                label='Pause graph',
+                label='Pause graph (Ctrl+P)',
                 check=True,
                 callback=self._cntrl_set_graph_paused,
             )
             dpg.add_separator()
             dpg.add_menu_item(
-                label='Run selected nodes',
+                label='Run selected nodes (Ctrl+Shift+R)',
                 callback=self._cntrl_run_selected_nodes,
             )
             dpg.add_menu_item(
-                label='Pause selected nodes',
+                label='Pause selected nodes (Ctrl+Shift+P)',
                 callback=self._cntrl_pause_selected_nodes,
             )
             dpg.add_menu_item(
-                label='Selected nodes follow graph',
+                label='Selected nodes follow graph (Ctrl+Shift+F)',
                 callback=self._cntrl_reset_selected_nodes,
             )
 
@@ -853,6 +853,18 @@ class DpgNodeEditor(object):
             dpg.add_key_press_handler(
                 dpg.mvKey_Z,
                 callback=self._cntrl_keyboard_z_shortcut,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_P,
+                callback=self._cntrl_keyboard_pause_shortcut,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_R,
+                callback=self._cntrl_keyboard_run_selected_shortcut,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_F,
+                callback=self._cntrl_keyboard_follow_graph_shortcut,
             )
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
@@ -1407,12 +1419,23 @@ class DpgNodeEditor(object):
         self._refresh_runtime_node_labels()
 
     def _selected_node_names(self):
-        return [
-            node_id_name for node_id_name in dpg.get_selected_nodes(
-                self._node_editor_tag
-            )
-            if node_id_name in self._node_list
-        ]
+        selected_node_names = []
+        for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
+            node_id_name = dpg.get_item_alias(node_dpg_id)
+            if node_id_name in self._node_list:
+                selected_node_names.append(node_id_name)
+        return selected_node_names
+
+    def _runtime_shortcut_modifiers(self):
+        control_down = (
+            dpg.is_key_down(dpg.mvKey_LControl)
+            or dpg.is_key_down(dpg.mvKey_RControl)
+        )
+        shift_down = (
+            dpg.is_key_down(dpg.mvKey_LShift)
+            or dpg.is_key_down(dpg.mvKey_RShift)
+        )
+        return control_down, shift_down
 
     def _set_selected_nodes_paused(self, paused):
         if self._runtime is None:
@@ -1436,6 +1459,31 @@ class DpgNodeEditor(object):
         for node_id_name in self._selected_node_names():
             self._runtime.clear_node_pause_override(node_id_name)
         self._refresh_runtime_node_labels()
+
+    def _cntrl_keyboard_pause_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if not control_down or self._runtime is None:
+            return
+        if shift_down:
+            self._set_selected_nodes_paused(True)
+            return
+        paused = not self._runtime.graph_paused
+        self._runtime.set_graph_paused(paused)
+        dpg.set_value(self._runtime_graph_pause_tag, paused)
+        self._refresh_runtime_node_labels()
+
+    def _cntrl_keyboard_run_selected_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if control_down and shift_down:
+            self._set_selected_nodes_paused(False)
+
+    def _cntrl_keyboard_follow_graph_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if control_down and shift_down:
+            self._cntrl_reset_selected_nodes(None, None)
 
     def _cntrl_get_target_link_for_context_insert(self):
         selected_links = dpg.get_selected_links(self._node_editor_tag)

@@ -114,6 +114,9 @@ class DpgNodeEditor(object):
         self._node_propagation_marker_dict = {}
         self._propagation_marker_theme_dict = {}
         self._runtime = None
+        self._node_clipboard = None
+        self._clipboard_paste_count = 0
+        self._keyboard_selection = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -519,6 +522,23 @@ class DpgNodeEditor(object):
             )
             dpg.add_separator()
             dpg.add_menu_item(
+                label='Cut (Ctrl+X)',
+                callback=self._cntrl_cut_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Copy (Ctrl+C)',
+                callback=self._cntrl_copy_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Paste (Ctrl+V)',
+                callback=self._cntrl_paste_nodes,
+            )
+            dpg.add_menu_item(
+                label='Select all (Ctrl+A)',
+                callback=self._cntrl_select_all_nodes,
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
                 tag='Menu_Edit_History',
                 label='History...',
                 callback=self._cntrl_toggle_history_window,
@@ -866,6 +886,13 @@ class DpgNodeEditor(object):
                 dpg.mvKey_F,
                 callback=self._cntrl_keyboard_follow_graph_shortcut,
             )
+            for key, callback in (
+                (dpg.mvKey_A, self._cntrl_keyboard_select_all_shortcut),
+                (dpg.mvKey_C, self._cntrl_keyboard_copy_shortcut),
+                (dpg.mvKey_V, self._cntrl_keyboard_paste_shortcut),
+                (dpg.mvKey_X, self._cntrl_keyboard_cut_shortcut),
+            ):
+                dpg.add_key_press_handler(key, callback=callback)
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
         # Define menu items (key: menu name, value: directory containing node code)
@@ -1419,6 +1446,11 @@ class DpgNodeEditor(object):
         self._refresh_runtime_node_labels()
 
     def _selected_node_names(self):
+        if self._keyboard_selection is not None:
+            return [
+                node_id_name for node_id_name in self._node_list
+                if node_id_name in self._keyboard_selection
+            ]
         selected_node_names = []
         for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
             node_id_name = dpg.get_item_alias(node_dpg_id)
@@ -1484,6 +1516,105 @@ class DpgNodeEditor(object):
         control_down, shift_down = self._runtime_shortcut_modifiers()
         if control_down and shift_down:
             self._cntrl_reset_selected_nodes(None, None)
+
+    def _cntrl_select_all_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._keyboard_selection = set(self._node_list)
+        self._vw_set_link_feedback(
+            f'Selected all {len(self._keyboard_selection)} nodes.'
+        )
+
+    def _cntrl_copy_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        selected_nodes = self._selected_node_names()
+        if not selected_nodes:
+            self._vw_set_link_feedback(
+                'Copy requires at least one selected node.'
+            )
+            return False
+
+        selected_set = set(selected_nodes)
+        clipboard = {'node_list': list(selected_nodes), 'link_refs': []}
+        for node_id_name in selected_nodes:
+            node_id, node_name = node_id_name.split(':', 1)
+            node = self.get_node_instance(node_name)
+            clipboard[node_id_name] = {
+                'id': node_id,
+                'name': node_name,
+                'setting': copy.deepcopy(node.get_setting_dict(node_id)),
+            }
+        clipboard['link_refs'] = [
+            self._mdl_serialize_link_ref(link_ref)
+            for link_ref in self._mdl_iter_link_refs()
+            if (
+                link_ref.source.node_ref.node_id_name in selected_set and
+                link_ref.destination.node_ref.node_id_name in selected_set
+            )
+        ]
+        self._node_clipboard = clipboard
+        self._clipboard_paste_count = 0
+        self._vw_set_link_feedback(f'Copied {len(selected_nodes)} nodes.')
+        return True
+
+    def _cntrl_cut_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        selected_nodes = self._selected_node_names()
+        if not selected_nodes or not self._cntrl_copy_selected_nodes(None, None):
+            return
+        self._cntrl_delete_targets(selected_nodes, [])
+        self._keyboard_selection = None
+        self._vw_set_link_feedback(f'Cut {len(selected_nodes)} nodes.')
+
+    def _cntrl_paste_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        if self._node_clipboard is None:
+            self._vw_set_link_feedback('Nothing has been copied yet.')
+            return
+
+        pasted_settings = copy.deepcopy(self._node_clipboard)
+        self._clipboard_paste_count += 1
+        offset = 30 * self._clipboard_paste_count
+        for node_id_name in pasted_settings['node_list']:
+            setting = pasted_settings[node_id_name]['setting']
+            pos = setting.get('pos', [0, 0])
+            if not isinstance(pos, (list, tuple)) or len(pos) < 2:
+                pos = [0, 0]
+            setting['pos'] = [pos[0] + offset, pos[1] + offset]
+
+        import_payload = self._cntrl_import_setting_dict(pasted_settings)
+        if not import_payload:
+            return
+        self._keyboard_selection = {
+            f"{node['node_id']}:{node['node_tag']}"
+            for node in import_payload['nodes']
+        }
+        self._vw_set_link_feedback(
+            f"Pasted {len(import_payload['nodes'])} nodes."
+        )
+
+    def _clipboard_shortcut_pressed(self):
+        control_down, _ = self._runtime_shortcut_modifiers()
+        return control_down
+
+    def _cntrl_keyboard_select_all_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_select_all_nodes(None, None)
+
+    def _cntrl_keyboard_copy_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_copy_selected_nodes(None, None)
+
+    def _cntrl_keyboard_paste_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_paste_nodes(None, None)
+
+    def _cntrl_keyboard_cut_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_cut_selected_nodes(None, None)
 
     def _cntrl_get_target_link_for_context_insert(self):
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -2098,7 +2229,7 @@ class DpgNodeEditor(object):
 
     def _cntrl_import_setting_dict(self, setting_dict):
         if setting_dict is None:
-            return
+            return None
         self._suspend_parameter_history = True
         self._suspend_result_node_toggle_events = True
         try:
@@ -2113,6 +2244,7 @@ class DpgNodeEditor(object):
                     import_payload['links'],
                 )
             )
+        return import_payload
 
     def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
@@ -2252,6 +2384,8 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_save_last_pos(self, sender, data):
+        if dpg.is_item_hovered(self._node_editor_tag):
+            self._keyboard_selection = None
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
@@ -2541,10 +2675,10 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
-        selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
-        selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
+        selected_node_tags = self._selected_node_names()
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         self._cntrl_delete_targets(selected_node_tags, selected_links)
+        self._keyboard_selection = None
 
     def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
         deleted_nodes_payload = []

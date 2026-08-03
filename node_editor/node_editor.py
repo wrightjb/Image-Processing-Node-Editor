@@ -117,6 +117,8 @@ class DpgNodeEditor(object):
         self._node_clipboard = None
         self._clipboard_paste_count = 0
         self._keyboard_selection = None
+        self._keyboard_selection_theme = None
+        self._group_drag_mouse_start = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -857,6 +859,10 @@ class DpgNodeEditor(object):
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
             dpg.add_mouse_down_handler(callback=self._cntrl_capture_move_start_positions)
+            dpg.add_mouse_drag_handler(
+                button=dpg.mvMouseButton_Left,
+                callback=self._cntrl_drag_keyboard_selection,
+            )
             dpg.add_mouse_release_handler(callback=self._cntrl_commit_move_commands)
             dpg.add_mouse_click_handler(
                 button=dpg.mvMouseButton_Right,
@@ -1458,6 +1464,55 @@ class DpgNodeEditor(object):
                 selected_node_names.append(node_id_name)
         return selected_node_names
 
+    def _vw_get_keyboard_selection_theme(self):
+        if self._keyboard_selection_theme is not None:
+            return self._keyboard_selection_theme
+        with dpg.theme() as theme_id:
+            with dpg.theme_component(dpg.mvNode):
+                for color_id in (
+                    dpg.mvNodeCol_TitleBar,
+                    dpg.mvNodeCol_TitleBarHovered,
+                    dpg.mvNodeCol_TitleBarSelected,
+                ):
+                    dpg.add_theme_color(
+                        color_id,
+                        (66, 150, 250, 255),
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+        self._keyboard_selection_theme = theme_id
+        return theme_id
+
+    def _set_keyboard_selection(self, node_id_names=None):
+        previous_selection = self._keyboard_selection or set()
+        selection = (
+            None if node_id_names is None
+            else set(node_id_names).intersection(self._node_list)
+        )
+        self._keyboard_selection = selection
+        if selection is not None:
+            dpg.clear_selected_nodes(self._node_editor_tag)
+
+        for node_id_name in previous_selection - (selection or set()):
+            if not dpg.does_item_exist(node_id_name):
+                continue
+            marker = self._node_propagation_marker_dict.get(node_id_name)
+            theme = self._vw_get_propagation_marker_theme(marker) if marker else 0
+            dpg.bind_item_theme(node_id_name, theme)
+        if selection:
+            selection_theme = self._vw_get_keyboard_selection_theme()
+            for node_id_name in selection:
+                if dpg.does_item_exist(node_id_name):
+                    dpg.bind_item_theme(node_id_name, selection_theme)
+
+    def _hovered_keyboard_selected_node(self):
+        for node_id_name in self._keyboard_selection or ():
+            if (
+                dpg.does_item_exist(node_id_name) and
+                dpg.is_item_hovered(node_id_name)
+            ):
+                return node_id_name
+        return None
+
     def _runtime_shortcut_modifiers(self):
         control_down = (
             dpg.is_key_down(dpg.mvKey_LControl)
@@ -1519,7 +1574,7 @@ class DpgNodeEditor(object):
 
     def _cntrl_select_all_nodes(self, sender, app_data, user_data=None):
         del sender, app_data, user_data
-        self._keyboard_selection = set(self._node_list)
+        self._set_keyboard_selection(self._node_list)
         self._vw_set_link_feedback(
             f'Selected all {len(self._keyboard_selection)} nodes.'
         )
@@ -1562,7 +1617,7 @@ class DpgNodeEditor(object):
         if not selected_nodes or not self._cntrl_copy_selected_nodes(None, None):
             return
         self._cntrl_delete_targets(selected_nodes, [])
-        self._keyboard_selection = None
+        self._set_keyboard_selection(None)
         self._vw_set_link_feedback(f'Cut {len(selected_nodes)} nodes.')
 
     def _cntrl_paste_nodes(self, sender, app_data, user_data=None):
@@ -1584,10 +1639,10 @@ class DpgNodeEditor(object):
         import_payload = self._cntrl_import_setting_dict(pasted_settings)
         if not import_payload:
             return
-        self._keyboard_selection = {
+        self._set_keyboard_selection({
             f"{node['node_id']}:{node['node_tag']}"
             for node in import_payload['nodes']
-        }
+        })
         self._vw_set_link_feedback(
             f"Pasted {len(import_payload['nodes'])} nodes."
         )
@@ -2384,8 +2439,11 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_save_last_pos(self, sender, data):
-        if dpg.is_item_hovered(self._node_editor_tag):
-            self._keyboard_selection = None
+        if (
+            dpg.is_item_hovered(self._node_editor_tag) and
+            self._hovered_keyboard_selected_node() is None
+        ):
+            self._set_keyboard_selection(None)
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
@@ -2448,6 +2506,16 @@ class DpgNodeEditor(object):
     def _cntrl_capture_move_start_positions(self, sender, data):
         del sender, data
         self._move_start_positions = {}
+        group_drag_anchor = self._hovered_keyboard_selected_node()
+        if group_drag_anchor is not None:
+            for node_id_name in self._selected_node_names():
+                if dpg.does_item_exist(node_id_name):
+                    self._move_start_positions[node_id_name] = list(
+                        dpg.get_item_pos(node_id_name)
+                    )
+            self._group_drag_mouse_start = list(dpg.get_mouse_pos())
+            return
+        self._group_drag_mouse_start = None
         for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
             node_id_name = dpg.get_item_alias(node_dpg_id)
             if isinstance(node_id_name, str) and ':' in node_id_name:
@@ -2468,6 +2536,21 @@ class DpgNodeEditor(object):
                 self._move_start_positions[node_id_name] = list(before_pos)
                 break
 
+    def _cntrl_drag_keyboard_selection(self, sender, data):
+        del sender, data
+        if self._group_drag_mouse_start is None:
+            return
+        mouse_pos = dpg.get_mouse_pos()
+        delta = [
+            mouse_pos[0] - self._group_drag_mouse_start[0],
+            mouse_pos[1] - self._group_drag_mouse_start[1],
+        ]
+        for node_id_name, before_pos in self._move_start_positions.items():
+            self._vw_set_node_pos(
+                node_id_name,
+                [before_pos[0] + delta[0], before_pos[1] + delta[1]],
+            )
+
     def _cntrl_commit_move_commands(self, sender, data):
         del sender, data
         for node_id_name, before_pos in self._move_start_positions.items():
@@ -2480,6 +2563,7 @@ class DpgNodeEditor(object):
                 )
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
+        self._group_drag_mouse_start = None
 
     def _cntrl_clear_redo_history(self):
         self._redo_stack.clear()
@@ -2678,7 +2762,7 @@ class DpgNodeEditor(object):
         selected_node_tags = self._selected_node_names()
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         self._cntrl_delete_targets(selected_node_tags, selected_links)
-        self._keyboard_selection = None
+        self._set_keyboard_selection(None)
 
     def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
         deleted_nodes_payload = []
@@ -2878,7 +2962,12 @@ class DpgNodeEditor(object):
             label = f'[PAUSED] {label}'
         if dpg.does_item_exist(node_id_name):
             dpg.configure_item(node_id_name, label=label)
-            if marker:
+            if node_id_name in (self._keyboard_selection or ()):
+                dpg.bind_item_theme(
+                    node_id_name,
+                    self._vw_get_keyboard_selection_theme(),
+                )
+            elif marker:
                 dpg.bind_item_theme(
                     node_id_name,
                     self._vw_get_propagation_marker_theme(marker),

@@ -1070,6 +1070,7 @@ def test_select_all_copy_paste_offsets_and_selects_new_nodes(editor_and_dpg):
         ],
         'links': [],
     })
+    editor._node_list.extend(['3:TestNode', '4:TestNode'])
 
     editor._cntrl_paste_nodes(None, None)
 
@@ -1077,6 +1078,36 @@ def test_select_all_copy_paste_offsets_and_selects_new_nodes(editor_and_dpg):
     assert pasted['1:TestNode']['setting']['pos'] == [31, 35]
     assert pasted['2:TestNode']['setting']['pos'] == [32, 35]
     assert editor._keyboard_selection == {'3:TestNode', '4:TestNode'}
+    assert dpg.clear_selected_nodes.call_count == 2
+
+
+def test_keyboard_selection_is_visible_and_can_be_dragged_as_group(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    editor._keyboard_selection_theme = 777
+    dpg.does_item_exist.return_value = True
+    positions = {
+        '1:TestNode': [10, 20],
+        '2:TestNode': [40, 50],
+    }
+    dpg.get_item_pos.side_effect = lambda node_id: positions[node_id]
+    dpg.is_item_hovered.side_effect = lambda node_id: node_id == '1:TestNode'
+
+    editor._set_keyboard_selection(editor._node_list)
+
+    dpg.clear_selected_nodes.assert_called_once_with(editor._node_editor_tag)
+    dpg.bind_item_theme.assert_any_call('1:TestNode', 777)
+    dpg.bind_item_theme.assert_any_call('2:TestNode', 777)
+
+    dpg.get_mouse_pos.return_value = [100, 100]
+    editor._cntrl_capture_move_start_positions(None, None)
+    dpg.get_mouse_pos.return_value = [115, 125]
+    editor._cntrl_drag_keyboard_selection(None, None)
+
+    dpg.set_item_pos.assert_any_call('1:TestNode', [25, 45])
+    dpg.set_item_pos.assert_any_call('2:TestNode', [55, 75])
 
 
 def test_cut_copies_before_deleting_selected_nodes(editor_and_dpg):

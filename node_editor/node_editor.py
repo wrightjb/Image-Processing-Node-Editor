@@ -119,8 +119,6 @@ class DpgNodeEditor(object):
         self._keyboard_selection = None
         self._keyboard_selection_theme = None
         self._runtime_override_theme_dict = {}
-        self._group_drag_mouse_start = None
-        self._group_drag_anchor = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -861,10 +859,6 @@ class DpgNodeEditor(object):
         with dpg.handler_registry():
             dpg.add_mouse_click_handler(callback=self._cntrl_save_last_pos)
             dpg.add_mouse_down_handler(callback=self._cntrl_capture_move_start_positions)
-            dpg.add_mouse_drag_handler(
-                button=dpg.mvMouseButton_Left,
-                callback=self._cntrl_drag_keyboard_selection,
-            )
             dpg.add_mouse_release_handler(callback=self._cntrl_commit_move_commands)
             dpg.add_mouse_click_handler(
                 button=dpg.mvMouseButton_Right,
@@ -1558,27 +1552,14 @@ class DpgNodeEditor(object):
                 if dpg.does_item_exist(node_id_name):
                     dpg.bind_item_theme(node_id_name, selection_theme)
 
-    def _hovered_keyboard_selected_node(self):
+    def _is_keyboard_selection_hovered(self):
         for node_id_name in self._keyboard_selection or ():
             if (
                 dpg.does_item_exist(node_id_name) and
                 dpg.is_item_hovered(node_id_name)
             ):
-                return node_id_name
-        mouse_pos = dpg.get_mouse_pos()
-        for node_id_name in self._keyboard_selection or ():
-            if not dpg.does_item_exist(node_id_name):
-                continue
-            node_pos = dpg.get_item_pos(node_id_name)
-            node_size = dpg.get_item_rect_size(node_id_name)
-            if len(node_size) < 2 or node_size[0] <= 0 or node_size[1] <= 0:
-                continue
-            if (
-                node_pos[0] <= mouse_pos[0] <= node_pos[0] + node_size[0]
-                and node_pos[1] <= mouse_pos[1] <= node_pos[1] + node_size[1]
-            ):
-                return node_id_name
-        return None
+                return True
+        return False
 
     def _runtime_shortcut_modifiers(self):
         control_down = (
@@ -2518,7 +2499,7 @@ class DpgNodeEditor(object):
     def _cntrl_save_last_pos(self, sender, data):
         if (
             dpg.is_item_hovered(self._node_editor_tag) and
-            self._hovered_keyboard_selected_node() is None
+            not self._is_keyboard_selection_hovered()
         ):
             self._set_keyboard_selection(None)
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
@@ -2583,17 +2564,6 @@ class DpgNodeEditor(object):
     def _cntrl_capture_move_start_positions(self, sender, data):
         del sender, data
         self._move_start_positions = {}
-        group_drag_anchor = self._hovered_keyboard_selected_node()
-        if group_drag_anchor is not None:
-            for node_id_name in self._selected_node_names():
-                if dpg.does_item_exist(node_id_name):
-                    self._move_start_positions[node_id_name] = list(
-                        dpg.get_item_pos(node_id_name)
-                    )
-            self._group_drag_mouse_start = list(dpg.get_mouse_pos())
-            self._group_drag_anchor = group_drag_anchor
-            return
-        self._group_drag_mouse_start = None
         for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
             node_id_name = dpg.get_item_alias(node_dpg_id)
             if isinstance(node_id_name, str) and ':' in node_id_name:
@@ -2606,40 +2576,16 @@ class DpgNodeEditor(object):
         if self._move_start_positions:
             return
         for node_id_name in self._node_list:
-            if dpg.does_item_exist(node_id_name) and dpg.is_item_hovered(node_id_name):
+            if (
+                dpg.does_item_exist(node_id_name)
+                and dpg.is_item_hovered(node_id_name)
+            ):
                 before_pos = self._node_position_cache.get(
                     node_id_name,
                     list(dpg.get_item_pos(node_id_name)),
                 )
                 self._move_start_positions[node_id_name] = list(before_pos)
                 break
-
-    def _cntrl_drag_keyboard_selection(self, sender, data):
-        del sender, data
-        if self._group_drag_mouse_start is None:
-            return
-        mouse_pos = dpg.get_mouse_pos()
-        delta = [
-            mouse_pos[0] - self._group_drag_mouse_start[0],
-            mouse_pos[1] - self._group_drag_mouse_start[1],
-        ]
-        anchor = self._group_drag_anchor
-        if anchor in self._move_start_positions and dpg.does_item_exist(anchor):
-            anchor_pos = list(dpg.get_item_pos(anchor))
-            anchor_start = self._move_start_positions[anchor]
-            anchor_delta = [
-                anchor_pos[0] - anchor_start[0],
-                anchor_pos[1] - anchor_start[1],
-            ]
-            if anchor_delta != [0, 0]:
-                delta = anchor_delta
-        for node_id_name, before_pos in self._move_start_positions.items():
-            if node_id_name == anchor:
-                continue
-            self._vw_set_node_pos(
-                node_id_name,
-                [before_pos[0] + delta[0], before_pos[1] + delta[1]],
-            )
 
     def _cntrl_commit_move_commands(self, sender, data):
         del sender, data
@@ -2653,8 +2599,6 @@ class DpgNodeEditor(object):
                 )
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
-        self._group_drag_mouse_start = None
-        self._group_drag_anchor = None
 
     def _cntrl_clear_redo_history(self):
         self._redo_stack.clear()

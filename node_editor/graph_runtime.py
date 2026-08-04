@@ -82,6 +82,11 @@ class GraphRuntime:
         with self._pause_lock:
             self._node_pause_overrides.pop(node_id_name, None)
 
+    def get_node_pause_override(self, node_id_name):
+        """Return a node pause override, or None when it follows graph state."""
+        with self._pause_lock:
+            return self._node_pause_overrides.get(node_id_name)
+
     def should_run_node(self, node_id_name):
         with self._pause_lock:
             return not self._node_pause_overrides.get(

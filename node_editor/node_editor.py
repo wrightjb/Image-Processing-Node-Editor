@@ -118,7 +118,9 @@ class DpgNodeEditor(object):
         self._clipboard_paste_count = 0
         self._keyboard_selection = None
         self._keyboard_selection_theme = None
+        self._runtime_override_theme_dict = {}
         self._group_drag_mouse_start = None
+        self._group_drag_anchor = None
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -874,7 +876,7 @@ class DpgNodeEditor(object):
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Escape,
-                callback=self._cntrl_close_insert_link_popup_on_escape,
+                callback=self._cntrl_escape_shortcut,
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Z,
@@ -1479,7 +1481,61 @@ class DpgNodeEditor(object):
                         (66, 150, 250, 255),
                         category=dpg.mvThemeCat_Nodes,
                     )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_NodeOutline,
+                    (230, 245, 255, 255),
+                    category=dpg.mvThemeCat_Nodes,
+                )
         self._keyboard_selection_theme = theme_id
+        return theme_id
+
+    def _runtime_pause_override(self, node_id_name):
+        if self._runtime is None:
+            return None
+        get_override = getattr(self._runtime, 'get_node_pause_override', None)
+        if get_override is None:
+            return None
+        return get_override(node_id_name)
+
+    def _vw_get_runtime_override_theme(self, marker, paused_override):
+        key = (marker, paused_override)
+        if key in self._runtime_override_theme_dict:
+            return self._runtime_override_theme_dict[key]
+        outline = (
+            (245, 95, 85, 255)
+            if paused_override else (90, 220, 120, 255)
+        )
+        with dpg.theme() as theme_id:
+            with dpg.theme_component(dpg.mvNode):
+                if marker:
+                    color = self._propagation_marker_color(marker)
+                    active_color = tuple(
+                        min(255, channel + 20) for channel in color[:3]
+                    ) + (255,)
+                    hovered_color = tuple(
+                        min(255, channel + 35) for channel in color[:3]
+                    ) + (255,)
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBar,
+                        color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBarHovered,
+                        hovered_color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBarSelected,
+                        active_color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_NodeOutline,
+                    outline,
+                    category=dpg.mvThemeCat_Nodes,
+                )
+        self._runtime_override_theme_dict[key] = theme_id
         return theme_id
 
     def _set_keyboard_selection(self, node_id_names=None):
@@ -1495,9 +1551,7 @@ class DpgNodeEditor(object):
         for node_id_name in previous_selection - (selection or set()):
             if not dpg.does_item_exist(node_id_name):
                 continue
-            marker = self._node_propagation_marker_dict.get(node_id_name)
-            theme = self._vw_get_propagation_marker_theme(marker) if marker else 0
-            dpg.bind_item_theme(node_id_name, theme)
+            self._vw_bind_node_state_theme(node_id_name)
         if selection:
             selection_theme = self._vw_get_keyboard_selection_theme()
             for node_id_name in selection:
@@ -1509,6 +1563,19 @@ class DpgNodeEditor(object):
             if (
                 dpg.does_item_exist(node_id_name) and
                 dpg.is_item_hovered(node_id_name)
+            ):
+                return node_id_name
+        mouse_pos = dpg.get_mouse_pos()
+        for node_id_name in self._keyboard_selection or ():
+            if not dpg.does_item_exist(node_id_name):
+                continue
+            node_pos = dpg.get_item_pos(node_id_name)
+            node_size = dpg.get_item_rect_size(node_id_name)
+            if len(node_size) < 2 or node_size[0] <= 0 or node_size[1] <= 0:
+                continue
+            if (
+                node_pos[0] <= mouse_pos[0] <= node_pos[0] + node_size[0]
+                and node_pos[1] <= mouse_pos[1] <= node_pos[1] + node_size[1]
             ):
                 return node_id_name
         return None
@@ -1565,6 +1632,16 @@ class DpgNodeEditor(object):
         control_down, shift_down = self._runtime_shortcut_modifiers()
         if control_down and shift_down:
             self._set_selected_nodes_paused(False)
+
+    def _cntrl_deselect_nodes(self, sender=None, app_data=None, user_data=None):
+        del sender, app_data, user_data
+        self._set_keyboard_selection(None)
+        dpg.clear_selected_nodes(self._node_editor_tag)
+        self._vw_set_link_feedback('Deselected nodes.')
+
+    def _cntrl_escape_shortcut(self, sender, app_data):
+        self._cntrl_deselect_nodes(None, None)
+        self._cntrl_close_insert_link_popup_on_escape(sender, app_data)
 
     def _cntrl_keyboard_follow_graph_shortcut(self, sender, app_data):
         del sender, app_data
@@ -2514,6 +2591,7 @@ class DpgNodeEditor(object):
                         dpg.get_item_pos(node_id_name)
                     )
             self._group_drag_mouse_start = list(dpg.get_mouse_pos())
+            self._group_drag_anchor = group_drag_anchor
             return
         self._group_drag_mouse_start = None
         for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
@@ -2545,7 +2623,19 @@ class DpgNodeEditor(object):
             mouse_pos[0] - self._group_drag_mouse_start[0],
             mouse_pos[1] - self._group_drag_mouse_start[1],
         ]
+        anchor = self._group_drag_anchor
+        if anchor in self._move_start_positions and dpg.does_item_exist(anchor):
+            anchor_pos = list(dpg.get_item_pos(anchor))
+            anchor_start = self._move_start_positions[anchor]
+            anchor_delta = [
+                anchor_pos[0] - anchor_start[0],
+                anchor_pos[1] - anchor_start[1],
+            ]
+            if anchor_delta != [0, 0]:
+                delta = anchor_delta
         for node_id_name, before_pos in self._move_start_positions.items():
+            if node_id_name == anchor:
+                continue
             self._vw_set_node_pos(
                 node_id_name,
                 [before_pos[0] + delta[0], before_pos[1] + delta[1]],
@@ -2564,6 +2654,7 @@ class DpgNodeEditor(object):
             self._node_position_cache[node_id_name] = list(after_pos)
         self._move_start_positions = {}
         self._group_drag_mouse_start = None
+        self._group_drag_anchor = None
 
     def _cntrl_clear_redo_history(self):
         self._redo_stack.clear()
@@ -2893,6 +2984,7 @@ class DpgNodeEditor(object):
                     node_id_name,
                     label=f'{runtime_prefix}{marker_prefix}{base_label}',
                 )
+                self._vw_bind_node_state_theme(node_id_name)
 
     def get_node_list(self):
         return self._node_list
@@ -2906,7 +2998,7 @@ class DpgNodeEditor(object):
     def get_sorted_node_connection_refs(self):
         return self._node_connection_ref_dict
 
-    def _vw_get_propagation_marker_theme(self, marker):
+    def _propagation_marker_color(self, marker):
         marker_colors = {
             'A': (235, 92, 84, 255),
             'B': (239, 151, 55, 255),
@@ -2916,9 +3008,12 @@ class DpgNodeEditor(object):
             'F': (150, 105, 220, 255),
             'G': (154, 106, 79, 255),
         }
+        return marker_colors.get(marker, (180, 180, 180, 255))
+
+    def _vw_get_propagation_marker_theme(self, marker):
         if marker in self._propagation_marker_theme_dict:
             return self._propagation_marker_theme_dict[marker]
-        color = marker_colors.get(marker, (180, 180, 180, 255))
+        color = self._propagation_marker_color(marker)
         active_color = tuple(min(255, channel + 20) for channel in color[:3]) + (255,)
         hovered_color = tuple(min(255, channel + 35) for channel in color[:3]) + (255,)
         with dpg.theme() as theme_id:
@@ -2941,6 +3036,28 @@ class DpgNodeEditor(object):
         self._propagation_marker_theme_dict[marker] = theme_id
         return theme_id
 
+    def _vw_bind_node_state_theme(self, node_id_name):
+        if node_id_name in (self._keyboard_selection or ()):
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_keyboard_selection_theme(),
+            )
+            return
+        marker = self._node_propagation_marker_dict.get(node_id_name)
+        pause_override = self._runtime_pause_override(node_id_name)
+        if pause_override is not None:
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_runtime_override_theme(marker, pause_override),
+            )
+        elif marker:
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_propagation_marker_theme(marker),
+            )
+        else:
+            dpg.bind_item_theme(node_id_name, 0)
+
     def set_node_propagation_marker(self, node_id_name, marker):
         if node_id_name not in self._node_list:
             return
@@ -2962,18 +3079,7 @@ class DpgNodeEditor(object):
             label = f'[PAUSED] {label}'
         if dpg.does_item_exist(node_id_name):
             dpg.configure_item(node_id_name, label=label)
-            if node_id_name in (self._keyboard_selection or ()):
-                dpg.bind_item_theme(
-                    node_id_name,
-                    self._vw_get_keyboard_selection_theme(),
-                )
-            elif marker:
-                dpg.bind_item_theme(
-                    node_id_name,
-                    self._vw_get_propagation_marker_theme(marker),
-                )
-            else:
-                dpg.bind_item_theme(node_id_name, 0)
+            self._vw_bind_node_state_theme(node_id_name)
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

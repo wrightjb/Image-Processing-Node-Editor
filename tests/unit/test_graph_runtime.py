@@ -150,11 +150,13 @@ def test_node_pause_override_survives_graph_resume_until_cleared():
     runtime = GraphRuntime()
 
     runtime.set_node_paused('1:SourceNode', True)
+    assert runtime.get_node_pause_override('1:SourceNode') is True
     runtime.set_graph_paused(False)
     runtime.step(editor, mode_async=False)
     node.update.assert_not_called()
 
     runtime.clear_node_pause_override('1:SourceNode')
+    assert runtime.get_node_pause_override('1:SourceNode') is None
     runtime.step(editor, mode_async=False)
     node.update.assert_called_once()
 

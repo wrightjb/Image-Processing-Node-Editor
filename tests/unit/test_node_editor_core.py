@@ -1106,8 +1106,42 @@ def test_keyboard_selection_is_visible_and_can_be_dragged_as_group(
     dpg.get_mouse_pos.return_value = [115, 125]
     editor._cntrl_drag_keyboard_selection(None, None)
 
-    dpg.set_item_pos.assert_any_call('1:TestNode', [25, 45])
     dpg.set_item_pos.assert_any_call('2:TestNode', [55, 75])
+
+
+def test_keyboard_selection_group_drag_follows_native_anchor_drag(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    dpg.does_item_exist.return_value = True
+    positions = {
+        '1:TestNode': [10, 20],
+        '2:TestNode': [40, 50],
+    }
+    dpg.get_item_pos.side_effect = lambda node_id: positions[node_id]
+    dpg.is_item_hovered.side_effect = lambda node_id: node_id == '1:TestNode'
+    dpg.get_mouse_pos.return_value = [100, 100]
+
+    editor._set_keyboard_selection(editor._node_list)
+    editor._cntrl_capture_move_start_positions(None, None)
+    positions['1:TestNode'] = [18, 33]
+    dpg.get_mouse_pos.return_value = [101, 101]
+    editor._cntrl_drag_keyboard_selection(None, None)
+
+    dpg.set_item_pos.assert_any_call('2:TestNode', [48, 63])
+
+
+def test_escape_clears_native_and_keyboard_selection(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode']
+    editor._keyboard_selection = {'1:TestNode'}
+    dpg.does_item_exist.return_value = True
+
+    editor._cntrl_escape_shortcut(None, None)
+
+    assert editor._keyboard_selection is None
+    dpg.clear_selected_nodes.assert_called_with(editor._node_editor_tag)
 
 
 def test_cut_copies_before_deleting_selected_nodes(editor_and_dpg):

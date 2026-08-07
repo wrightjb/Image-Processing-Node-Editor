@@ -986,6 +986,192 @@ def test_keyboard_shortcuts_use_standard_undo_redo_modifiers(editor_and_dpg):
     assert undo_command.calls == [('undo', editor), ('redo', editor)]
 
 
+def test_runtime_selected_nodes_resolve_dearpygui_ids_to_aliases(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    editor._runtime = Mock()
+    dpg.get_selected_nodes.return_value = [101, 202]
+    dpg.get_item_alias.side_effect = {
+        101: '1:TestNode',
+        202: '2:TestNode',
+    }.get
+
+    editor._cntrl_pause_selected_nodes(None, None)
+
+    assert editor._runtime.set_node_paused.call_count == 2
+    editor._runtime.set_node_paused.assert_any_call('1:TestNode', True)
+    editor._runtime.set_node_paused.assert_any_call('2:TestNode', True)
+
+
+def test_runtime_keyboard_shortcuts_control_graph_and_selected_nodes(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode']
+    editor._runtime = Mock(graph_paused=False)
+    dpg.get_selected_nodes.return_value = [101]
+    dpg.get_item_alias.side_effect = lambda value: (
+        '1:TestNode' if value == 101 else value
+    )
+
+    _configure_shortcut_keys(dpg, {'LControl'})
+    editor._cntrl_keyboard_pause_shortcut(None, None)
+    editor._runtime.set_graph_paused.assert_called_once_with(True)
+    dpg.set_value.assert_called_with(editor._runtime_graph_pause_tag, True)
+
+    _configure_shortcut_keys(dpg, {'RControl', 'LShift'})
+    editor._cntrl_keyboard_pause_shortcut(None, None)
+    editor._runtime.set_node_paused.assert_called_with('1:TestNode', True)
+
+    editor._cntrl_keyboard_run_selected_shortcut(None, None)
+    editor._runtime.set_node_paused.assert_called_with('1:TestNode', False)
+
+    editor._cntrl_keyboard_follow_graph_shortcut(None, None)
+    editor._runtime.clear_node_pause_override.assert_called_with('1:TestNode')
+
+
+def test_copy_selected_nodes_keeps_settings_and_internal_links(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode', '3:TestNode']
+    dpg.get_selected_nodes.return_value = [101, 202]
+    aliases = {101: '1:TestNode', 202: '2:TestNode'}
+    dpg.get_item_alias.side_effect = aliases.get
+    node = editor.get_node_instance('TestNode')
+    node.get_setting_dict = Mock(
+        side_effect=lambda node_id: {'ver': '1.0', 'pos': [int(node_id), 0]}
+    )
+    _add_link_pairs(editor, [
+        ['1:TestNode:Int:Output01', '2:TestNode:Int:Input01'],
+        ['2:TestNode:Int:Output01', '3:TestNode:Int:Input01'],
+    ])
+
+    assert editor._cntrl_copy_selected_nodes(None, None) is True
+
+    assert editor._node_clipboard['node_list'] == [
+        '1:TestNode', '2:TestNode'
+    ]
+    assert len(editor._node_clipboard['link_refs']) == 1
+    assert editor._node_clipboard['1:TestNode']['setting']['pos'] == [1, 0]
+
+
+def test_select_all_copy_paste_offsets_and_selects_new_nodes(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    node = editor.get_node_instance('TestNode')
+    node.get_setting_dict = Mock(
+        side_effect=lambda node_id: {'ver': '1.0', 'pos': [int(node_id), 5]}
+    )
+    editor._cntrl_select_all_nodes(None, None)
+    editor._cntrl_copy_selected_nodes(None, None)
+    editor._cntrl_import_setting_dict = Mock(return_value={
+        'nodes': [
+            {'node_id': '3', 'node_tag': 'TestNode'},
+            {'node_id': '4', 'node_tag': 'TestNode'},
+        ],
+        'links': [],
+    })
+    editor._node_list.extend(['3:TestNode', '4:TestNode'])
+
+    editor._cntrl_paste_nodes(None, None)
+
+    pasted = editor._cntrl_import_setting_dict.call_args.args[0]
+    assert pasted['1:TestNode']['setting']['pos'] == [31, 35]
+    assert pasted['2:TestNode']['setting']['pos'] == [32, 35]
+    assert editor._keyboard_selection == {'3:TestNode', '4:TestNode'}
+    assert dpg.clear_selected_nodes.call_count == 2
+
+
+def test_keyboard_selection_is_visible_without_custom_group_drag(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    editor._keyboard_selection_theme = 777
+    dpg.does_item_exist.return_value = True
+
+    editor._set_keyboard_selection(editor._node_list)
+
+    dpg.clear_selected_nodes.assert_called_once_with(editor._node_editor_tag)
+    dpg.bind_item_theme.assert_any_call('1:TestNode', 777)
+    dpg.bind_item_theme.assert_any_call('2:TestNode', 777)
+
+
+def test_keyboard_selection_does_not_capture_fake_group_drag(
+    editor_and_dpg,
+):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode', '2:TestNode']
+    editor._keyboard_selection = {'1:TestNode', '2:TestNode'}
+    dpg.get_selected_nodes.return_value = []
+    dpg.does_item_exist.return_value = True
+    positions = {
+        '1:TestNode': [10, 20],
+        '2:TestNode': [40, 50],
+    }
+    dpg.get_item_pos.side_effect = lambda node_id: positions[node_id]
+    dpg.is_item_hovered.side_effect = lambda node_id: node_id == '1:TestNode'
+
+    editor._cntrl_capture_move_start_positions(None, None)
+
+    assert editor._move_start_positions == {'1:TestNode': [10, 20]}
+
+
+def test_escape_clears_native_and_keyboard_selection(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode']
+    editor._keyboard_selection = {'1:TestNode'}
+    dpg.does_item_exist.return_value = True
+
+    editor._cntrl_escape_shortcut(None, None)
+
+    assert editor._keyboard_selection is None
+    dpg.clear_selected_nodes.assert_called_with(editor._node_editor_tag)
+
+
+def test_cut_copies_before_deleting_selected_nodes(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._node_list = ['1:TestNode']
+    dpg.get_selected_nodes.return_value = [101]
+    dpg.get_item_alias.side_effect = lambda value: (
+        '1:TestNode' if value == 101 else value
+    )
+    editor.get_node_instance('TestNode').get_setting_dict = Mock(
+        return_value={'ver': '1.0', 'pos': [0, 0]}
+    )
+    editor._cntrl_delete_targets = Mock()
+
+    editor._cntrl_cut_selected_nodes(None, None)
+
+    assert editor._node_clipboard['node_list'] == ['1:TestNode']
+    editor._cntrl_delete_targets.assert_called_once_with(['1:TestNode'], [])
+
+
+def test_clipboard_keyboard_shortcuts_require_control(editor_and_dpg):
+    editor, dpg = editor_and_dpg
+    editor._cntrl_select_all_nodes = Mock()
+    editor._cntrl_copy_selected_nodes = Mock()
+    editor._cntrl_paste_nodes = Mock()
+    editor._cntrl_cut_selected_nodes = Mock()
+
+    _configure_shortcut_keys(dpg, set())
+    editor._cntrl_keyboard_select_all_shortcut(None, None)
+    editor._cntrl_keyboard_copy_shortcut(None, None)
+    editor._cntrl_keyboard_paste_shortcut(None, None)
+    editor._cntrl_keyboard_cut_shortcut(None, None)
+    editor._cntrl_select_all_nodes.assert_not_called()
+    editor._cntrl_copy_selected_nodes.assert_not_called()
+
+    _configure_shortcut_keys(dpg, {'LControl'})
+    editor._cntrl_keyboard_select_all_shortcut(None, None)
+    editor._cntrl_keyboard_copy_shortcut(None, None)
+    editor._cntrl_keyboard_paste_shortcut(None, None)
+    editor._cntrl_keyboard_cut_shortcut(None, None)
+    editor._cntrl_select_all_nodes.assert_called_once_with(None, None)
+    editor._cntrl_copy_selected_nodes.assert_called_once_with(None, None)
+    editor._cntrl_paste_nodes.assert_called_once_with(None, None)
+    editor._cntrl_cut_selected_nodes.assert_called_once_with(None, None)
+
+
 def test_parameter_change_coalesces_numeric_edits_and_undo_redo(editor_and_dpg):
     editor, dpg = editor_and_dpg
     dpg.does_item_exist.side_effect = lambda _tag: True

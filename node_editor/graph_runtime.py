@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import pickle
+import threading
 import time
 
 from node.port_model import LinkConnectionAdapter
@@ -26,6 +27,9 @@ class GraphRuntime:
         self.node_propagation_marker_dict = {}
         self.node_setting_fingerprint_dict = {}
         self._propagation_sequence = 0
+        self._pause_lock = threading.RLock()
+        self._graph_paused = False
+        self._node_pause_overrides = {}
         self.cache_enabled = cache_enabled
         self.cache_source_nodes = cache_source_nodes
         self.tracer = RuntimeTracePrinter(
@@ -48,7 +52,47 @@ class GraphRuntime:
             propagation_marker_dict=self.node_propagation_marker_dict,
             node_setting_fingerprint_dict=self.node_setting_fingerprint_dict,
             next_propagation_marker=self._next_propagation_marker,
+            should_run_node=self.should_run_node,
         )
+
+        with self._pause_lock:
+            active_nodes = set(node_editor.get_node_list())
+            self._node_pause_overrides = {
+                node_id: paused
+                for node_id, paused in self._node_pause_overrides.items()
+                if node_id in active_nodes
+            }
+
+    @property
+    def graph_paused(self):
+        with self._pause_lock:
+            return self._graph_paused
+
+    def set_graph_paused(self, paused=True):
+        """Pause/resume nodes which do not have a per-node override."""
+        with self._pause_lock:
+            self._graph_paused = bool(paused)
+
+    def set_node_paused(self, node_id_name, paused):
+        """Explicitly pause or run a node, independently of graph state."""
+        with self._pause_lock:
+            self._node_pause_overrides[node_id_name] = bool(paused)
+
+    def clear_node_pause_override(self, node_id_name):
+        with self._pause_lock:
+            self._node_pause_overrides.pop(node_id_name, None)
+
+    def get_node_pause_override(self, node_id_name):
+        """Return a node pause override, or None when it follows graph state."""
+        with self._pause_lock:
+            return self._node_pause_overrides.get(node_id_name)
+
+    def should_run_node(self, node_id_name):
+        with self._pause_lock:
+            return not self._node_pause_overrides.get(
+                node_id_name,
+                self._graph_paused,
+            )
 
     def _next_propagation_marker(self):
         markers = ('A', 'B', 'C', 'D', 'E', 'F', 'G')
@@ -381,6 +425,7 @@ def update_node_info(
     propagation_marker_dict=None,
     node_setting_fingerprint_dict=None,
     next_propagation_marker=None,
+    should_run_node=None,
 ):
     """
     Update all nodes in topological order with optional in-memory caching.
@@ -404,6 +449,8 @@ def update_node_info(
         node_setting_fingerprint_dict = {}
     if next_propagation_marker is None:
         next_propagation_marker = lambda: 'A'
+    if should_run_node is None:
+        should_run_node = lambda _node_id_name: True
 
     if not cache_enabled and node_cache_dict:
         node_cache_dict.clear()
@@ -471,6 +518,9 @@ def update_node_info(
                     continue
             except Exception:
                 pass
+
+        if not should_run_node(node_id_name):
+            continue
 
         connection_refs = sorted_node_connection_dict.get(node_id_name, [])
         connection_refs = [

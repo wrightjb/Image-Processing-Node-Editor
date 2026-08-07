@@ -135,6 +135,7 @@ def main():
         trace_threshold_ms=args.runtime_trace_threshold_ms,
         trace_repeat_seconds=args.runtime_trace_repeat_seconds,
     )
+    node_editor.set_runtime(runtime)
 
     event_loop = run_editor_main_loop(
         node_editor,

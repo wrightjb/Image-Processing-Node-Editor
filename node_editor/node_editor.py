@@ -49,6 +49,7 @@ class DpgNodeEditor(object):
     _history_window_tag = _node_editor_tag + 'HistoryWindow'
     _history_undo_text_tag = _node_editor_tag + 'HistoryUndoText'
     _history_redo_text_tag = _node_editor_tag + 'HistoryRedoText'
+    _runtime_graph_pause_tag = _node_editor_tag + 'RuntimeGraphPause'
 
     _node_id = 0
     _node_instance_list = {}
@@ -112,6 +113,12 @@ class DpgNodeEditor(object):
         self._node_base_label_dict = {}
         self._node_propagation_marker_dict = {}
         self._propagation_marker_theme_dict = {}
+        self._runtime = None
+        self._node_clipboard = None
+        self._clipboard_paste_count = 0
+        self._keyboard_selection = None
+        self._keyboard_selection_theme = None
+        self._runtime_override_theme_dict = {}
 
     def _mdl_add_node(self, node_tag):
         self._node_id += 1
@@ -447,6 +454,7 @@ class DpgNodeEditor(object):
                     )
                 self._vw_create_node_menus()
                 self._vw_create_insert_link_menu()
+                self._vw_create_runtime_menu()
             dpg.add_text(
                 default_value='',
                 tag=self._link_feedback_tag,
@@ -516,6 +524,23 @@ class DpgNodeEditor(object):
             )
             dpg.add_separator()
             dpg.add_menu_item(
+                label='Cut (Ctrl+X)',
+                callback=self._cntrl_cut_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Copy (Ctrl+C)',
+                callback=self._cntrl_copy_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Paste (Ctrl+V)',
+                callback=self._cntrl_paste_nodes,
+            )
+            dpg.add_menu_item(
+                label='Select all (Ctrl+A)',
+                callback=self._cntrl_select_all_nodes,
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
                 tag='Menu_Edit_History',
                 label='History...',
                 callback=self._cntrl_toggle_history_window,
@@ -531,6 +556,28 @@ class DpgNodeEditor(object):
                                 callback=self._cntrl_insert_node_into_selected_link,
                                 user_data=node_info['tag'],
                             )
+
+    def _vw_create_runtime_menu(self):
+        with dpg.menu(label='Runtime'):
+            dpg.add_menu_item(
+                tag=self._runtime_graph_pause_tag,
+                label='Pause graph (Ctrl+P)',
+                check=True,
+                callback=self._cntrl_set_graph_paused,
+            )
+            dpg.add_separator()
+            dpg.add_menu_item(
+                label='Run selected nodes (Ctrl+Shift+R)',
+                callback=self._cntrl_run_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Pause selected nodes (Ctrl+Shift+P)',
+                callback=self._cntrl_pause_selected_nodes,
+            )
+            dpg.add_menu_item(
+                label='Selected nodes follow graph (Ctrl+Shift+F)',
+                callback=self._cntrl_reset_selected_nodes,
+            )
 
     def _vw_create_insert_link_popup_menu(self):
         dpg.add_text('Insert Node')
@@ -719,6 +766,7 @@ class DpgNodeEditor(object):
             callback=self._cntrl_node_callback,
         )
         self._mdl_register_node_declared_ports(node, new_id)
+        self._refresh_runtime_node_labels()
 
     def _vw_add_link(self, source, destination):
         source_id = source
@@ -822,12 +870,31 @@ class DpgNodeEditor(object):
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Escape,
-                callback=self._cntrl_close_insert_link_popup_on_escape,
+                callback=self._cntrl_escape_shortcut,
             )
             dpg.add_key_press_handler(
                 dpg.mvKey_Z,
                 callback=self._cntrl_keyboard_z_shortcut,
             )
+            dpg.add_key_press_handler(
+                dpg.mvKey_P,
+                callback=self._cntrl_keyboard_pause_shortcut,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_R,
+                callback=self._cntrl_keyboard_run_selected_shortcut,
+            )
+            dpg.add_key_press_handler(
+                dpg.mvKey_F,
+                callback=self._cntrl_keyboard_follow_graph_shortcut,
+            )
+            for key, callback in (
+                (dpg.mvKey_A, self._cntrl_keyboard_select_all_shortcut),
+                (dpg.mvKey_C, self._cntrl_keyboard_copy_shortcut),
+                (dpg.mvKey_V, self._cntrl_keyboard_paste_shortcut),
+                (dpg.mvKey_X, self._cntrl_keyboard_cut_shortcut),
+            ):
+                dpg.add_key_press_handler(key, callback=callback)
 
     def _cntrl_discover_nodes(self, node_dir, menu_dict):
         # Define menu items (key: menu name, value: directory containing node code)
@@ -1372,6 +1439,295 @@ class DpgNodeEditor(object):
             self._vw_hide_add_node_popup()
         self._pending_add_from_output_tag = None
         self._pending_add_to_input_tag = None
+
+    def _cntrl_set_graph_paused(self, sender, app_data, user_data=None):
+        del sender, user_data
+        if self._runtime is None:
+            return
+        self._runtime.set_graph_paused(bool(app_data))
+        self._refresh_runtime_node_labels()
+
+    def _selected_node_names(self):
+        if self._keyboard_selection is not None:
+            return [
+                node_id_name for node_id_name in self._node_list
+                if node_id_name in self._keyboard_selection
+            ]
+        selected_node_names = []
+        for node_dpg_id in dpg.get_selected_nodes(self._node_editor_tag):
+            node_id_name = dpg.get_item_alias(node_dpg_id)
+            if node_id_name in self._node_list:
+                selected_node_names.append(node_id_name)
+        return selected_node_names
+
+    def _vw_get_keyboard_selection_theme(self):
+        if self._keyboard_selection_theme is not None:
+            return self._keyboard_selection_theme
+        with dpg.theme() as theme_id:
+            with dpg.theme_component(dpg.mvNode):
+                for color_id in (
+                    dpg.mvNodeCol_TitleBar,
+                    dpg.mvNodeCol_TitleBarHovered,
+                    dpg.mvNodeCol_TitleBarSelected,
+                ):
+                    dpg.add_theme_color(
+                        color_id,
+                        (66, 150, 250, 255),
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_NodeOutline,
+                    (230, 245, 255, 255),
+                    category=dpg.mvThemeCat_Nodes,
+                )
+        self._keyboard_selection_theme = theme_id
+        return theme_id
+
+    def _runtime_pause_override(self, node_id_name):
+        if self._runtime is None:
+            return None
+        get_override = getattr(self._runtime, 'get_node_pause_override', None)
+        if get_override is None:
+            return None
+        return get_override(node_id_name)
+
+    def _vw_get_runtime_override_theme(self, marker, paused_override):
+        key = (marker, paused_override)
+        if key in self._runtime_override_theme_dict:
+            return self._runtime_override_theme_dict[key]
+        outline = (
+            (245, 95, 85, 255)
+            if paused_override else (90, 220, 120, 255)
+        )
+        with dpg.theme() as theme_id:
+            with dpg.theme_component(dpg.mvNode):
+                if marker:
+                    color = self._propagation_marker_color(marker)
+                    active_color = tuple(
+                        min(255, channel + 20) for channel in color[:3]
+                    ) + (255,)
+                    hovered_color = tuple(
+                        min(255, channel + 35) for channel in color[:3]
+                    ) + (255,)
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBar,
+                        color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBarHovered,
+                        hovered_color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                    dpg.add_theme_color(
+                        dpg.mvNodeCol_TitleBarSelected,
+                        active_color,
+                        category=dpg.mvThemeCat_Nodes,
+                    )
+                dpg.add_theme_color(
+                    dpg.mvNodeCol_NodeOutline,
+                    outline,
+                    category=dpg.mvThemeCat_Nodes,
+                )
+        self._runtime_override_theme_dict[key] = theme_id
+        return theme_id
+
+    def _set_keyboard_selection(self, node_id_names=None):
+        previous_selection = self._keyboard_selection or set()
+        selection = (
+            None if node_id_names is None
+            else set(node_id_names).intersection(self._node_list)
+        )
+        self._keyboard_selection = selection
+        if selection is not None:
+            dpg.clear_selected_nodes(self._node_editor_tag)
+
+        for node_id_name in previous_selection - (selection or set()):
+            if not dpg.does_item_exist(node_id_name):
+                continue
+            self._vw_bind_node_state_theme(node_id_name)
+        if selection:
+            selection_theme = self._vw_get_keyboard_selection_theme()
+            for node_id_name in selection:
+                if dpg.does_item_exist(node_id_name):
+                    dpg.bind_item_theme(node_id_name, selection_theme)
+
+    def _is_keyboard_selection_hovered(self):
+        for node_id_name in self._keyboard_selection or ():
+            if (
+                dpg.does_item_exist(node_id_name) and
+                dpg.is_item_hovered(node_id_name)
+            ):
+                return True
+        return False
+
+    def _runtime_shortcut_modifiers(self):
+        control_down = (
+            dpg.is_key_down(dpg.mvKey_LControl)
+            or dpg.is_key_down(dpg.mvKey_RControl)
+        )
+        shift_down = (
+            dpg.is_key_down(dpg.mvKey_LShift)
+            or dpg.is_key_down(dpg.mvKey_RShift)
+        )
+        return control_down, shift_down
+
+    def _set_selected_nodes_paused(self, paused):
+        if self._runtime is None:
+            return
+        for node_id_name in self._selected_node_names():
+            self._runtime.set_node_paused(node_id_name, paused)
+        self._refresh_runtime_node_labels()
+
+    def _cntrl_run_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._set_selected_nodes_paused(False)
+
+    def _cntrl_pause_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._set_selected_nodes_paused(True)
+
+    def _cntrl_reset_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        if self._runtime is None:
+            return
+        for node_id_name in self._selected_node_names():
+            self._runtime.clear_node_pause_override(node_id_name)
+        self._refresh_runtime_node_labels()
+
+    def _cntrl_keyboard_pause_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if not control_down or self._runtime is None:
+            return
+        if shift_down:
+            self._set_selected_nodes_paused(True)
+            return
+        paused = not self._runtime.graph_paused
+        self._runtime.set_graph_paused(paused)
+        dpg.set_value(self._runtime_graph_pause_tag, paused)
+        self._refresh_runtime_node_labels()
+
+    def _cntrl_keyboard_run_selected_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if control_down and shift_down:
+            self._set_selected_nodes_paused(False)
+
+    def _cntrl_deselect_nodes(self, sender=None, app_data=None, user_data=None):
+        del sender, app_data, user_data
+        self._set_keyboard_selection(None)
+        dpg.clear_selected_nodes(self._node_editor_tag)
+        self._vw_set_link_feedback('Deselected nodes.')
+
+    def _cntrl_escape_shortcut(self, sender, app_data):
+        self._cntrl_deselect_nodes(None, None)
+        self._cntrl_close_insert_link_popup_on_escape(sender, app_data)
+
+    def _cntrl_keyboard_follow_graph_shortcut(self, sender, app_data):
+        del sender, app_data
+        control_down, shift_down = self._runtime_shortcut_modifiers()
+        if control_down and shift_down:
+            self._cntrl_reset_selected_nodes(None, None)
+
+    def _cntrl_select_all_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        self._set_keyboard_selection(self._node_list)
+        self._vw_set_link_feedback(
+            f'Selected all {len(self._keyboard_selection)} nodes.'
+        )
+
+    def _cntrl_copy_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        selected_nodes = self._selected_node_names()
+        if not selected_nodes:
+            self._vw_set_link_feedback(
+                'Copy requires at least one selected node.'
+            )
+            return False
+
+        selected_set = set(selected_nodes)
+        clipboard = {'node_list': list(selected_nodes), 'link_refs': []}
+        for node_id_name in selected_nodes:
+            node_id, node_name = node_id_name.split(':', 1)
+            node = self.get_node_instance(node_name)
+            clipboard[node_id_name] = {
+                'id': node_id,
+                'name': node_name,
+                'setting': copy.deepcopy(node.get_setting_dict(node_id)),
+            }
+        clipboard['link_refs'] = [
+            self._mdl_serialize_link_ref(link_ref)
+            for link_ref in self._mdl_iter_link_refs()
+            if (
+                link_ref.source.node_ref.node_id_name in selected_set and
+                link_ref.destination.node_ref.node_id_name in selected_set
+            )
+        ]
+        self._node_clipboard = clipboard
+        self._clipboard_paste_count = 0
+        self._vw_set_link_feedback(f'Copied {len(selected_nodes)} nodes.')
+        return True
+
+    def _cntrl_cut_selected_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        selected_nodes = self._selected_node_names()
+        if not selected_nodes or not self._cntrl_copy_selected_nodes(None, None):
+            return
+        self._cntrl_delete_targets(selected_nodes, [])
+        self._set_keyboard_selection(None)
+        self._vw_set_link_feedback(f'Cut {len(selected_nodes)} nodes.')
+
+    def _cntrl_paste_nodes(self, sender, app_data, user_data=None):
+        del sender, app_data, user_data
+        if self._node_clipboard is None:
+            self._vw_set_link_feedback('Nothing has been copied yet.')
+            return
+
+        pasted_settings = copy.deepcopy(self._node_clipboard)
+        self._clipboard_paste_count += 1
+        offset = 30 * self._clipboard_paste_count
+        for node_id_name in pasted_settings['node_list']:
+            setting = pasted_settings[node_id_name]['setting']
+            pos = setting.get('pos', [0, 0])
+            if not isinstance(pos, (list, tuple)) or len(pos) < 2:
+                pos = [0, 0]
+            setting['pos'] = [pos[0] + offset, pos[1] + offset]
+
+        import_payload = self._cntrl_import_setting_dict(pasted_settings)
+        if not import_payload:
+            return
+        self._set_keyboard_selection({
+            f"{node['node_id']}:{node['node_tag']}"
+            for node in import_payload['nodes']
+        })
+        self._vw_set_link_feedback(
+            f"Pasted {len(import_payload['nodes'])} nodes."
+        )
+
+    def _clipboard_shortcut_pressed(self):
+        control_down, _ = self._runtime_shortcut_modifiers()
+        return control_down
+
+    def _cntrl_keyboard_select_all_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_select_all_nodes(None, None)
+
+    def _cntrl_keyboard_copy_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_copy_selected_nodes(None, None)
+
+    def _cntrl_keyboard_paste_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_paste_nodes(None, None)
+
+    def _cntrl_keyboard_cut_shortcut(self, sender, app_data):
+        del sender, app_data
+        if self._clipboard_shortcut_pressed():
+            self._cntrl_cut_selected_nodes(None, None)
 
     def _cntrl_get_target_link_for_context_insert(self):
         selected_links = dpg.get_selected_links(self._node_editor_tag)
@@ -1986,7 +2342,7 @@ class DpgNodeEditor(object):
 
     def _cntrl_import_setting_dict(self, setting_dict):
         if setting_dict is None:
-            return
+            return None
         self._suspend_parameter_history = True
         self._suspend_result_node_toggle_events = True
         try:
@@ -2001,6 +2357,7 @@ class DpgNodeEditor(object):
                     import_payload['links'],
                 )
             )
+        return import_payload
 
     def _cntrl_import_setting_dict_body(self, setting_dict):
         if setting_dict is None:
@@ -2140,6 +2497,11 @@ class DpgNodeEditor(object):
             print()
 
     def _cntrl_save_last_pos(self, sender, data):
+        if (
+            dpg.is_item_hovered(self._node_editor_tag) and
+            not self._is_keyboard_selection_hovered()
+        ):
+            self._set_keyboard_selection(None)
         selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
         if selected_nodes:
             self._last_pos = dpg.get_item_pos(selected_nodes[0])
@@ -2214,7 +2576,10 @@ class DpgNodeEditor(object):
         if self._move_start_positions:
             return
         for node_id_name in self._node_list:
-            if dpg.does_item_exist(node_id_name) and dpg.is_item_hovered(node_id_name):
+            if (
+                dpg.does_item_exist(node_id_name)
+                and dpg.is_item_hovered(node_id_name)
+            ):
                 before_pos = self._node_position_cache.get(
                     node_id_name,
                     list(dpg.get_item_pos(node_id_name)),
@@ -2429,10 +2794,10 @@ class DpgNodeEditor(object):
         return reconnect_pairs
 
     def _cntrl_delete_selected(self, sender, data):
-        selected_nodes = dpg.get_selected_nodes(self._node_editor_tag)
-        selected_node_tags = [dpg.get_item_alias(node_dpg_id) for node_dpg_id in selected_nodes]
+        selected_node_tags = self._selected_node_names()
         selected_links = dpg.get_selected_links(self._node_editor_tag)
         self._cntrl_delete_targets(selected_node_tags, selected_links)
+        self._set_keyboard_selection(None)
 
     def _cntrl_delete_targets(self, selected_node_tags, selected_link_ids):
         deleted_nodes_payload = []
@@ -2536,6 +2901,35 @@ class DpgNodeEditor(object):
             self._vw_delete_item(node_tag)
 
     # Public functions
+    def set_runtime(self, runtime):
+        """Attach runtime controls after the editor view has been created."""
+        self._runtime = runtime
+        dpg.set_value(self._runtime_graph_pause_tag, runtime.graph_paused)
+        self._refresh_runtime_node_labels()
+
+    def _refresh_runtime_node_labels(self):
+        if self._runtime is None:
+            return
+        for node_id_name in self._node_list:
+            _, node_name = node_id_name.split(':', 1)
+            node_instance = self.get_node_instance(node_name)
+            base_label = self._node_base_label_dict.get(node_id_name)
+            if base_label is None:
+                base_label = getattr(node_instance, 'node_label', node_name)
+                self._node_base_label_dict[node_id_name] = base_label
+            marker = self._node_propagation_marker_dict.get(node_id_name)
+            marker_prefix = f'[{marker}] ' if marker else ''
+            runtime_prefix = (
+                '' if self._runtime.should_run_node(node_id_name)
+                else '[PAUSED] '
+            )
+            if dpg.does_item_exist(node_id_name):
+                dpg.configure_item(
+                    node_id_name,
+                    label=f'{runtime_prefix}{marker_prefix}{base_label}',
+                )
+                self._vw_bind_node_state_theme(node_id_name)
+
     def get_node_list(self):
         return self._node_list
 
@@ -2548,7 +2942,7 @@ class DpgNodeEditor(object):
     def get_sorted_node_connection_refs(self):
         return self._node_connection_ref_dict
 
-    def _vw_get_propagation_marker_theme(self, marker):
+    def _propagation_marker_color(self, marker):
         marker_colors = {
             'A': (235, 92, 84, 255),
             'B': (239, 151, 55, 255),
@@ -2558,9 +2952,12 @@ class DpgNodeEditor(object):
             'F': (150, 105, 220, 255),
             'G': (154, 106, 79, 255),
         }
+        return marker_colors.get(marker, (180, 180, 180, 255))
+
+    def _vw_get_propagation_marker_theme(self, marker):
         if marker in self._propagation_marker_theme_dict:
             return self._propagation_marker_theme_dict[marker]
-        color = marker_colors.get(marker, (180, 180, 180, 255))
+        color = self._propagation_marker_color(marker)
         active_color = tuple(min(255, channel + 20) for channel in color[:3]) + (255,)
         hovered_color = tuple(min(255, channel + 35) for channel in color[:3]) + (255,)
         with dpg.theme() as theme_id:
@@ -2583,6 +2980,28 @@ class DpgNodeEditor(object):
         self._propagation_marker_theme_dict[marker] = theme_id
         return theme_id
 
+    def _vw_bind_node_state_theme(self, node_id_name):
+        if node_id_name in (self._keyboard_selection or ()):
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_keyboard_selection_theme(),
+            )
+            return
+        marker = self._node_propagation_marker_dict.get(node_id_name)
+        pause_override = self._runtime_pause_override(node_id_name)
+        if pause_override is not None:
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_runtime_override_theme(marker, pause_override),
+            )
+        elif marker:
+            dpg.bind_item_theme(
+                node_id_name,
+                self._vw_get_propagation_marker_theme(marker),
+            )
+        else:
+            dpg.bind_item_theme(node_id_name, 0)
+
     def set_node_propagation_marker(self, node_id_name, marker):
         if node_id_name not in self._node_list:
             return
@@ -2598,15 +3017,13 @@ class DpgNodeEditor(object):
         else:
             self._node_propagation_marker_dict.pop(node_id_name, None)
             label = base_label
+        if self._runtime is not None and not self._runtime.should_run_node(
+            node_id_name
+        ):
+            label = f'[PAUSED] {label}'
         if dpg.does_item_exist(node_id_name):
             dpg.configure_item(node_id_name, label=label)
-            if marker:
-                dpg.bind_item_theme(
-                    node_id_name,
-                    self._vw_get_propagation_marker_theme(marker),
-                )
-            else:
-                dpg.bind_item_theme(node_id_name, 0)
+            self._vw_bind_node_state_theme(node_id_name)
 
     def get_node_instance(self, node_name):
         return self._node_instance_list.get(node_name, None)

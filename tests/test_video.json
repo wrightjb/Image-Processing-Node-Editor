@@ -3,71 +3,29 @@
         "1:Image",
         "2:Blur",
         "3:Curves",
-        "4:ResultImageLarge"
+        "4:ResultImageLarge",
+        "5:Video",
+        "6:GaussianBlur"
     ],
     "link_list": [
         [
-            "1:Image:Image:Output01",
+            "3:Curves:Image:Output01",
+            "4:ResultImageLarge:Image:Input01"
+        ],
+        [
+            "5:Video:Image:Output01",
             "2:Blur:Image:Input01"
         ],
         [
-            "2:Blur:Image:Output01",
-            "3:Curves:Image:Input01"
+            "5:Video:Image:Output01",
+            "6:GaussianBlur:Image:Input01"
         ],
         [
-            "3:Curves:Image:Output01",
-            "4:ResultImageLarge:Image:Input01"
+            "6:GaussianBlur:Image:Output01",
+            "3:Curves:Image:Input01"
         ]
     ],
     "link_refs": [
-        {
-            "source": {
-                "node": {
-                    "id": "1",
-                    "tag": "Image"
-                },
-                "direction": "Output",
-                "data_type": "Image",
-                "index": 1,
-                "port_name": "Output01",
-                "dpg_tag": "1:Image:Image:Output01"
-            },
-            "destination": {
-                "node": {
-                    "id": "2",
-                    "tag": "Blur"
-                },
-                "direction": "Input",
-                "data_type": "Image",
-                "index": 1,
-                "port_name": "Input01",
-                "dpg_tag": "2:Blur:Image:Input01"
-            }
-        },
-        {
-            "source": {
-                "node": {
-                    "id": "2",
-                    "tag": "Blur"
-                },
-                "direction": "Output",
-                "data_type": "Image",
-                "index": 1,
-                "port_name": "Output01",
-                "dpg_tag": "2:Blur:Image:Output01"
-            },
-            "destination": {
-                "node": {
-                    "id": "3",
-                    "tag": "Curves"
-                },
-                "direction": "Input",
-                "data_type": "Image",
-                "index": 1,
-                "port_name": "Input01",
-                "dpg_tag": "3:Curves:Image:Input01"
-            }
-        },
         {
             "source": {
                 "node": {
@@ -91,6 +49,78 @@
                 "port_name": "Input01",
                 "dpg_tag": "4:ResultImageLarge:Image:Input01"
             }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "5",
+                    "tag": "Video"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "5:Video:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "Blur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "2:Blur:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "5",
+                    "tag": "Video"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "5:Video:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "GaussianBlur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "6:GaussianBlur:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "6",
+                    "tag": "GaussianBlur"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "6:GaussianBlur:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "3:Curves:Image:Input01"
+            }
         }
     ],
     "1:Image": {
@@ -102,7 +132,7 @@
                 0,
                 0
             ],
-            "image_path": "D:\\Documents\\Python projects\\Image-Processing-Node-Editor\\tests\\DSC02334.jpg"
+            "image_path": null
         }
     },
     "2:Blur": {
@@ -177,6 +207,40 @@
                 908,
                 2
             ]
+        }
+    },
+    "5:Video": {
+        "id": "5",
+        "name": "Video",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                11,
+                248
+            ],
+            "movie_path": "D:\\Documents\\Python projects\\Image-Processing-Node-Editor\\tests\\PXL_20260512_201653650.TS.mp4",
+            "5:Video:Text:Input02Value": true,
+            "5:Video:Int:Input03Value": 1,
+            "5:Video:Text:Input04Value": false,
+            "5:Video:Text:Input05Value": false,
+            "__cache_source_enabled__": false
+        }
+    },
+    "6:GaussianBlur": {
+        "id": "6",
+        "name": "GaussianBlur",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                297,
+                289
+            ],
+            "6:GaussianBlur:Int:Input02Value": 123,
+            "6:GaussianBlur:Int:Input04Value": true,
+            "6:GaussianBlur:Float:Input03Value": 0.10000000149011612,
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
         }
     }
 }

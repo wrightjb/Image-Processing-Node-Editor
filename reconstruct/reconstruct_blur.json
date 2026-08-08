@@ -1,0 +1,339 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:Image",
+        "3:ImageDiff",
+        "4:ImageCompression",
+        "5:AutoTuneGaussianBlur",
+        "6:Blur"
+    ],
+    "link_refs": [
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Metadata",
+                "index": 2,
+                "port_name": "Output02",
+                "dpg_tag": "2:Image:Metadata:Output02"
+            },
+            "destination": {
+                "node": {
+                    "id": "4",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Input",
+                "data_type": "Metadata",
+                "index": 9,
+                "port_name": "Input09",
+                "dpg_tag": "4:ImageCompression:Metadata:Input09"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "2:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "3:ImageDiff:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "4:ImageCompression:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "3:ImageDiff:Image:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "AutoTuneGaussianBlur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "5:AutoTuneGaussianBlur:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "2:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "AutoTuneGaussianBlur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "5:AutoTuneGaussianBlur:Image:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "5",
+                    "tag": "AutoTuneGaussianBlur"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 2,
+                "port_name": "Output02",
+                "dpg_tag": "5:AutoTuneGaussianBlur:Float:Output02"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "Blur"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 4,
+                "port_name": "Input04",
+                "dpg_tag": "6:Blur:Float:Input04"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "5",
+                    "tag": "AutoTuneGaussianBlur"
+                },
+                "direction": "Output",
+                "data_type": "Int",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "5:AutoTuneGaussianBlur:Int:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "Blur"
+                },
+                "direction": "Input",
+                "data_type": "Int",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "6:Blur:Int:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "6",
+                    "tag": "Blur"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "6:Blur:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "4",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "4:ImageCompression:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "Blur"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "6:Blur:Image:Input01"
+            }
+        }
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -51,
+                307
+            ],
+            "image_path": null,
+            "image_file_signature": null,
+            "__cache_source_enabled__": true
+        }
+    },
+    "2:Image": {
+        "id": "2",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -53,
+                678
+            ],
+            "image_path": null,
+            "image_file_signature": null,
+            "__cache_source_enabled__": true
+        }
+    },
+    "3:ImageDiff": {
+        "id": "3",
+        "name": "ImageDiff",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                629,
+                762
+            ],
+            "3:ImageDiff:Float:Input03Value": 10.0,
+            "3:ImageDiff:Float:Output02Value": 0.0,
+            "3:ImageDiff:Float:Output03Value": 0.0,
+            "3:ImageDiff:Float:Output04Value": 0.0,
+            "3:ImageDiff:Text:ModeValue": "absolute"
+        }
+    },
+    "4:ImageCompression": {
+        "id": "4",
+        "name": "ImageCompression",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                267,
+                851
+            ],
+            "4:ImageCompression:Text:Input02Value": "JPEG",
+            "4:ImageCompression:Int:Input03Value": 90,
+            "4:ImageCompression:Text:Input04Value": "Auto",
+            "4:ImageCompression:Int:Input05Value": 3,
+            "4:ImageCompression:Int:Input06Value": 1,
+            "4:ImageCompression:Text:Input07Value": false,
+            "4:ImageCompression:Text:Input08Value": false,
+            "__save_path__": "",
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
+        }
+    },
+    "5:AutoTuneGaussianBlur": {
+        "id": "5",
+        "name": "AutoTuneGaussianBlur",
+        "setting": {
+            "ver": "0.0.4",
+            "pos": [
+                291,
+                412
+            ],
+            "5:AutoTuneGaussianBlur:Int:Output01Value": 1,
+            "5:AutoTuneGaussianBlur:Float:Output02Value": 0.5,
+            "5:AutoTuneGaussianBlur:Float:Output03Value": 0.0,
+            "5:AutoTuneGaussianBlur:Int:Output04Value": false,
+            "5:AutoTuneGaussianBlur:Float:Output05Value": 2.6500000953674316,
+            "5:AutoTuneGaussianBlur:Int:AutoSigmaValue": true,
+            "5:AutoTuneGaussianBlur:Int:AutoKernelValue": false,
+            "5:AutoTuneGaussianBlur:Float:KernelFactorValue": 2.6500000953674316,
+            "5:AutoTuneGaussianBlur:Text:MetricValue": "mse",
+            "5:AutoTuneGaussianBlur:Int:RefineRoundsValue": 1,
+            "5:AutoTuneGaussianBlur:Text:MatchCompressionValue": true,
+            "__cache_enabled__": false
+        }
+    },
+    "6:Blur": {
+        "id": "6",
+        "name": "Blur",
+        "setting": {
+            "ver": "0.2.0",
+            "pos": [
+                588,
+                410
+            ],
+            "6:Blur:Text:Input03Value": "Gaussian Blur",
+            "6:Blur:Int:Input02Value": 5,
+            "6:Blur:Float:Input04Value": 0.0,
+            "6:Blur:Int:Input05Value": 150,
+            "6:Blur:Int:Input09Value": 10,
+            "6:Blur:Int:Input06Value": true,
+            "6:Blur:Int:Input07Value": false,
+            "6:Blur:Float:Input08Value": 3.0,
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
+        }
+    }
+}

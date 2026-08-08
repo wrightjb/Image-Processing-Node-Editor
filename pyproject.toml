@@ -1,0 +1,14 @@
+[project]
+name = "image-processing-node-editor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.10"
+dependencies = [
+    "dearpygui>=1.11.0",
+    "filterpy>=1.4.5",
+    "mediapipe>=0.8.10",
+    "onnxruntime-gpu>=1.12.0",
+    "opencv-contrib-python>=4.5.5.64",
+    "protobuf>=3.20.0",
+]

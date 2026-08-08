@@ -1,0 +1,694 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:HueSaturationAdjustment",
+        "3:AutoTuneHueBands",
+        "4:Image",
+        "5:ImageDiff",
+        "6:ResultImageLarge"
+    ],
+    "link_refs": [
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "2:HueSaturationAdjustment:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 2,
+                "port_name": "Output02",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output02"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 3,
+                "port_name": "Input03",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input03"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 3,
+                "port_name": "Output03",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output03"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 4,
+                "port_name": "Input04",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input04"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 4,
+                "port_name": "Output04",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output04"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 5,
+                "port_name": "Input05",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input05"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 5,
+                "port_name": "Output05",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output05"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 6,
+                "port_name": "Input06",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input06"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 6,
+                "port_name": "Output06",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output06"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 7,
+                "port_name": "Input07",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input07"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 7,
+                "port_name": "Output07",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output07"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 8,
+                "port_name": "Input08",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input08"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 8,
+                "port_name": "Output08",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output08"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 9,
+                "port_name": "Input09",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input09"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 9,
+                "port_name": "Output09",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output09"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 10,
+                "port_name": "Input10",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input10"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 10,
+                "port_name": "Output10",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output10"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 11,
+                "port_name": "Input11",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input11"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 11,
+                "port_name": "Output11",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output11"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 12,
+                "port_name": "Input12",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input12"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 12,
+                "port_name": "Output12",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output12"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 13,
+                "port_name": "Input13",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input13"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 13,
+                "port_name": "Output13",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output13"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 14,
+                "port_name": "Input14",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input14"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 14,
+                "port_name": "Output14",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output14"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 15,
+                "port_name": "Input15",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input15"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 15,
+                "port_name": "Output15",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output15"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 16,
+                "port_name": "Input16",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input16"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 16,
+                "port_name": "Output16",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output16"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 17,
+                "port_name": "Input17",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input17"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Output",
+                "data_type": "Float",
+                "index": 17,
+                "port_name": "Output17",
+                "dpg_tag": "3:AutoTuneHueBands:Float:Output17"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Input",
+                "data_type": "Float",
+                "index": 18,
+                "port_name": "Input18",
+                "dpg_tag": "2:HueSaturationAdjustment:Float:Input18"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "HueSaturationAdjustment"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "2:HueSaturationAdjustment:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "5:ImageDiff:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "4:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "5:ImageDiff:Image:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "5",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "5:ImageDiff:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "ResultImageLarge"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "6:ResultImageLarge:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "4:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "3:AutoTuneHueBands:Image:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "AutoTuneHueBands"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "3:AutoTuneHueBands:Image:Input01"
+            }
+        }
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -42,
+                193
+            ],
+            "image_path": ".\\Images\\RainbowPasta\\Polish_20260430_225600369.jpg",
+            "image_file_signature": [
+                ".\\Images\\RainbowPasta\\Polish_20260430_225600369.jpg",
+                1783883948000000000,
+                2770264
+            ],
+            "__cache_source_enabled__": true
+        }
+    },
+    "2:HueSaturationAdjustment": {
+        "id": "2",
+        "name": "HueSaturationAdjustment",
+        "setting": {
+            "ver": "0.0.3",
+            "pos": [
+                898,
+                383
+            ],
+            "2:HueSaturationAdjustment:Float:Input02Value": 1.0,
+            "2:HueSaturationAdjustment:Float:Input03Value": -16.5,
+            "2:HueSaturationAdjustment:Float:Input04Value": 100.0,
+            "2:HueSaturationAdjustment:Float:Input05Value": 9.5,
+            "2:HueSaturationAdjustment:Float:Input06Value": -100.0,
+            "2:HueSaturationAdjustment:Float:Input07Value": -12.0,
+            "2:HueSaturationAdjustment:Float:Input08Value": 100.0,
+            "2:HueSaturationAdjustment:Float:Input09Value": 34.5,
+            "2:HueSaturationAdjustment:Float:Input10Value": -16.5,
+            "2:HueSaturationAdjustment:Float:Input11Value": -20.0,
+            "2:HueSaturationAdjustment:Float:Input12Value": 9.5,
+            "2:HueSaturationAdjustment:Float:Input13Value": -25.0,
+            "2:HueSaturationAdjustment:Float:Input14Value": -100.0,
+            "2:HueSaturationAdjustment:Float:Input15Value": 15.5,
+            "2:HueSaturationAdjustment:Float:Input16Value": 100.0,
+            "2:HueSaturationAdjustment:Float:Input17Value": -21.0,
+            "2:HueSaturationAdjustment:Float:Input18Value": -100.0,
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
+        }
+    },
+    "3:AutoTuneHueBands": {
+        "id": "3",
+        "name": "AutoTuneHueBands",
+        "setting": {
+            "ver": "0.0.4",
+            "pos": [
+                293,
+                389
+            ],
+            "__cache_enabled__": false,
+            "3:AutoTuneHueBands:Image:Input01Value": null,
+            "3:AutoTuneHueBands:Image:Input02Value": null,
+            "3:AutoTuneHueBands:Float:Output01Value": 1.0,
+            "3:AutoTuneHueBands:Float:Output02Value": -16.5,
+            "3:AutoTuneHueBands:Float:Output03Value": 100.0,
+            "3:AutoTuneHueBands:Float:Output04Value": 9.5,
+            "3:AutoTuneHueBands:Float:Output05Value": -100.0,
+            "3:AutoTuneHueBands:Float:Output06Value": -12.0,
+            "3:AutoTuneHueBands:Float:Output07Value": 100.0,
+            "3:AutoTuneHueBands:Float:Output08Value": 34.5,
+            "3:AutoTuneHueBands:Float:Output09Value": -16.5,
+            "3:AutoTuneHueBands:Float:Output10Value": -20.0,
+            "3:AutoTuneHueBands:Float:Output11Value": 9.5,
+            "3:AutoTuneHueBands:Float:Output12Value": -25.0,
+            "3:AutoTuneHueBands:Float:Output13Value": -100.0,
+            "3:AutoTuneHueBands:Float:Output14Value": 15.5,
+            "3:AutoTuneHueBands:Float:Output15Value": 100.0,
+            "3:AutoTuneHueBands:Float:Output16Value": -21.0,
+            "3:AutoTuneHueBands:Float:Output17Value": -100.0,
+            "3:AutoTuneHueBands:Float:Output18Value": 0.0059207892045378685,
+            "3:AutoTuneHueBands:Int:RefineRoundsValue": 1,
+            "3:AutoTuneHueBands:Int:TuneBlendValue": false,
+            "3:AutoTuneHueBands:Float:FixedBlendValue": 1.0,
+            "3:AutoTuneHueBands:Text:MatchCompressionValue": false
+        }
+    },
+    "4:Image": {
+        "id": "4",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -49,
+                610
+            ],
+            "image_path": ".\\Images\\RainbowPasta\\Polish_20260430_230008056.jpg",
+            "image_file_signature": [
+                ".\\Images\\RainbowPasta\\Polish_20260430_230008056.jpg",
+                1783883930000000000,
+                3060414
+            ],
+            "__cache_source_enabled__": true
+        }
+    },
+    "5:ImageDiff": {
+        "id": "5",
+        "name": "ImageDiff",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                1234,
+                400
+            ],
+            "5:ImageDiff:Float:Input03Value": 10.0,
+            "5:ImageDiff:Float:Output02Value": 7.611191749572754,
+            "5:ImageDiff:Float:Output03Value": 384.9992980957031,
+            "5:ImageDiff:Float:Output04Value": 187.0,
+            "5:ImageDiff:Text:ModeValue": "absolute"
+        }
+    },
+    "6:ResultImageLarge": {
+        "id": "6",
+        "name": "ResultImageLarge",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                1494,
+                400
+            ]
+        }
+    }
+}

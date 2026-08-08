@@ -1,0 +1,350 @@
+{
+    "node_list": [
+        "1:Image",
+        "2:AutoTuneCurves",
+        "3:Curves",
+        "4:Image",
+        "5:ImageDiff",
+        "6:ImageCompression"
+    ],
+    "link_refs": [
+        {
+            "source": {
+                "node": {
+                    "id": "2",
+                    "tag": "AutoTuneCurves"
+                },
+                "direction": "Output",
+                "data_type": "CurvePoints",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "2:AutoTuneCurves:CurvePoints:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Input",
+                "data_type": "CurvePoints",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "3:Curves:CurvePoints:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "3:Curves:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "3",
+                    "tag": "Curves"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "3:Curves:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "6:ImageCompression:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Metadata",
+                "index": 2,
+                "port_name": "Output02",
+                "dpg_tag": "4:Image:Metadata:Output02"
+            },
+            "destination": {
+                "node": {
+                    "id": "6",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Input",
+                "data_type": "Metadata",
+                "index": 9,
+                "port_name": "Input09",
+                "dpg_tag": "6:ImageCompression:Metadata:Input09"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "4:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "5:ImageDiff:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "6",
+                    "tag": "ImageCompression"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "6:ImageCompression:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "5",
+                    "tag": "ImageDiff"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "5:ImageDiff:Image:Input02"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "1",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "1:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "AutoTuneCurves"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Input01",
+                "dpg_tag": "2:AutoTuneCurves:Image:Input01"
+            }
+        },
+        {
+            "source": {
+                "node": {
+                    "id": "4",
+                    "tag": "Image"
+                },
+                "direction": "Output",
+                "data_type": "Image",
+                "index": 1,
+                "port_name": "Output01",
+                "dpg_tag": "4:Image:Image:Output01"
+            },
+            "destination": {
+                "node": {
+                    "id": "2",
+                    "tag": "AutoTuneCurves"
+                },
+                "direction": "Input",
+                "data_type": "Image",
+                "index": 2,
+                "port_name": "Input02",
+                "dpg_tag": "2:AutoTuneCurves:Image:Input02"
+            }
+        }
+    ],
+    "1:Image": {
+        "id": "1",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -51,
+                307
+            ],
+            "image_path": null,
+            "image_file_signature": null,
+            "__cache_source_enabled__": true
+        }
+    },
+    "2:AutoTuneCurves": {
+        "id": "2",
+        "name": "AutoTuneCurves",
+        "setting": {
+            "ver": "0.0.3",
+            "pos": [
+                271,
+                473
+            ],
+            "2:AutoTuneCurves:CurvePoints:Output01Value": "{\n  \"curves\": {\n    \"White\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Red\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Green\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Blue\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ]\n  }\n}",
+            "2:AutoTuneCurves:Float:Output02Value": 0.0,
+            "2:AutoTuneCurves:Int:MaxPointsValue": 256,
+            "2:AutoTuneCurves:Text:MetricValue": "mae",
+            "2:AutoTuneCurves:Int:RefineRoundsValue": 2,
+            "2:AutoTuneCurves:Text:ChannelValue": "White",
+            "2:AutoTuneCurves:Text:InterpolationValue": "linear",
+            "2:AutoTuneCurves:Text:PrunePointsValue": false,
+            "2:AutoTuneCurves:Text:MatchCompressionValue": true,
+            "__cache_enabled__": false
+        }
+    },
+    "3:Curves": {
+        "id": "3",
+        "name": "Curves",
+        "setting": {
+            "ver": "0.0.5",
+            "pos": [
+                589,
+                344
+            ],
+            "3:Curves:CurvePoints:Input02Value": "{\n  \"curves\": {\n    \"White\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Red\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Green\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ],\n    \"Blue\": [\n      [\n        0,\n        0\n      ],\n      [\n        255,\n        255\n      ]\n    ]\n  }\n}",
+            "3:Curves:Text:Input03Value": "linear",
+            "curves": {
+                "White": [
+                    [
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        255.0,
+                        255.0
+                    ]
+                ],
+                "Red": [
+                    [
+                        0,
+                        0
+                    ],
+                    [
+                        255,
+                        255
+                    ]
+                ],
+                "Green": [
+                    [
+                        0,
+                        0
+                    ],
+                    [
+                        255,
+                        255
+                    ]
+                ],
+                "Blue": [
+                    [
+                        0,
+                        0
+                    ],
+                    [
+                        255,
+                        255
+                    ]
+                ]
+            },
+            "active_channel": "White",
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
+        }
+    },
+    "4:Image": {
+        "id": "4",
+        "name": "Image",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                -53,
+                678
+            ],
+            "image_path": null,
+            "image_file_signature": null,
+            "__cache_source_enabled__": true
+        }
+    },
+    "5:ImageDiff": {
+        "id": "5",
+        "name": "ImageDiff",
+        "setting": {
+            "ver": "0.0.1",
+            "pos": [
+                629,
+                762
+            ],
+            "5:ImageDiff:Float:Input03Value": 10.0,
+            "5:ImageDiff:Float:Output02Value": 0.0,
+            "5:ImageDiff:Float:Output03Value": 0.0,
+            "5:ImageDiff:Float:Output04Value": 0.0,
+            "5:ImageDiff:Text:ModeValue": "absolute"
+        }
+    },
+    "6:ImageCompression": {
+        "id": "6",
+        "name": "ImageCompression",
+        "setting": {
+            "ver": "0.0.2",
+            "pos": [
+                267,
+                851
+            ],
+            "6:ImageCompression:Text:Input02Value": "JPEG",
+            "6:ImageCompression:Int:Input03Value": 90,
+            "6:ImageCompression:Text:Input04Value": "Auto",
+            "6:ImageCompression:Int:Input05Value": 3,
+            "6:ImageCompression:Int:Input06Value": 1,
+            "6:ImageCompression:Text:Input07Value": false,
+            "6:ImageCompression:Text:Input08Value": false,
+            "__save_path__": "",
+            "__cache_enabled__": true,
+            "__result_image_enabled__": false,
+            "__result_large_image_enabled__": false
+        }
+    }
+}

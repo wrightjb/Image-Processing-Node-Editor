@@ -1,7 +1,7 @@
 import numpy as np
 
-from node.process_node.node_photo_editor_sharpen import Node as PhotoEditorSharpenNode
-from node.process_node.node_polish_sharpen import Node as PolishSharpenNode
+from node.process_node.node_sharpen import Node as SharpenNode
+from node.process_node.node_sharpen import image_process
 from node.sharpen import photo_editor_sharpen, polish_preview_offsets, polish_sharpen
 
 
@@ -102,8 +102,32 @@ def test_polish_bilinearly_samples_a_fractional_preview_offset():
     assert np.array_equal(result[2, 3], expected)
 
 
-def test_sharpen_nodes_expose_app_specific_slider_ranges():
-    photo_strength = PhotoEditorSharpenNode.parameters[0]
-    polish_strength = PolishSharpenNode.parameters[0]
-    assert (photo_strength['min'], photo_strength['max']) == (0, 500)
-    assert (polish_strength['min'], polish_strength['max']) == (0, 100)
+def test_polish_shared_slider_supports_strengths_above_native_range():
+    image = np.full((3, 3, 3), 100, dtype=np.uint8)
+    image[1, 1] = 110
+
+    assert not np.array_equal(
+        polish_sharpen(image, 500),
+        polish_sharpen(image, 100),
+    )
+
+
+def test_sharpen_node_exposes_method_dropdown_and_shared_slider_range():
+    method, strength, preview_width = SharpenNode.parameters
+    assert method['items'] == ('Photo Editor', 'Polish')
+    assert method['default'] == 'Photo Editor'
+    assert (strength['min'], strength['max']) == (0, 500)
+    assert preview_width['default'] == 1080
+
+
+def test_sharpen_node_dispatches_selected_method():
+    image = np.arange(27, dtype=np.uint8).reshape(3, 3, 3)
+
+    assert np.array_equal(
+        image_process(image, 'Photo Editor', 125),
+        photo_editor_sharpen(image, 125),
+    )
+    assert np.array_equal(
+        image_process(image, 'Polish', 125, preview_width=3),
+        polish_sharpen(image, 125, preview_width=3),
+    )

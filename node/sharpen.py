@@ -72,12 +72,16 @@ def _mediump(value):
 
 
 def polish_sharpen(image, slider, preview_width=1080):
-    """Apply Polish's preview-space, four-neighbor sharpen at ``0..100``."""
+    """Apply Polish's preview-space four-neighbor sharpen.
+
+    Polish's native slider ends at 100, but values through 500 are accepted so
+    the shared Sharpen node can use one strength range for both methods.
+    """
     color, extra_channels = _color_and_alpha(image)
     if color is None:
         return image
 
-    slider = np.clip(float(slider), 0.0, 100.0)
+    slider = np.clip(float(slider), 0.0, 500.0)
     if slider == 0.0:
         return image.copy()
 

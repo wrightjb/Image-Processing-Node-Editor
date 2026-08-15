@@ -5,8 +5,29 @@
 import numpy as np
 from scipy.interpolate import CubicSpline, PPoly
 
+INTERPOLATION_LINEAR = 'linear'
+INTERPOLATION_CUBIC_SPLINE = 'cubic spline'
+INTERPOLATION_PARAMETRIC_SPLINE = 'parametric spline'
+INTERPOLATION_OPTIONS = (
+    INTERPOLATION_LINEAR,
+    INTERPOLATION_CUBIC_SPLINE,
+    INTERPOLATION_PARAMETRIC_SPLINE,
+)
 
-def points_to_lut(points, interpolation="linear"):
+_LEGACY_INTERPOLATION_ALIASES = {
+    'spline': INTERPOLATION_PARAMETRIC_SPLINE,
+}
+
+
+def normalize_interpolation(value):
+    """Return a supported interpolation name, including saved legacy values."""
+    value = _LEGACY_INTERPOLATION_ALIASES.get(value, value)
+    if value in INTERPOLATION_OPTIONS:
+        return value
+    return INTERPOLATION_LINEAR
+
+
+def points_to_lut(points, interpolation=INTERPOLATION_LINEAR):
     """Return a 256-entry uint8 LUT from editable curve control points."""
     points = np.asarray(points, dtype=np.float64)
 
@@ -17,8 +38,21 @@ def points_to_lut(points, interpolation="linear"):
     ys = points[:, 1]
     x_values = np.arange(256, dtype=np.float64)
 
-    if interpolation != "spline" or len(points) < 3:
+    interpolation = normalize_interpolation(interpolation)
+    if interpolation == INTERPOLATION_LINEAR or len(points) < 3:
         result = np.interp(x_values, xs, ys)
+        return np.rint(np.clip(result, 0, 255)).astype(np.uint8)
+
+    if interpolation == INTERPOLATION_CUBIC_SPLINE:
+        if np.any(np.diff(xs) <= 0):
+            result = np.interp(x_values, xs, ys)
+        else:
+            result = CubicSpline(
+                xs,
+                ys,
+                bc_type='natural',
+                extrapolate=False,
+            )(x_values)
         return np.rint(np.clip(result, 0, 255)).astype(np.uint8)
 
     # Uniform parameterization by control-point order.

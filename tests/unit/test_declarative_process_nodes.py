@@ -658,7 +658,7 @@ def test_curves_node_uses_custom_points_in_process(monkeypatch):
 
     captured = {}
 
-    def _lut_stub(image, points, channel='White'):
+    def _lut_stub(image, points, channel='White', interpolation='linear'):
         captured['points'] = points
         captured['channel'] = channel
         return image
@@ -1663,7 +1663,7 @@ def test_curves_node_uses_linked_points_parameter(monkeypatch):
 
     captured = {}
 
-    def _lut_stub(image, points, channel='White'):
+    def _lut_stub(image, points, channel='White', interpolation='linear'):
         captured['points'] = points
         captured['channel'] = channel
         return image
@@ -1715,7 +1715,7 @@ def test_curves_image_process_applies_white_before_rgb_curve_set():
 
     result = curves_module.image_process(image, {'curves': curve_set})
 
-    assert result[0, 0].tolist() == [0, 5, 5, 40]
+    assert result[0, 0].tolist() == [1, 6, 6, 40]
 
 
 def test_curves_node_uses_channel_from_linked_points_payload(monkeypatch):
@@ -1754,7 +1754,7 @@ def test_curves_node_uses_channel_from_linked_points_payload(monkeypatch):
 
     captured = {}
 
-    def _lut_stub(image, points, channel='White'):
+    def _lut_stub(image, points, channel='White', interpolation='linear'):
         captured['points'] = points
         captured['channel'] = channel
         return image
@@ -2065,7 +2065,11 @@ def test_curves_interpolation_combo_uses_declarative_items_key():
     )
 
     assert interpolation['widget'] == 'combo'
-    assert interpolation['items'] == ['linear', 'spline']
+    assert interpolation['items'] == [
+        'linear',
+        'cubic spline',
+        'parametric spline',
+    ]
     assert 'options' not in interpolation
 
 

@@ -7,6 +7,8 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 from node.base.declarative_node_base import DeclarativeImageProcessNodeBase
+from node.curve_interpolation import INTERPOLATION_LINEAR, INTERPOLATION_OPTIONS
+from node.curve_interpolation import normalize_interpolation
 from node.curve_interpolation import points_to_lut as _shared_points_to_lut
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.port_model import OutputPort, PortDataType
@@ -19,7 +21,7 @@ _BGR_INDEX_BY_CHANNEL = {
 }
 
 
-def _points_to_lut(points, interpolation='linear'):
+def _points_to_lut(points, interpolation=INTERPOLATION_LINEAR):
     return _shared_points_to_lut(points, interpolation=interpolation)
 
 
@@ -30,7 +32,7 @@ def _apply_lut(image, table):
         return table[np.asarray(image)]
 
 
-def image_process(image, curves, channel=None, interpolation='linear'):
+def image_process(image, curves, channel=None, interpolation=INTERPOLATION_LINEAR):
     """Apply White first, then per-channel RGB curves."""
     helper = CurvesPointsEditorMixin()
     if channel in CURVE_CHANNELS:
@@ -57,7 +59,7 @@ def image_process(image, curves, channel=None, interpolation='linear'):
 class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
     """Curves adjustment node."""
 
-    _ver = '0.0.5'
+    _ver = '0.0.6'
 
     parameters = [
         {
@@ -74,8 +76,8 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
             'port': 'Input03',
             'label': 'Interp',
             'widget': 'combo',
-            'items': ['linear', 'spline'],
-            'default': 'linear',
+            'items': list(INTERPOLATION_OPTIONS),
+            'default': INTERPOLATION_LINEAR,
         },
     ]
 
@@ -94,8 +96,8 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
                 self.parameters[1],
             ).value_tag
         except (KeyError, IndexError):
-            return 'linear'
-        return 'spline' if dpg_get_value(value_tag) == 'spline' else 'linear'
+            return INTERPOLATION_LINEAR
+        return normalize_interpolation(dpg_get_value(value_tag))
 
     def _curves_output_port_ref(self, node_id):
         try:
@@ -236,15 +238,14 @@ class Node(CurvesPointsEditorMixin, DeclarativeImageProcessNodeBase):
         return parameter_values
 
     def process(self, frame, **parameter_values):
-        interpolation = parameter_values.get('interpolation', 'linear')
-        if interpolation == 'spline':
-            frame = image_process(
-                frame,
-                parameter_values['curves'],
-                interpolation=interpolation,
-            )
-        else:
-            frame = image_process(frame, parameter_values['curves'])
+        interpolation = normalize_interpolation(
+            parameter_values.get('interpolation'),
+        )
+        frame = image_process(
+            frame,
+            parameter_values['curves'],
+            interpolation=interpolation,
+        )
         return frame, None
 
     def get_custom_setting_dict(self, tag_node_name, node_id):

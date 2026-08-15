@@ -1828,7 +1828,7 @@ def test_tune_curves_reports_requested_spline_interpolation():
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_refit_improves_spline_generated_target():
@@ -1881,7 +1881,7 @@ def test_tune_curves_spline_uses_additive_fit_without_pruning(monkeypatch):
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
@@ -1903,7 +1903,7 @@ def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_dense_reconstruction_does_not_use_all_default_points():
@@ -1986,3 +1986,34 @@ def test_auto_tune_curves_prune_points_defaults_to_disabled(monkeypatch):
     monkeypatch.setattr(auto_tune_curves_node_module, 'dpg_get_value', lambda tag: None)
 
     assert node._prune_points_value(7) is False
+
+
+def test_curves_natural_cubic_spline_matches_scipy_reference():
+    from scipy.interpolate import CubicSpline
+
+    from node.curve_interpolation import points_to_lut
+
+    points = np.array([[0, 0], [64, 230], [128, 40], [255, 255]])
+    expected = CubicSpline(
+        points[:, 0],
+        points[:, 1],
+        bc_type='natural',
+        extrapolate=False,
+    )(np.arange(256))
+    expected = np.rint(np.clip(expected, 0, 255)).astype(np.uint8)
+
+    actual = points_to_lut(points, interpolation='cubic spline')
+
+    assert np.array_equal(actual, expected)
+
+
+def test_curves_legacy_spline_name_maps_to_parametric_spline():
+    from node.curve_interpolation import normalize_interpolation, points_to_lut
+
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    assert normalize_interpolation('spline') == 'parametric spline'
+    assert np.array_equal(
+        points_to_lut(points, interpolation='spline'),
+        points_to_lut(points, interpolation='parametric spline'),
+    )

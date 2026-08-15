@@ -422,7 +422,10 @@ def test_curve_points_spline_line_samples_lut_without_extra_drag_points():
     editor = CurvesPointsEditorMixin()
     points = [[0, 0], [64, 230], [128, 40], [255, 255]]
 
-    x_values, y_values = editor._line_values(points, interpolation='spline')
+    x_values, y_values = editor._line_values(
+        points,
+        interpolation='parametric spline',
+    )
 
     assert list(x_values) == list(range(256))
     assert len(y_values) == 256

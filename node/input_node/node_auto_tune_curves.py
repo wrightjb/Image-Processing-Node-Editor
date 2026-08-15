@@ -4,6 +4,8 @@ import dearpygui.dearpygui as dpg
 
 from auto_tune.curves import DEFAULT_MAX_POINTS, DEFAULT_REFINEMENT_ITERATIONS
 from auto_tune.curves import tune_curve_set, tune_curves
+from node.curve_interpolation import INTERPOLATION_LINEAR, INTERPOLATION_OPTIONS
+from node.curve_interpolation import normalize_interpolation
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
 from node.node_abc import DpgNodeBase
 from node.port_model import InputPort, OutputPort, PortDataType, PortSpecs
@@ -12,7 +14,7 @@ from node_editor.util import dpg_get_value, dpg_set_value
 
 
 class Node(DpgNodeBase):
-    _ver = '0.0.3'
+    _ver = '0.0.4'
 
     def __init__(self):
         self._run_requested_node_ids = set()
@@ -123,10 +125,10 @@ class Node(DpgNodeBase):
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
                 dpg.add_combo(
-                    ('linear', 'spline'),
+                    items=list(INTERPOLATION_OPTIONS),
                     label='Interpolation',
                     tag=self._interpolation_value_tag(node_id),
-                    default_value='linear',
+                    default_value=INTERPOLATION_LINEAR,
                     width=140,
                     callback=callback,
                 )
@@ -211,7 +213,7 @@ class Node(DpgNodeBase):
 
     def _interpolation_value(self, node_id):
         value = dpg_get_value(self._interpolation_value_tag(node_id))
-        return 'spline' if value == 'spline' else 'linear'
+        return normalize_interpolation(value)
 
     def _prune_points_attr_tag(self, node_id):
         return self._node_control_tag(node_id, self.TYPE_TEXT, 'PrunePoints')

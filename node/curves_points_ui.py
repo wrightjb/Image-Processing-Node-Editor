@@ -7,7 +7,8 @@ import json
 
 import dearpygui.dearpygui as dpg
 
-from node.curve_interpolation import points_to_lut
+from node.curve_interpolation import INTERPOLATION_LINEAR
+from node.curve_interpolation import normalize_interpolation, points_to_lut
 from node_editor.util import dpg_get_item_children, dpg_get_value, dpg_set_value
 
 CURVE_CHANNELS = ('White', 'Red', 'Green', 'Blue')
@@ -189,17 +190,23 @@ class CurvesPointsEditorMixin:
 
     def _curve_interpolation(self, node_id):
         del node_id
-        return 'linear'
+        return INTERPOLATION_LINEAR
 
-    def _line_values(self, points, interpolation='linear'):
-        if interpolation == 'spline' and len(points) >= 3:
+    def _line_values(self, points, interpolation=INTERPOLATION_LINEAR):
+        interpolation = normalize_interpolation(interpolation)
+        if interpolation != INTERPOLATION_LINEAR and len(points) >= 3:
             x_values = tuple(range(256))
             y_values = tuple(float(value) for value in points_to_lut(points, interpolation))
             return [x_values, y_values]
         x_values, y_values = zip(*points)
         return [x_values, y_values]
 
-    def _set_line_value_if_exists(self, tag, points, interpolation='linear'):
+    def _set_line_value_if_exists(
+        self,
+        tag,
+        points,
+        interpolation=INTERPOLATION_LINEAR,
+    ):
         if dpg.does_item_exist(tag):
             dpg.set_value(tag, self._line_values(points, interpolation))
 

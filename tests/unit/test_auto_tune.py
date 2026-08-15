@@ -1828,7 +1828,7 @@ def test_tune_curves_reports_requested_spline_interpolation():
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_refit_improves_spline_generated_target():
@@ -1881,7 +1881,7 @@ def test_tune_curves_spline_uses_additive_fit_without_pruning(monkeypatch):
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
@@ -1903,7 +1903,7 @@ def test_tune_curves_spline_uses_dense_reconstruction_not_additive(monkeypatch):
         interpolation='spline',
     )
 
-    assert result.best_parameters['interpolation'] == 'spline'
+    assert result.best_parameters['interpolation'] == 'parametric spline'
 
 
 def test_tune_curves_spline_dense_reconstruction_does_not_use_all_default_points():
@@ -1986,3 +1986,106 @@ def test_auto_tune_curves_prune_points_defaults_to_disabled(monkeypatch):
     monkeypatch.setattr(auto_tune_curves_node_module, 'dpg_get_value', lambda tag: None)
 
     assert node._prune_points_value(7) is False
+
+
+def test_curves_natural_cubic_spline_matches_scipy_reference():
+    from scipy.interpolate import CubicSpline
+
+    from node.curve_interpolation import points_to_lut
+
+    points = np.array([[0, 0], [64, 230], [128, 40], [255, 255]])
+    expected = CubicSpline(
+        points[:, 0],
+        points[:, 1],
+        bc_type='natural',
+        extrapolate=False,
+    )(np.arange(256))
+    expected = np.rint(np.clip(expected, 0, 255)).astype(np.uint8)
+
+    actual = points_to_lut(points, interpolation='cubic spline')
+
+    assert np.array_equal(actual, expected)
+
+
+def test_curves_legacy_spline_name_maps_to_parametric_spline():
+    from node.curve_interpolation import normalize_interpolation, points_to_lut
+
+    points = [[0, 0], [64, 230], [128, 40], [255, 255]]
+
+    assert normalize_interpolation('spline') == 'parametric spline'
+    assert np.array_equal(
+        points_to_lut(points, interpolation='spline'),
+        points_to_lut(points, interpolation='parametric spline'),
+    )
+
+
+def test_auto_tune_curves_exposes_all_interpolation_modes():
+    from node.curve_interpolation import INTERPOLATION_OPTIONS
+    from node.input_node import node_auto_tune_curves
+
+    assert list(node_auto_tune_curves.INTERPOLATION_OPTIONS) == [
+        'linear',
+        'cubic spline',
+        'parametric spline',
+    ]
+    assert node_auto_tune_curves.INTERPOLATION_OPTIONS is INTERPOLATION_OPTIONS
+
+
+def test_tune_curves_uses_cubic_spline_during_spline_fitting(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    captured = {}
+    original_fit = curves_module.fit_spline_points_from_dense_reconstruction
+
+    def _capture_fit(*args, **kwargs):
+        captured['interpolation'] = kwargs['interpolation']
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(
+        curves_module,
+        'fit_spline_points_from_dense_reconstruction',
+        _capture_fit,
+    )
+
+    result = curves_module.tune_curves(
+        source,
+        source,
+        max_points=2,
+        refinement_iterations=0,
+        interpolation='cubic spline',
+    )
+
+    assert captured['interpolation'] == 'cubic spline'
+    assert result.best_parameters['interpolation'] == 'cubic spline'
+
+
+def test_parametric_spline_uses_max_points_when_pruning_is_disabled():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target_points = [
+        [0, 0],
+        [36, 70],
+        [78, 30],
+        [120, 190],
+        [164, 110],
+        [210, 240],
+        [255, 255],
+    ]
+    target = points_to_lut(
+        target_points,
+        quantize=True,
+        interpolation='parametric spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=7,
+        refinement_iterations=0,
+        interpolation='parametric spline',
+        prune_points=False,
+    )
+
+    assert len(result.best_parameters['points']) == 7

@@ -8,6 +8,9 @@ import numpy as np
 
 from auto_tune.service import TuneResult, mean_squared_error
 from node.curves_points_ui import CURVE_CHANNELS, CurvesPointsEditorMixin
+from node.curve_interpolation import INTERPOLATION_LINEAR
+from node.curve_interpolation import INTERPOLATION_PARAMETRIC_SPLINE
+from node.curve_interpolation import normalize_interpolation
 from node.curve_interpolation import points_to_lut as node_points_to_lut
 from node.process_node.node_curves import image_process
 
@@ -144,11 +147,15 @@ def _format_points(points, precision=DEFAULT_POINT_PRECISION):
     return formatted
 
 
-def points_to_lut(points, quantize=False, interpolation='linear'):
+def points_to_lut(points, quantize=False, interpolation=INTERPOLATION_LINEAR):
     """Build the LUT shape that the Curves node will interpolate."""
     normalized = _normalize_points(points)
-    if interpolation == 'spline':
-        lut = node_points_to_lut(normalized, interpolation='spline').astype(np.float32)
+    interpolation = normalize_interpolation(interpolation)
+    if interpolation != INTERPOLATION_LINEAR:
+        lut = node_points_to_lut(
+            normalized,
+            interpolation=interpolation,
+        ).astype(np.float32)
     else:
         xs, ys = zip(*normalized)
         lut = np.interp(_LUT_X, xs, ys).astype(np.float32)
@@ -326,7 +333,7 @@ def fit_curve_y_values(
     return _format_points(zip(x_positions, fitted_y), precision=precision)
 
 
-def _score_points(points, observed, metric='balanced_huber', interpolation='linear'):
+def _score_points(points, observed, metric='balanced_huber', interpolation=INTERPOLATION_LINEAR):
     lut = points_to_lut(points, quantize=True, interpolation=interpolation)
     return score_curve_lut(
         lut,
@@ -356,14 +363,16 @@ def optimize_spline_y_values(
     metric='balanced_huber',
     precision=DEFAULT_POINT_PRECISION,
     max_sweeps=1,
+    interpolation=INTERPOLATION_PARAMETRIC_SPLINE,
 ):
     """Coordinate-refine y-values using the spline-rendered LUT as objective."""
+    interpolation = normalize_interpolation(interpolation)
     best_points = _format_points(points, precision=precision)
     best_score = _score_points(
         best_points,
         observed,
         metric=metric,
-        interpolation='spline',
+        interpolation=interpolation,
     )
     radii = (32.0, 16.0, 8.0, 4.0, 2.0, 1.0, 0.5, 0.25)
     for radius in radii:
@@ -384,7 +393,7 @@ def optimize_spline_y_values(
                         candidate,
                         observed,
                         metric=metric,
-                        interpolation='spline',
+                        interpolation=interpolation,
                     )
                     if score < best_score:
                         best_points = candidate
@@ -401,7 +410,7 @@ def _refit_points(
     observed,
     precision=DEFAULT_POINT_PRECISION,
     metric='balanced_huber',
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
 ):
     fitted = fit_curve_y_values(
         [point[0] for point in points],
@@ -411,12 +420,13 @@ def _refit_points(
         prior_values=observed.values,
         precision=precision,
     )
-    if interpolation == 'spline':
+    if interpolation != INTERPOLATION_LINEAR:
         return optimize_spline_y_values(
             fitted,
             observed,
             metric=metric,
             precision=precision,
+            interpolation=interpolation,
         )
     return fitted
 
@@ -428,8 +438,10 @@ def fit_spline_points_additive(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
+    interpolation=INTERPOLATION_PARAMETRIC_SPLINE,
 ):
     """Build spline controls additively by inserting the worst residual x bin."""
+    interpolation = normalize_interpolation(interpolation)
     max_points = max(2, int(max_points))
     selected_x = [0.0, 255.0]
     best_points = _refit_points(
@@ -437,19 +449,19 @@ def fit_spline_points_additive(
         observed,
         precision=precision,
         metric=metric,
-        interpolation='spline',
+        interpolation=interpolation,
     )
     best_score = _score_points(
         best_points,
         observed,
         metric=metric,
-        interpolation='spline',
+        interpolation=interpolation,
     )
     while len(selected_x) < max_points:
         lut = points_to_lut(
             best_points,
             quantize=True,
-            interpolation='spline',
+            interpolation=interpolation,
         )
         residual = np.abs(lut - observed.values)
         candidate_mask = observed.observed_mask.copy()
@@ -478,13 +490,13 @@ def fit_spline_points_additive(
                 observed,
                 precision=precision,
                 metric=metric,
-                interpolation='spline',
+                interpolation=interpolation,
             )
             score = _score_points(
                 candidate,
                 observed,
                 metric=metric,
-                interpolation='spline',
+                interpolation=interpolation,
             )
             if best_candidate is None or score < best_candidate[0]:
                 best_candidate = (score, next_x, candidate)
@@ -516,8 +528,16 @@ def fit_spline_points_from_dense_reconstruction(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
+    interpolation=INTERPOLATION_PARAMETRIC_SPLINE,
+    select_by_complexity=True,
 ):
-    """Seed spline controls from inflections in the dense reconstructed LUT."""
+    """Seed spline controls from inflections in the dense reconstructed LUT.
+
+    When ``select_by_complexity`` is false, ``max_points`` is the requested
+    point count rather than merely an upper bound. This is the behavior users
+    select by disabling the Auto Tune node's ``Prune Points`` option.
+    """
+    interpolation = normalize_interpolation(interpolation)
     max_points = max(2, int(max_points))
     dense_lut = np.asarray(observed.values, dtype=np.float32)
     smooth_kernel = np.ones(9, dtype=np.float32) / 9.0
@@ -587,19 +607,22 @@ def fit_spline_points_from_dense_reconstruction(
         observed,
         precision=precision,
         metric=metric,
-        interpolation='spline',
+        interpolation=interpolation,
     )
     best_score = _score_points(
         best_points,
         observed,
         metric=metric,
-        interpolation='spline',
+        interpolation=interpolation,
     )
     min_spacing = 8
     for candidate in ranked_candidates:
         if len(selected) >= max_points:
             break
-        if any(abs(candidate - existing) < min_spacing for existing in selected):
+        if (
+            select_by_complexity
+            and any(abs(candidate - existing) < min_spacing for existing in selected)
+        ):
             continue
         candidate_x = sorted({*selected, int(candidate)})
         candidate_points = _refit_points(
@@ -607,17 +630,17 @@ def fit_spline_points_from_dense_reconstruction(
             observed,
             precision=precision,
             metric=metric,
-            interpolation='spline',
+            interpolation=interpolation,
         )
         candidate_score = _score_points(
             candidate_points,
             observed,
             metric=metric,
-            interpolation='spline',
+            interpolation=interpolation,
         )
         improvement = best_score - candidate_score
         required_improvement = max(complexity_penalty, best_score * 0.01)
-        if improvement >= required_improvement:
+        if not select_by_complexity or improvement >= required_improvement:
             selected = candidate_x
             best_points = candidate_points
             best_score = candidate_score
@@ -636,13 +659,13 @@ def fit_spline_points_from_dense_reconstruction(
                 observed,
                 precision=precision,
                 metric=metric,
-                interpolation='spline',
+                interpolation=interpolation,
             )
             best_score = _score_points(
                 best_points,
                 observed,
                 metric=metric,
-                interpolation='spline',
+                interpolation=interpolation,
             )
             break
 
@@ -670,7 +693,7 @@ def refine_curve_points_local_search(
     observed_mask=None,
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
 ):
     """Locally refine interior point x positions, refitting y-values each time."""
     observed = ObservedCurveLut(
@@ -680,7 +703,7 @@ def refine_curve_points_local_search(
         observed_values=np.asarray(observed_lut, dtype=np.float32),
         observed_mask=(~np.isnan(observed_lut) if observed_mask is None else observed_mask),
     )
-    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    interpolation = normalize_interpolation(interpolation)
     best_points = _refit_points(
         points,
         observed,
@@ -751,10 +774,10 @@ def prune_curve_points(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     min_points=2,
     precision=DEFAULT_POINT_PRECISION,
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
 ):
     """Remove points that do not improve observed-fit enough to justify complexity."""
-    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    interpolation = normalize_interpolation(interpolation)
     best_points = _refit_points(
         points,
         observed,
@@ -801,10 +824,10 @@ def prune_close_curve_points(
     min_spacing=2.0,
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     precision=DEFAULT_POINT_PRECISION,
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
 ):
     """Remove nearly overlaid interior points when they do not materially help."""
-    interpolation = 'spline' if interpolation == 'spline' else 'linear'
+    interpolation = normalize_interpolation(interpolation)
     best_points = _refit_points(
         points,
         observed,
@@ -867,14 +890,14 @@ def tune_curves(
     point_precision=DEFAULT_POINT_PRECISION,
     channel='White',
     score_image_transform=None,
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
     prune_points=True,
 ):
     """Recover Curves-node points from source/target images."""
     channel = _normalize_channel(channel)
     observed = estimate_curve_lut(source_image, target_image, channel=channel)
-    interpolation = 'spline' if interpolation == 'spline' else 'linear'
-    if interpolation == 'spline':
+    interpolation = normalize_interpolation(interpolation)
+    if interpolation != INTERPOLATION_LINEAR:
         initial_points = fit_spline_points_from_dense_reconstruction(
             observed,
             max_points=max_points,
@@ -882,6 +905,8 @@ def tune_curves(
             complexity_penalty=complexity_penalty,
             precision=point_precision,
             progress_callback=progress_callback,
+            interpolation=interpolation,
+            select_by_complexity=prune_points,
         )
     else:
         x_positions = rdp_curve_x_positions(
@@ -949,7 +974,7 @@ def tune_curves(
             'point_count': len(refined_points),
         })
 
-    if interpolation == 'spline' or not prune_points:
+    if interpolation != INTERPOLATION_LINEAR or not prune_points:
         pruned_points = refined_points
     else:
         refined_points = prune_close_curve_points(
@@ -1031,7 +1056,7 @@ def tune_curve_set(
     complexity_penalty=DEFAULT_COMPLEXITY_PENALTY,
     point_precision=DEFAULT_POINT_PRECISION,
     score_image_transform=None,
-    interpolation='linear',
+    interpolation=INTERPOLATION_LINEAR,
     prune_points=True,
 ):
     """Recover a White-first, then RGB, Curves-node curve set."""

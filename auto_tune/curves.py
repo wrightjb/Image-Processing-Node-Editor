@@ -529,8 +529,14 @@ def fit_spline_points_from_dense_reconstruction(
     precision=DEFAULT_POINT_PRECISION,
     progress_callback=None,
     interpolation=INTERPOLATION_PARAMETRIC_SPLINE,
+    select_by_complexity=True,
 ):
-    """Seed spline controls from inflections in the dense reconstructed LUT."""
+    """Seed spline controls from inflections in the dense reconstructed LUT.
+
+    When ``select_by_complexity`` is false, ``max_points`` is the requested
+    point count rather than merely an upper bound. This is the behavior users
+    select by disabling the Auto Tune node's ``Prune Points`` option.
+    """
     interpolation = normalize_interpolation(interpolation)
     max_points = max(2, int(max_points))
     dense_lut = np.asarray(observed.values, dtype=np.float32)
@@ -613,7 +619,10 @@ def fit_spline_points_from_dense_reconstruction(
     for candidate in ranked_candidates:
         if len(selected) >= max_points:
             break
-        if any(abs(candidate - existing) < min_spacing for existing in selected):
+        if (
+            select_by_complexity
+            and any(abs(candidate - existing) < min_spacing for existing in selected)
+        ):
             continue
         candidate_x = sorted({*selected, int(candidate)})
         candidate_points = _refit_points(
@@ -631,7 +640,7 @@ def fit_spline_points_from_dense_reconstruction(
         )
         improvement = best_score - candidate_score
         required_improvement = max(complexity_penalty, best_score * 0.01)
-        if improvement >= required_improvement:
+        if not select_by_complexity or improvement >= required_improvement:
             selected = candidate_x
             best_points = candidate_points
             best_score = candidate_score
@@ -897,6 +906,7 @@ def tune_curves(
             precision=point_precision,
             progress_callback=progress_callback,
             interpolation=interpolation,
+            select_by_complexity=prune_points,
         )
     else:
         x_positions = rdp_curve_x_positions(

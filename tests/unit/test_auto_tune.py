@@ -2058,3 +2058,34 @@ def test_tune_curves_uses_cubic_spline_during_spline_fitting(monkeypatch):
 
     assert captured['interpolation'] == 'cubic spline'
     assert result.best_parameters['interpolation'] == 'cubic spline'
+
+
+def test_parametric_spline_uses_max_points_when_pruning_is_disabled():
+    from auto_tune.curves import points_to_lut, tune_curves
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    target_points = [
+        [0, 0],
+        [36, 70],
+        [78, 30],
+        [120, 190],
+        [164, 110],
+        [210, 240],
+        [255, 255],
+    ]
+    target = points_to_lut(
+        target_points,
+        quantize=True,
+        interpolation='parametric spline',
+    ).astype(np.uint8)[source]
+
+    result = tune_curves(
+        source,
+        target,
+        max_points=7,
+        refinement_iterations=0,
+        interpolation='parametric spline',
+        prune_points=False,
+    )
+
+    assert len(result.best_parameters['points']) == 7

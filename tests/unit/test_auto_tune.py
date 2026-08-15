@@ -2017,3 +2017,44 @@ def test_curves_legacy_spline_name_maps_to_parametric_spline():
         points_to_lut(points, interpolation='spline'),
         points_to_lut(points, interpolation='parametric spline'),
     )
+
+
+def test_auto_tune_curves_exposes_all_interpolation_modes():
+    from node.curve_interpolation import INTERPOLATION_OPTIONS
+    from node.input_node import node_auto_tune_curves
+
+    assert list(node_auto_tune_curves.INTERPOLATION_OPTIONS) == [
+        'linear',
+        'cubic spline',
+        'parametric spline',
+    ]
+    assert node_auto_tune_curves.INTERPOLATION_OPTIONS is INTERPOLATION_OPTIONS
+
+
+def test_tune_curves_uses_cubic_spline_during_spline_fitting(monkeypatch):
+    import auto_tune.curves as curves_module
+
+    source = np.tile(np.arange(256, dtype=np.uint8), (2, 1))
+    captured = {}
+    original_fit = curves_module.fit_spline_points_from_dense_reconstruction
+
+    def _capture_fit(*args, **kwargs):
+        captured['interpolation'] = kwargs['interpolation']
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(
+        curves_module,
+        'fit_spline_points_from_dense_reconstruction',
+        _capture_fit,
+    )
+
+    result = curves_module.tune_curves(
+        source,
+        source,
+        max_points=2,
+        refinement_iterations=0,
+        interpolation='cubic spline',
+    )
+
+    assert captured['interpolation'] == 'cubic spline'
+    assert result.best_parameters['interpolation'] == 'cubic spline'

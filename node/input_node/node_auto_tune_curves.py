@@ -125,7 +125,7 @@ class Node(DpgNodeBase):
                 attribute_type=dpg.mvNode_Attr_Static,
             ):
                 dpg.add_combo(
-                    INTERPOLATION_OPTIONS,
+                    items=list(INTERPOLATION_OPTIONS),
                     label='Interpolation',
                     tag=self._interpolation_value_tag(node_id),
                     default_value=INTERPOLATION_LINEAR,
